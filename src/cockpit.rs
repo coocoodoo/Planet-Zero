@@ -190,6 +190,9 @@ impl Cockpit {
                 }
             }
         }
+        if !flight.hud {
+            return;
+        }
         self.hud.fill(0);
         let mut p = Paint {
             pixels: &mut self.hud,

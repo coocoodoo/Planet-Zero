@@ -30,6 +30,7 @@ pub struct Flight {
     pub wingmen: Vec<Flight>,
     pub wing_count: usize,
     pub demo: bool,
+    pub hud: bool,
     pub weather: crate::weather::Weather,
     pub demo_time: f32,
     pub position: Vec3,
@@ -63,6 +64,7 @@ impl Flight {
             wingmen: Vec::new(),
             wing_count: 2,
             demo: false,
+            hud: true,
             weather: crate::weather::Weather::Clear,
             demo_time: 0.0,
             position,
@@ -96,6 +98,7 @@ impl Flight {
 
     pub fn change_world(&mut self, world: &World) {
         let weather = self.weather;
+        let hud = self.hud;
         let (view, weights, demo, wing_count) =
             (self.view, self.weights, self.demo, self.wing_count);
         *self = Self::new(world);
@@ -104,6 +107,7 @@ impl Flight {
         self.demo = demo;
         self.wing_count = wing_count;
         self.weather = weather;
+        self.hud = hud;
     }
 
     pub fn set_demo(&mut self, enabled: bool) {

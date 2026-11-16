@@ -96,6 +96,7 @@ impl Game {
                 self.menu = false;
                 self.paused = false;
             }
+            22 => self.flight.hud = !self.flight.hud,
             25 => self.paused = !self.paused,
             48 => self.flight.exploded = !self.flight.exploded,
             47 => self.flight.wing_count = (self.flight.wing_count + 1) % 3,
@@ -182,6 +183,9 @@ impl Game {
         self.renderer
             .render(&self.world, &self.flight, WIDTH, HEIGHT, self.theme);
         self.screen.copy_from_slice(&self.renderer.rgba);
+        if !self.flight.hud && !self.menu && !self.paused {
+            return;
+        }
         shade(&mut self.screen, 0, 0, WIDTH, 11);
         text(
             &mut self.screen,
@@ -265,7 +269,7 @@ impl Game {
                     "4 SPACE   VIEW     5 Q  ROLL",
                     "6 SHIFT   BOOST    7 T  LIGHT",
                     "I MOTION  K ZERO   TAB  AUTO",
-                    "J DEMO    V WINGS  P    PAUSE",
+                    "J DEMO    U HIDE   P    PAUSE",
                     "8 H ESC MENU  HOLD ESC EXIT",
                     "Z/C PAGE    ENTER RESUME",
                 ]

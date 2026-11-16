@@ -216,8 +216,9 @@ async fn main() {
         if is_key_pressed(KeyCode::B) {
             flight.exploded = !flight.exploded;
         }
-        if is_key_pressed(KeyCode::H) {
+        if is_key_pressed(KeyCode::H) || is_key_pressed(KeyCode::U) {
             hint = !hint;
+            flight.hud = hint;
         }
         if is_key_pressed(KeyCode::P) {
             paused = !paused;
