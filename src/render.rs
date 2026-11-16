@@ -1,6 +1,6 @@
 use glam::{Vec2, vec2, vec3};
 
-use crate::flight::{Camera, Flight};
+use crate::flight::{Camera, Flight, MODEL_SCALE};
 use crate::palette::JET;
 use crate::world::{CLOUD_ALT, MAX_HEIGHT, SIZE, World, hash, index};
 
@@ -391,7 +391,7 @@ impl Renderer {
                     f.position + vec3(0.5, 0.32, 0.0) * f.position.z,
                     js,
                     jc,
-                    1.0 / (0.6 * (f.bank + f.spin).cos().abs().max(0.3)),
+                    1.0 / (MODEL_SCALE * (f.bank + f.spin).cos().abs().max(0.3)),
                 )
             })
             .collect();
@@ -465,7 +465,7 @@ impl Renderer {
                         let dy = wy - shadow.y + 0.32 * h as f32;
                         if dx.abs() < 35.0 && dy.abs() < 35.0 {
                             let a = (dx * jc + dy * js) * bank_scale;
-                            let b = (dx * js - dy * jc) / 0.6;
+                            let b = (dx * js - dy * jc) / MODEL_SCALE;
                             let ix = (a + 17.0).floor() as i32;
                             let iy = (25.8 - b).floor() as i32;
                             if (0..34).contains(&ix) && (0..46).contains(&iy) {
@@ -591,7 +591,7 @@ impl Renderer {
             }
         } else {
             let eye = camera.position + vec3(s / camera.q, c / camera.q, camera.slope / camera.q);
-            (eye - flight.position).dot(up) / 0.6
+            (eye - flight.position).dot(up) / MODEL_SCALE
         };
         let mut order: Vec<usize> = (0..13).collect();
         order.sort_by(|a, b| {
@@ -604,9 +604,9 @@ impl Renderer {
         }
         self.mask.fill(0);
         let center_scale = camera.project(flight.position).map_or(1.0, |p| p.2);
-        let samples = (center_scale * 0.6 * 1.7).ceil().clamp(2.0, 6.0) as usize;
+        let samples = (center_scale * MODEL_SCALE * 1.7).ceil().clamp(2.0, 6.0) as usize;
         let view_axis = |a: glam::Vec3| {
-            vec2(a.x * c - a.y * s, -a.z + camera.slope * (a.x * s + a.y * c)) * 0.6
+            vec2(a.x * c - a.y * s, -a.z + camera.slope * (a.x * s + a.y * c)) * MODEL_SCALE
         };
         let r = view_axis(right);
         let f = view_axis(forward);
@@ -622,7 +622,8 @@ impl Renderer {
             for voxel in 0..self.voxels[z].len() {
                 let (a, b, color) = self.voxels[z][voxel];
                 let center = flight.position
-                    + (right * a + forward * b + up * ((z as f32 - 5.0) * flight.spread)) * 0.6;
+                    + (right * a + forward * b + up * ((z as f32 - 5.0) * flight.spread))
+                        * MODEL_SCALE;
                 if let Some((p, depth, scale)) = camera.project(center) {
                     bounds[0] = bounds[0].min(p.x as i32 - 4);
                     bounds[1] = bounds[1].min(p.y as i32 - 4);
@@ -660,7 +661,7 @@ impl Renderer {
                         -0.9,
                     ));
                     if let Some((p, depth, scale)) = camera.project(center) {
-                        let radius = (1.1 * (1.0 - f).sqrt() * scale * 0.6).round() as i32;
+                        let radius = (1.1 * (1.0 - f).sqrt() * scale * MODEL_SCALE).round() as i32;
                         self.point(
                             p,
                             depth,

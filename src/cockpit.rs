@@ -201,7 +201,7 @@ impl Cockpit {
             }
         }
         for deg in [-20.0_f32, -10.0, 0.0, 10.0, 20.0] {
-            let dy = flight.pitch * 192.0 - deg.to_radians().tan() * 192.0;
+            let dy = (flight.pitch - deg.to_radians().tan()) * 192.0 * crate::flight::VIEW_SCALE;
             for side in [-1.0, 1.0] {
                 let (a, b) = if deg == 0.0 { (9.0, 30.0) } else { (4.0, 11.0) };
                 p.line(

@@ -4,6 +4,10 @@ use std::f32::consts::TAU;
 
 use crate::world::World;
 
+pub const MODEL_SCALE: f32 = 0.5;
+pub const VIEW_SCALE: f32 = 0.82;
+pub const MIN_CLEARANCE: f32 = 36.0;
+
 pub fn angle(value: f32) -> f32 {
     value - TAU * (value / TAU).round()
 }
@@ -98,7 +102,7 @@ impl Flight {
 
     pub fn local(&self, point: Vec3) -> Vec3 {
         let [right, forward, up] = self.axes();
-        self.position + (right * point.x + forward * point.y + up * point.z) * 0.6
+        self.position + (right * point.x + forward * point.y + up * point.z) * MODEL_SCALE
     }
 
     pub fn step(&mut self, dt: f32, controls: &Controls, world: &World) {
@@ -120,18 +124,28 @@ impl Flight {
             * ease(5.0, dt);
         self.position.x += self.yaw.sin() * self.speed * dt;
         self.position.y -= self.yaw.cos() * self.speed * dt;
-        let climb = if controls.manual {
+        let mut climb = if controls.manual {
             controls.climb * self.speed * 0.55
         } else {
             (110.0 - self.position.z) * 0.6
         };
-        let ahead = self.position + vec3(self.yaw.sin(), -self.yaw.cos(), 0.0) * self.speed * 0.6;
-        let floor = world
-            .height(ahead.x, ahead.y)
-            .max(world.height(self.position.x, self.position.y))
-            + 7.0;
-        self.position.z = (self.position.z + climb * dt).clamp(floor, 300.0);
-        self.pitch += ((climb / self.speed).clamp(-0.5, 0.5) - self.pitch) * ease(4.0, dt);
+        let forward = vec3(self.yaw.sin(), -self.yaw.cos(), 0.0);
+        let right = vec3(forward.y, -forward.x, 0.0);
+        let floor = clearance_floor(world, self.position);
+        let mut ahead_floor = floor;
+        for seconds in [0.25, 0.6, 1.0] {
+            for side in [-1.0, 0.0, 1.0] {
+                let probe = self.position + forward * self.speed * seconds + right * side * 12.0;
+                ahead_floor = ahead_floor.max(world.height(probe.x, probe.y) + MIN_CLEARANCE);
+            }
+        }
+        // 前方地形触发爬升，下降速度随剩余离地空间收敛
+        climb = climb.max((ahead_floor + 12.0 - self.position.z) * 1.8);
+        climb = climb.clamp(-self.speed * 0.55, self.speed * 0.8);
+        let old_altitude = self.position.z;
+        self.position.z = (old_altitude + climb * dt).clamp(floor, 300.0);
+        let actual_climb = (self.position.z - old_altitude) / dt.max(0.001);
+        self.pitch += ((actual_climb / self.speed).clamp(-0.5, 0.6) - self.pitch) * ease(4.0, dt);
         if self.roll_time >= 0.0 {
             self.roll_time += dt / 1.0;
             let t = self.roll_time.min(1.0);
@@ -155,6 +169,7 @@ impl Flight {
                 + vec3(sy, -cy, 0.0) * 70.0
                 + vec3(0.0, 0.0, 2.0 + (self.time * 1.3 + i as f32 * 2.0).sin());
             wing.position += (goal - wing.position) * ease(4.5, dt);
+            wing.position.z = wing.position.z.max(clearance_floor(world, wing.position));
             wing.yaw += angle(self.yaw - wing.yaw) * ease(4.0, dt);
             wing.bank += (self.bank - wing.bank) * ease(3.2, dt);
             wing.pitch += (self.pitch - wing.pitch) * ease(3.0, dt);
@@ -185,6 +200,16 @@ impl Flight {
     }
 }
 
+fn clearance_floor(world: &World, position: Vec3) -> f32 {
+    let mut height = 0.0_f32;
+    for y in [-8.0, 0.0, 8.0] {
+        for x in [-8.0, 0.0, 8.0] {
+            height = height.max(world.height(position.x + x, position.y + y));
+        }
+    }
+    height + MIN_CLEARANCE
+}
+
 #[derive(Clone, Copy)]
 pub struct Camera {
     pub position: Vec3,
@@ -201,11 +226,11 @@ impl Camera {
         let w = width as f32;
         let h = height as f32;
         let zoom = (0.19 * w / (34.0 * 0.6)).max(1.0);
-        let focal = w * 0.6;
+        let focal = w * 0.6 * VIEW_SCALE;
         let target = flight.position + vec3(flight.yaw.sin() * 64.0, -flight.yaw.cos() * 64.0, 1.8);
         let position = flight.follow.lerp(target, cockpit);
         let q = chase / (2.6 * 46.0 * 0.6 * (1.0 - 0.16 * flight.boost)) + cockpit / 64.0;
-        let scale = (chase * zoom.ln() + cockpit * (focal / 64.0).ln()).exp();
+        let scale = (chase * zoom.ln() + cockpit * ((w * 0.6) / 64.0).ln()).exp() * VIEW_SCALE;
         let slope = (45.0 * top + 12.0 * chase).to_radians().tan() - flight.pitch * 0.5 * chase;
         Self {
             position,
@@ -236,5 +261,66 @@ impl Camera {
             depth,
             scale,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::{CLOUD_SIZE, SIZE};
+
+    fn terrain() -> World {
+        World {
+            heights: vec![0; SIZE * SIZE],
+            materials: vec![0; SIZE * SIZE],
+            clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
+            spawn: (256.0, 350.0),
+        }
+    }
+
+    #[test]
+    fn descent_keeps_the_formation_above_terrain() {
+        let mut world = terrain();
+        world.heights[..220 * SIZE].fill(40);
+        let mut flight = Flight::new(&world);
+        flight.position.z = 60.0;
+        flight.yaw = 0.0;
+        let controls = Controls {
+            climb: -1.0,
+            boost: true,
+            manual: true,
+            ..Default::default()
+        };
+        for _ in 0..240 {
+            let before = flight.position.z;
+            flight.step(1.0 / 60.0, &controls, &world);
+            assert!(
+                flight.position.z - world.height(flight.position.x, flight.position.y)
+                    >= MIN_CLEARANCE
+            );
+            assert!((flight.position.z - before).abs() < 3.0);
+            for wing in &flight.wingmen {
+                assert!(
+                    wing.position.z - world.height(wing.position.x, wing.position.y)
+                        >= MIN_CLEARANCE
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ground_protection_levels_out_the_aircraft() {
+        let world = terrain();
+        let mut flight = Flight::new(&world);
+        let controls = Controls {
+            climb: -1.0,
+            manual: true,
+            ..Default::default()
+        };
+        for _ in 0..600 {
+            flight.step(1.0 / 60.0, &controls, &world);
+        }
+        assert!(flight.position.z >= MIN_CLEARANCE);
+        assert!(flight.pitch.abs() < 0.01);
     }
 }
