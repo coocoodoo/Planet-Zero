@@ -35,6 +35,28 @@ impl App {
             self.escape_since = Some(Instant::now());
             return;
         }
+        if matches!(code, 10 | 12 | 13) {
+            match code {
+                10 => self.audio_settings.profile = (self.audio_settings.profile + 1) % 4,
+                12 => self.audio_settings.volume = self.audio_settings.volume.saturating_sub(1),
+                _ => self.audio_settings.volume = (self.audio_settings.volume + 1).min(10),
+            }
+            self.sounds.push(crate::audio::Sound::Navigate);
+            return;
+        }
+        if matches!(
+            self.page,
+            Page::Menu | Page::Paused | Page::Help | Page::Results
+        ) {
+            if matches!(code, 28 | 57) {
+                self.sounds.push(crate::audio::Sound::Confirm);
+            } else if matches!(
+                code,
+                17 | 33 | 103 | 31 | 45 | 108 | 30 | 44 | 105 | 32 | 46 | 106
+            ) {
+                self.sounds.push(crate::audio::Sound::Navigate);
+            }
+        }
         if code == 22 {
             self.flight.hud = !self.flight.hud;
             return;
@@ -88,6 +110,7 @@ impl App {
             40 | 5 | 57 => self.flight.view = (self.flight.view + 1) % 3,
             41 | 6 | 16 => {
                 self.flight.roll();
+                self.sounds.push(crate::audio::Sound::Roll);
                 self.mission.dodge();
             }
             51 | 8 | 20 => self.theme = (self.theme + 1) % 3,

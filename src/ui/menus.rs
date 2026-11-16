@@ -23,7 +23,7 @@ pub fn draw(app: &mut App) {
         c.shade(0, 0, 320, 32);
         c.text_scale(10, 7, "RUST / FLY", WHITE, 2);
         c.text(224, 8, "FLIGHT CLUB", CYAN);
-        c.text(224, 20, "ARCADE 0.5", MUTED);
+        c.text(224, 20, "ARCADE 0.6", MUTED);
         c.shade(8, 34, 304, 115);
         c.rect(8, 34, 2, 115, CYAN);
         let stage = format!(
@@ -69,7 +69,7 @@ pub fn draw(app: &mut App) {
         };
         c.shade(0, 151, 320, 19);
         c.text(8, 152, description, CYAN);
-        c.text(8, 162, "Z/C CHANGE  ENTER FOCUS START", MUTED);
+        c.text(8, 162, "Z/C CHANGE  ENTER START  9 SOUND", MUTED);
         return;
     }
     if app.page == Page::Help {
@@ -81,9 +81,9 @@ pub fn draw(app: &mut App) {
                 "Z X C F / WASD : STEER / CLIMB",
                 "4 VIEW  5 Q ROLL  6 SHIFT BOOST",
                 "I IMU ON/OFF   K RECALIBRATE",
-                "U HIDE UI      8 H P PAUSE",
+                "U UI  9 SOUND  -/+ VOLUME",
                 "HOLD ESC 2 SECONDS TO EXIT",
-                "ENTER FOCUSES START IN MENU",
+                "8 H P PAUSE / ENTER START",
                 "Z/C PAGE       ENTER RETURN",
             ],
             [
@@ -147,6 +147,16 @@ pub fn draw(app: &mut App) {
             }
             c.text(64, y, line, if i == app.selection { GOLD } else { WHITE });
         }
+        c.text(
+            45,
+            145,
+            &format!(
+                "9 SOUND {}  -/+ {}%",
+                app.audio_settings.name(),
+                app.audio_settings.volume * 10
+            ),
+            MUTED,
+        );
         return;
     }
     if app.page == Page::Results {

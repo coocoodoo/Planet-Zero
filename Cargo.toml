@@ -6,7 +6,7 @@ default-run = "rust-fly"
 
 [features]
 default = ["desktop"]
-desktop = ["dep:macroquad"]
+desktop = ["dep:macroquad", "dep:cpal"]
 cardputer = ["dep:libc", "dep:memmap2"]
 
 [[bin]]
@@ -19,7 +19,12 @@ name = "rust-fly-cardputer"
 path = "src/bin/cardputer.rs"
 required-features = ["cardputer"]
 
+[[bin]]
+name = "rust-fly-audio"
+path = "src/bin/audio.rs"
+
 [dependencies]
+cpal = { version = "0.15.3", optional = true }
 macroquad = { version = "0.4.16", optional = true }
 glam = "0.27"
 serde = { version = "1", features = ["derive"] }

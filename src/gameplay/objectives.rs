@@ -63,6 +63,12 @@ impl Mission {
                     self.announce("WINGMEN / 30 SECONDS");
                 }
             }
+            self.sounds.push(match kind {
+                PickupKind::Coin => crate::audio::Sound::Coin(self.combo as u8),
+                PickupKind::Upgrade(_) => crate::audio::Sound::Upgrade,
+                PickupKind::Support => crate::audio::Sound::Support,
+                _ => crate::audio::Sound::Pickup,
+            });
             self.effect(position, 12.0, [255, 227, 104]);
         }
     }

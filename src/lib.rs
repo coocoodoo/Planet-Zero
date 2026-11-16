@@ -1,4 +1,5 @@
 pub mod app;
+pub mod audio;
 #[cfg(feature = "cardputer")]
 pub mod cardputer;
 pub mod content;

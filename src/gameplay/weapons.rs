@@ -47,6 +47,7 @@ impl Mission {
     pub fn cycle_weapon(&mut self) {
         self.weapon = Weapon::ALL[(self.weapon as usize + 1) % 5];
         self.fire_timer = 0.0;
+        self.sounds.push(crate::audio::Sound::Navigate);
     }
     pub fn activate_overdrive(&mut self) {
         if self.mode == Mode::Combat
@@ -57,6 +58,7 @@ impl Mission {
             self.overdrive = 0.0;
             self.overdrive_time = 8.0;
             self.announce("OVERDRIVE");
+            self.sounds.push(crate::audio::Sound::Overdrive);
         }
     }
     pub fn bomb(&mut self) {
@@ -68,6 +70,7 @@ impl Mission {
             return;
         }
         self.bombs -= 1;
+        self.sounds.push(crate::audio::Sound::Nova);
         self.flash = 0.65;
         self.shots.retain(|s| !s.hostile);
         for enemy in &mut self.enemies {
@@ -195,5 +198,12 @@ impl Mission {
             }
         }
         self.shots_fired += 1;
+        self.sounds.push(match w {
+            Weapon::Gun => crate::audio::Sound::Gun,
+            Weapon::Missile => crate::audio::Sound::Missile,
+            Weapon::Laser => crate::audio::Sound::Laser,
+            Weapon::Plasma => crate::audio::Sound::Plasma,
+            Weapon::Orb => crate::audio::Sound::Orb,
+        });
     }
 }

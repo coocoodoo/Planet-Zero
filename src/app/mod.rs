@@ -1,3 +1,4 @@
+mod audio;
 mod input;
 mod records;
 #[cfg(test)]
@@ -28,6 +29,8 @@ pub enum Page {
 }
 
 pub struct App {
+    pub audio_settings: crate::audio::Settings,
+    pub sounds: crate::audio::Events,
     pub level: u32,
     pub reward: usize,
     pub run_score: u32,
@@ -87,6 +90,8 @@ impl App {
             })
             .unwrap_or_default();
         Self {
+            audio_settings: crate::audio::Settings::default(),
+            sounds: crate::audio::Events::default(),
             level: 1,
             reward: 0,
             run_score: 0,
@@ -154,6 +159,9 @@ impl App {
             .find(|(key, _)| key == &self.record_key())
             .map_or(0, |r| r.1);
         self.keys.clear();
+        if self.mission.countdown > 0.0 {
+            self.sounds.push(crate::audio::Sound::Countdown(3));
+        }
     }
     pub fn result_action(&mut self) {
         if self.page != Page::Results {

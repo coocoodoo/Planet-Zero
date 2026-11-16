@@ -75,6 +75,7 @@ impl Mission {
                 self.spawn_enemy(1, flight, world, side * 110.0);
             }
             self.announce("WARNING / BOSS APPROACH");
+            self.sounds.push(crate::audio::Sound::Boss);
             return;
         }
         self.announce("ENEMY WAVE INCOMING");
@@ -212,6 +213,7 @@ impl Mission {
             self.support = self.support.max(18.0);
             self.score += 2500;
             self.announce("OBJECTIVE COMPLETE");
+            self.sounds.push(crate::audio::Sound::Phase);
         }
     }
 }

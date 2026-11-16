@@ -29,6 +29,8 @@ shutil.copy2(ROOT / "README.md", stage / "usr/share/doc/rust-fly/README.md")
     f"Package: rust-fly\nVersion: {version}\nArchitecture: arm64\n"
     "Maintainer: Rust Fly contributors <rust-fly@localhost>\n"
     "Section: games\nPriority: optional\n"
+    "Depends: pulseaudio-utils\n"
+    "Recommends: pipewire-pulse | pulseaudio\n"
     f"Installed-Size: {(binary.stat().st_size + icon.stat().st_size + 1023) // 1024}\n"
     "Description: Pixel flight arcade for Cardputer Zero\n"
     " Race, coin rush and aerial combat with Rust rendering, RGB565 output and IMU controls\n"

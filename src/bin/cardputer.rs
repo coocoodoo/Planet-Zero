@@ -8,6 +8,8 @@ use std::time::Duration;
 use std::time::Instant;
 
 struct Options {
+    audio: bool,
+    audio_benchmark: Option<f32>,
     level: u32,
     mode: Option<rust_fly::gameplay::Mode>,
     vehicle: usize,
@@ -28,6 +30,8 @@ struct Options {
 
 fn options() -> Result<Options, Box<dyn Error>> {
     let mut result = Options {
+        audio: true,
+        audio_benchmark: None,
         level: 1,
         mode: None,
         vehicle: 0,
@@ -51,12 +55,20 @@ fn options() -> Result<Options, Box<dyn Error>> {
     while let Some(arg) = args.next() {
         if arg == "--help" {
             println!(
-                "rust-fly-cardputer [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..3] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
+                "rust-fly-cardputer [--audio on|off] [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..3] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
             );
             std::process::exit(0);
         }
         let value = args.next().ok_or_else(|| format!("{arg} 缺少参数值"))?;
         match arg.as_str() {
+            "--audio" => {
+                result.audio = match value.as_str() {
+                    "on" => true,
+                    "off" => false,
+                    _ => return Err("audio 支持 on 或 off".into()),
+                }
+            }
+            "--audio-benchmark" => result.audio_benchmark = Some(value.parse()?),
             "--level" => result.level = value.parse()?,
             "--mode" => {
                 result.mode = Some(
@@ -254,6 +266,13 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
     }
     let mut keyboard = Keyboard::open()?;
     let mut display = Display::open()?;
+    let audio = if options.audio {
+        rust_fly::audio::Output::start()
+            .map_err(|error| eprintln!("音频暂不可用：{error}"))
+            .ok()
+    } else {
+        None
+    };
     let period = Duration::from_secs_f64(1.0 / options.fps as f64);
     let mut previous = Instant::now();
     let mut count = 0;
@@ -272,6 +291,9 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
             game.motion = sensor.motion();
         }
         game.step((start - previous).as_secs_f32());
+        if let Some(audio) = &audio {
+            audio.update(&mut game.app);
+        }
         let state = (
             game.page,
             game.level,
@@ -369,6 +391,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let options = options()?;
     if let Some(seconds) = options.imu_test {
         rust_fly::cardputer::imu::diagnose(seconds, options.imu_csv.as_deref())?;
+        return Ok(());
+    }
+    if let Some(seconds) = options.audio_benchmark {
+        if !seconds.is_finite() || seconds <= 0.0 {
+            return Err("音频测试时长需要大于零".into());
+        }
+        rust_fly::audio::export::benchmark(seconds);
         return Ok(());
     }
     let start = Instant::now();

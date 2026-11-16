@@ -75,6 +75,7 @@ pub use entities::*;
 pub use weapons::Weapon;
 
 pub struct Mission {
+    pub sounds: crate::audio::Events,
     pub level: u32,
     pub phase_index: usize,
     pub phase_elapsed: f32,
@@ -156,6 +157,7 @@ impl Mission {
         flight.follow = flight.position;
         flight.wing_count = if mode == Mode::Free { 2 } else { 0 };
         let mut mission = Self {
+            sounds: crate::audio::Events::default(),
             level: level.max(1),
             phase_index: 0,
             phase_elapsed: 0.0,
@@ -342,7 +344,12 @@ impl Mission {
         self.effects.iter_mut().for_each(|e| e.life -= dt);
         self.effects.retain(|e| e.life > 0.0);
         if self.countdown > 0.0 {
+            let before = self.countdown.ceil() as u8;
             self.countdown = (self.countdown - dt).max(0.0);
+            let after = self.countdown.ceil() as u8;
+            if before != after {
+                self.sounds.push(crate::audio::Sound::Countdown(after));
+            }
             return;
         }
         for slot in &mut self.notices {
@@ -380,6 +387,7 @@ impl Mission {
                             self.perfect += 1;
                         }
                         self.effect(g.position, 32.0, [88, 255, 190]);
+                        self.sounds.push(crate::audio::Sound::Gate(perfect));
                         self.announce(if perfect {
                             "PERFECT GATE +750"
                         } else {

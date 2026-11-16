@@ -123,6 +123,9 @@ async fn main() {
         );
         return;
     }
+    let audio = rust_fly::audio::Output::start()
+        .map_err(|error| eprintln!("音频暂不可用：{error}"))
+        .ok();
     let texture = Texture2D::from_rgba8(WIDTH as u16, HEIGHT as u16, &app.screen);
     texture.set_filter(FilterMode::Nearest);
     let mut fullscreen = false;
@@ -171,6 +174,9 @@ async fn main() {
         (KeyCode::Key6, 43),
         (KeyCode::Key7, 51),
         (KeyCode::Key8, 52),
+        (KeyCode::Key9, 10),
+        (KeyCode::Minus, 12),
+        (KeyCode::Equal, 13),
     ];
     loop {
         let dt = get_frame_time().min(0.1);
@@ -203,6 +209,7 @@ async fn main() {
                 app.click(mx.max(0.0) as usize, my.max(0.0) as usize);
             } else if app.mode == Mode::Free {
                 app.flight.roll();
+                app.sounds.push(rust_fly::audio::Sound::Roll);
             }
         }
         if is_mouse_button_down(MouseButton::Left) && app.mode == Mode::Combat {
@@ -231,6 +238,9 @@ async fn main() {
             "KEY"
         };
         app.step(dt, Some(controls));
+        if let Some(audio) = &audio {
+            audio.update(&mut app);
+        }
         app.draw();
         texture.update_from_bytes(WIDTH as u32, HEIGHT as u32, &app.screen);
         draw_frame(&texture);

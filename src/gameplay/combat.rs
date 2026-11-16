@@ -253,6 +253,9 @@ impl Mission {
         if damage > 0.0 {
             self.damage(damage);
         }
+        if !explosions.is_empty() {
+            self.sounds.push(crate::audio::Sound::Impact);
+        }
         for (position, weapon, damage, id) in explosions {
             let radius = match weapon {
                 Weapon::Plasma => 32.0,
@@ -280,6 +283,8 @@ impl Mission {
         self.enemies.retain(|e| e.health > 0.0);
         for (position, kind) in dead {
             self.kills += 1;
+            self.sounds
+                .push(crate::audio::Sound::Explosion((3..=5).contains(&kind)));
             self.overdrive = (self.overdrive + 4.0).min(100.0);
             if (3..=5).contains(&kind) {
                 self.boss_defeated = true;
@@ -328,6 +333,7 @@ impl Mission {
             self.health = (self.health - amount).max(0.0);
             self.invulnerable = 0.9;
             self.announce("SHIELD HIT / ROLL TO EVADE");
+            self.sounds.push(crate::audio::Sound::Damage);
         }
     }
 }
