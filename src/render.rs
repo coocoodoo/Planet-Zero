@@ -1,4 +1,5 @@
-use glam::{Vec2, vec2, vec3};
+use crate::arcade::{Mission, Mode, PickupKind, Weapon};
+use glam::{Vec2, Vec3, vec2, vec3};
 
 use crate::flight::{Camera, Flight, MODEL_SCALE};
 use crate::palette::JET;
@@ -173,6 +174,18 @@ impl Renderer {
         height: usize,
         theme: usize,
     ) {
+        self.render_mission(world, flight, (width, height), theme, None);
+    }
+
+    pub fn render_mission(
+        &mut self,
+        world: &World,
+        flight: &Flight,
+        size: (usize, usize),
+        theme: usize,
+        mission: Option<&Mission>,
+    ) {
+        let (width, height) = size;
         let cockpit = flight.weights[2];
         let rolled = cockpit > 0.01;
         // 座舱围绕画面上方的视线中心旋转，外围画布覆盖完整翻滚
@@ -292,6 +305,9 @@ impl Renderer {
         for jet in jets {
             self.jet(jet, &camera, theme);
         }
+        if let Some(mission) = mission {
+            self.mission(mission, flight, &camera);
+        }
         self.precipitation(flight, &camera, theme);
         for i in 0..width * height {
             self.output[i] = if has_panel && self.cockpit.pixels[i] != 0 {
@@ -307,6 +323,298 @@ impl Renderer {
         self.rgba.resize(width * height * 4, 0);
         for (dest, color) in self.rgba.chunks_exact_mut(4).zip(&self.output) {
             dest.copy_from_slice(&color.to_le_bytes());
+        }
+    }
+
+    fn world_line(&mut self, camera: &Camera, a: Vec3, b: Vec3, color: u32) {
+        if let (Some((a, da, _)), Some((b, db, _))) = (camera.project(a), camera.project(b)) {
+            if a.distance(b) > 1200.0 {
+                return;
+            }
+            let steps = a.distance(b).ceil().clamp(1.0, 400.0) as usize;
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                self.point(a.lerp(b, t), da + (db - da) * t, color, 0, 0);
+            }
+        }
+    }
+
+    fn triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32) {
+        let [Some((a, da, _)), Some((b, db, _)), Some((c, dc, _))] =
+            points.map(|p| camera.project(p))
+        else {
+            return;
+        };
+        let area = (b - a).perp_dot(c - a);
+        if area.abs() < 0.1 {
+            return;
+        }
+        let min = a.min(b).min(c).max(Vec2::ZERO);
+        let max = a
+            .max(b)
+            .max(c)
+            .min(vec2(self.w as f32 - 1.0, self.h as f32 - 1.0));
+        for y in min.y as i32..=max.y as i32 {
+            for x in min.x as i32..=max.x as i32 {
+                let p = vec2(x as f32, y as f32);
+                let u = (b - p).perp_dot(c - p) / area;
+                let v = (c - p).perp_dot(a - p) / area;
+                let w = 1.0 - u - v;
+                if u >= 0.0 && v >= 0.0 && w >= 0.0 {
+                    self.point(p, u * da + v * db + w * dc, color, 0, 1);
+                }
+            }
+        }
+    }
+
+    fn mission(&mut self, mission: &Mission, flight: &Flight, camera: &Camera) {
+        for (index, gate) in mission
+            .gates
+            .iter()
+            .enumerate()
+            .skip(mission.gate_index)
+            .take(4)
+            .rev()
+        {
+            let right = vec3(-gate.normal.y, gate.normal.x, 0.0);
+            let active = index == mission.gate_index;
+            let color = if active {
+                rgb(100, 255, 201)
+            } else {
+                rgb(105, 154, 178)
+            };
+            for i in 0..40 {
+                let a = i as f32 * std::f32::consts::TAU / 40.0;
+                let b = (i + 1) as f32 * std::f32::consts::TAU / 40.0;
+                for r in [gate.radius, gate.radius + if active { 2.0 } else { 0.0 }] {
+                    self.world_line(
+                        camera,
+                        gate.position + (right * a.cos() + Vec3::Z * a.sin()) * r,
+                        gate.position + (right * b.cos() + Vec3::Z * b.sin()) * r,
+                        color,
+                    );
+                }
+            }
+            if active {
+                let r = gate.radius;
+                for side in [-1.0, 1.0] {
+                    self.world_line(
+                        camera,
+                        gate.position + right * side * (r + 8.0),
+                        gate.position + right * side * (r + 3.0),
+                        rgb(255, 243, 155),
+                    );
+                }
+            }
+        }
+        for pickup in &mission.pickups {
+            if pickup.collected || pickup.position.distance_squared(flight.position) > 650.0 * 650.0
+            {
+                continue;
+            }
+            let Some((p, d, scale)) = camera.project(pickup.position) else {
+                continue;
+            };
+            let color = match pickup.kind {
+                PickupKind::Coin => rgb(255, 218, 71),
+                PickupKind::Upgrade(w) => {
+                    let c = w.color();
+                    rgb(c[0], c[1], c[2])
+                }
+                PickupKind::Shield => rgb(109, 255, 165),
+                PickupKind::Energy => rgb(103, 222, 255),
+                PickupKind::Bomb => rgb(255, 112, 91),
+                PickupKind::Support => rgb(216, 174, 255),
+                PickupKind::Time => rgb(200, 255, 240),
+            };
+            let radius = (scale * 6.0).round().clamp(2.0, 18.0) as i32;
+            let rotate = (flight.time * 3.0).cos().abs() * 0.7 + 0.3;
+            for y in -radius..=radius {
+                for x in -radius..=radius {
+                    let nx = x as f32
+                        / (radius as f32
+                            * if pickup.kind == PickupKind::Coin {
+                                rotate
+                            } else {
+                                1.0
+                            });
+                    let ny = y as f32 / radius as f32;
+                    let distance = nx * nx + ny * ny;
+                    if distance < 1.0 {
+                        self.point(
+                            p + vec2(x as f32, y as f32),
+                            d,
+                            if distance > 0.55 {
+                                color
+                            } else {
+                                mix(color, rgb(30, 35, 62), 0.5)
+                            },
+                            0,
+                            1,
+                        );
+                    }
+                }
+            }
+            if pickup.kind != PickupKind::Coin {
+                self.stroke(
+                    p - vec2(0.0, 2.0),
+                    p + vec2(0.0, 2.0),
+                    d - 1.0,
+                    rgb(255, 255, 255),
+                );
+                self.stroke(
+                    p - vec2(2.0, 0.0),
+                    p + vec2(2.0, 0.0),
+                    d - 1.0,
+                    rgb(255, 255, 255),
+                );
+            }
+        }
+        for enemy in &mission.enemies {
+            let scale = if enemy.kind == 3 {
+                3.2
+            } else {
+                0.75 + enemy.kind as f32 * 0.18
+            };
+            let forward = vec3(enemy.yaw.sin(), -enemy.yaw.cos(), 0.0);
+            let right = vec3(enemy.yaw.cos(), enemy.yaw.sin(), 0.0);
+            let bank = enemy.phase.cos() * 0.25;
+            let right = right * bank.cos() + Vec3::Z * bank.sin();
+            let local = |x: f32, y: f32, z: f32| {
+                enemy.position + (right * x + forward * y + Vec3::Z * z) * scale
+            };
+            let color = if enemy.hit > 0.0 {
+                rgb(255, 252, 232)
+            } else {
+                match enemy.kind {
+                    0 => rgb(239, 98, 112),
+                    1 => rgb(171, 119, 235),
+                    2 => rgb(209, 161, 101),
+                    _ => rgb(113, 133, 172),
+                }
+            };
+            let dark = mix(color, rgb(22, 24, 42), 0.55);
+            for side in [-1.0, 1.0] {
+                self.triangle(
+                    camera,
+                    [
+                        local(0.0, 14.0, 1.0),
+                        local(side * 5.0, -11.0, 0.0),
+                        local(0.0, -8.0, 5.0),
+                    ],
+                    color,
+                );
+                self.triangle(
+                    camera,
+                    [
+                        local(side * 3.0, 4.0, 1.0),
+                        local(side * 19.0, -7.0, 0.0),
+                        local(side * 4.0, -10.0, 2.0),
+                    ],
+                    dark,
+                );
+                self.triangle(
+                    camera,
+                    [
+                        local(side * 3.0, -6.0, 3.0),
+                        local(side * 8.0, -14.0, 2.0),
+                        local(side * 4.0, -12.0, 8.0),
+                    ],
+                    color,
+                );
+                if enemy.kind == 3 {
+                    self.triangle(
+                        camera,
+                        [
+                            local(side * 7.0, 8.0, 1.0),
+                            local(side * 15.0, -8.0, 1.0),
+                            local(side * 10.0, -6.0, 5.0),
+                        ],
+                        color,
+                    );
+                }
+                if let Some((p, d, s)) = camera.project(local(side * 3.0, -11.0, 1.0)) {
+                    self.point(
+                        p,
+                        d,
+                        rgb(255, 92, 74),
+                        (s * scale).round().clamp(1.0, 4.0) as i32,
+                        0,
+                    );
+                }
+            }
+            self.triangle(
+                camera,
+                [
+                    local(0.0, 9.0, 3.0),
+                    local(-2.0, 0.0, 5.2),
+                    local(2.0, 0.0, 5.2),
+                ],
+                rgb(144, 238, 255),
+            );
+        }
+        for shot in &mission.shots {
+            let color = if shot.hostile {
+                rgb(255, 91, 116)
+            } else {
+                let c = shot.weapon.color();
+                rgb(c[0], c[1], c[2])
+            };
+            if shot.weapon == Weapon::Laser && !shot.hostile {
+                self.world_line(camera, shot.previous, shot.position, color);
+                self.world_line(
+                    camera,
+                    shot.previous + Vec3::Z,
+                    shot.position + Vec3::Z,
+                    rgb(238, 255, 255),
+                );
+            } else if let Some((p, d, s)) = camera.project(shot.position) {
+                let radius = (shot.radius * s).round().clamp(1.0, 8.0) as i32;
+                self.point(p, d, rgb(44, 24, 53), radius + 1, 0);
+                self.point(p, d - 0.1, color, radius, 0);
+                self.point(p, d - 0.2, rgb(255, 250, 225), (radius - 1).max(0), 0);
+                if !shot.hostile {
+                    self.world_line(
+                        camera,
+                        shot.position,
+                        shot.position - shot.velocity * 0.045,
+                        color,
+                    );
+                }
+            }
+        }
+        for effect in &mission.effects {
+            let t = 1.0 - effect.life / effect.duration;
+            let c = effect.color;
+            let color = mix(rgb(c[0], c[1], c[2]), rgb(85, 60, 79), t * 0.7);
+            let right = vec3(camera.yaw.cos(), -camera.yaw.sin(), 0.0);
+            for i in 0..20 {
+                let a = i as f32 * std::f32::consts::TAU / 20.0;
+                let b = (i + 1) as f32 * std::f32::consts::TAU / 20.0;
+                self.world_line(
+                    camera,
+                    effect.position + (right * a.cos() + Vec3::Z * a.sin()) * effect.radius * t,
+                    effect.position + (right * b.cos() + Vec3::Z * b.sin()) * effect.radius * t,
+                    color,
+                );
+            }
+        }
+        if mission.mode == Mode::Combat
+            && mission.invulnerable > 0.6
+            && flight.weights[2] < 0.5
+            && let Some((p, d, s)) = camera.project(flight.position)
+        {
+            let r = s * 15.0;
+            for i in 0..24 {
+                let a = i as f32 * std::f32::consts::TAU / 24.0;
+                self.point(
+                    p + vec2(a.cos(), a.sin() * 0.6) * r,
+                    d - 15.0,
+                    rgb(129, 231, 255),
+                    0,
+                    0,
+                );
+            }
         }
     }
 
@@ -735,6 +1043,8 @@ impl Renderer {
 
     fn jet(&mut self, flight: &Flight, camera: &Camera, theme: usize) {
         let [right, forward, up] = flight.axes();
+        let shape = flight.vehicle.shape();
+        let (right, forward, up) = (right * shape.x, forward * shape.y, up * shape.z);
         let (s, c) = camera.yaw.sin_cos();
         let up_depth = -(up.x * s + up.y * c);
         let eye = if camera.q < 0.00001 {
@@ -757,6 +1067,12 @@ impl Renderer {
             palette[i] = flight
                 .weather
                 .shade(mix(rgb(r, g, b), grade(rgb(r, g, b), theme), 0.4));
+        }
+        if flight.vehicle != crate::vehicle::Vehicle::Falcon {
+            let [r, g, b] = flight.vehicle.tint();
+            for color in &mut palette {
+                *color = mix(*color, rgb(r, g, b), 0.28);
+            }
         }
         let jet_depth = camera.project(flight.position).map_or(0.0, |p| p.1);
         let fog = flight.weather.fog(jet_depth, flight.position.z);
@@ -807,6 +1123,20 @@ impl Renderer {
                         .any(|&n| self.mask[n] == 1)
                 {
                     self.pixels[at] = rgb(13, 15, 26);
+                }
+            }
+        }
+        if flight.vehicle == crate::vehicle::Vehicle::Wasp {
+            for side in [-1.0, 1.0] {
+                let hub = flight.local(vec3(side * 17.0, 0.0, 5.0));
+                for blade in 0..3 {
+                    let a = flight.time * 42.0 + blade as f32 * std::f32::consts::TAU / 3.0;
+                    let tip = hub + (right * a.cos() + forward * a.sin()) * 7.0;
+                    if let (Some((p, d, _)), Some((q, _, _))) =
+                        (camera.project(hub), camera.project(tip))
+                    {
+                        self.stroke(p, q, d - 1.0, rgb(202, 225, 187));
+                    }
                 }
             }
         }

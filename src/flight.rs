@@ -31,6 +31,7 @@ pub struct Flight {
     pub wing_count: usize,
     pub demo: bool,
     pub hud: bool,
+    pub vehicle: crate::vehicle::Vehicle,
     pub weather: crate::weather::Weather,
     pub demo_time: f32,
     pub position: Vec3,
@@ -65,6 +66,7 @@ impl Flight {
             wing_count: 2,
             demo: false,
             hud: true,
+            vehicle: crate::vehicle::Vehicle::Falcon,
             weather: crate::weather::Weather::Clear,
             demo_time: 0.0,
             position,
@@ -99,6 +101,7 @@ impl Flight {
     pub fn change_world(&mut self, world: &World) {
         let weather = self.weather;
         let hud = self.hud;
+        let vehicle = self.vehicle;
         let (view, weights, demo, wing_count) =
             (self.view, self.weights, self.demo, self.wing_count);
         *self = Self::new(world);
@@ -108,6 +111,7 @@ impl Flight {
         self.wing_count = wing_count;
         self.weather = weather;
         self.hud = hud;
+        self.vehicle = vehicle;
     }
 
     pub fn set_demo(&mut self, enabled: bool) {
@@ -179,6 +183,7 @@ impl Flight {
 
     pub fn local(&self, point: Vec3) -> Vec3 {
         let [right, forward, up] = self.axes();
+        let point = point * self.vehicle.shape();
         self.position + (right * point.x + forward * point.y + up * point.z) * MODEL_SCALE
     }
 
@@ -192,17 +197,17 @@ impl Flight {
         self.time += dt;
         let boost_goal = f32::from(controls.boost);
         self.boost += (boost_goal - self.boost) * ease(4.0, dt);
-        self.speed = 92.0 * (1.0 + self.boost * 0.8);
+        self.speed = self.vehicle.speed() * (1.0 + self.boost * 0.8);
         let turn = if controls.manual {
             controls.turn
         } else {
             0.62 * (self.time * 0.31 + 1.3).sin() + 0.38 * (self.time * 0.73 + 0.4).sin()
         };
-        self.rate += (turn.clamp(-1.0, 1.0) * 1.25 - self.rate) * ease(2.6, dt);
+        self.rate += (turn.clamp(-1.0, 1.0) * self.vehicle.turn() - self.rate) * ease(2.6, dt);
         self.yaw += self.rate * dt;
         self.bank += (controls
             .bank
-            .unwrap_or(self.rate / 1.25 * 52.0_f32.to_radians())
+            .unwrap_or(self.rate / self.vehicle.turn() * 52.0_f32.to_radians())
             - self.bank)
             * ease(5.0, dt);
         self.position.x += self.yaw.sin() * self.speed * dt;
@@ -264,6 +269,7 @@ impl Flight {
             wing.bank += (self.bank - side * split * 0.7 - wing.bank) * ease(3.2, dt);
             wing.pitch += (self.pitch - wing.pitch) * ease(3.0, dt);
             wing.weather = self.weather;
+            wing.vehicle = self.vehicle;
             wing.time = self.time + i as f32 * 0.17;
             wing.boost = self.boost;
             wing.speed = self.speed;

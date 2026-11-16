@@ -7,7 +7,7 @@ default-run = "rust-fly"
 [features]
 default = ["desktop"]
 desktop = ["dep:macroquad"]
-cardputer = ["dep:libc", "dep:memmap2", "dep:font8x8"]
+cardputer = ["dep:libc", "dep:memmap2"]
 
 [[bin]]
 name = "rust-fly"
@@ -24,7 +24,7 @@ macroquad = { version = "0.4.16", optional = true }
 glam = "0.27"
 libc = { version = "0.2", optional = true }
 memmap2 = { version = "0.9", optional = true }
-font8x8 = { version = "0.3", optional = true }
+font8x8 = "0.3"
 
 [profile.dev]
 opt-level = 2
