@@ -26,7 +26,7 @@ impl Mode {
             Self::Free => "EXPLORE / WEATHER / AEROBATICS",
             Self::Race => "18 GATES / BEAT THE CLOCK",
             Self::Coins => "COLLECT / CHAIN / SCORE",
-            Self::Combat => "4 WAVES / DREADNOUGHT BOSS",
+            Self::Combat => "4 WAVES / RANDOM BOSS",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
@@ -144,8 +144,16 @@ pub struct Enemy {
 }
 
 impl Enemy {
+    pub fn boss_name(&self) -> &'static str {
+        match self.kind {
+            3 => "DREADNOUGHT",
+            4 => "SKY SERPENT",
+            _ => "TEMPEST",
+        }
+    }
+
     pub fn radius(&self) -> f32 {
-        if self.kind == 3 {
+        if self.kind >= 3 {
             24.0
         } else {
             8.0 + self.kind as f32 * 2.0
@@ -309,6 +317,10 @@ impl Mission {
         mission
     }
 
+    pub fn shuffle_encounters(&mut self, seed: u32) {
+        self.random = seed.max(1);
+    }
+
     fn random(&mut self) -> f32 {
         self.random ^= self.random << 13;
         self.random ^= self.random >> 17;
@@ -377,7 +389,7 @@ impl Mission {
         self.flash = 0.65;
         self.shots.retain(|s| !s.hostile);
         for enemy in &mut self.enemies {
-            enemy.health -= if enemy.kind == 3 { 130.0 } else { 200.0 };
+            enemy.health -= if enemy.kind >= 3 { 130.0 } else { 200.0 };
             enemy.hit = 0.3;
         }
         self.invulnerable = 2.0;
@@ -534,7 +546,7 @@ impl Mission {
         self.wave += 1;
         let boss = self.wave == 5;
         self.announce(if boss {
-            "WARNING / DREADNOUGHT"
+            "WARNING / BOSS APPROACH"
         } else {
             "ENEMY WAVE INCOMING"
         });
@@ -544,9 +556,9 @@ impl Mission {
             let phase = self.random() * std::f32::consts::TAU;
             let kind = if boss { 3 } else { (self.random() * 3.0) as u8 };
             let health = if boss {
-                950.0
+                2400.0
             } else {
-                [24.0, 38.0, 65.0][kind as usize]
+                [42.0, 64.0, 95.0][kind as usize]
             } * self.difficulty.factor();
             self.next_id += 1;
             self.enemies.push(Enemy {
@@ -726,30 +738,36 @@ impl Mission {
             }
             enemy.hit = (enemy.hit - dt).max(0.0);
             enemy.phase += dt * (0.55 + enemy.kind as f32 * 0.12);
-            let enraged = enemy.kind == 3 && enemy.health < enemy.max_health * 0.5;
-            let distance = if enemy.kind == 3 {
+            let enraged = enemy.kind >= 3 && enemy.health < enemy.max_health * 0.5;
+            let distance = if enemy.kind >= 3 {
                 235.0
             } else {
                 145.0 + enemy.id as f32 % 4.0 * 30.0
             };
-            let lateral = enemy.phase.sin() * if enemy.kind == 3 { 60.0 } else { 90.0 };
+            let lateral = enemy.phase.sin()
+                * match enemy.kind {
+                    3 => 60.0,
+                    4 => 115.0,
+                    5 => 75.0,
+                    _ => 90.0,
+                };
             let mut goal = flight.position + forward * distance + right * lateral;
             goal.z = (flight.position.z + (enemy.phase * 0.7).sin() * 24.0).clamp(100.0, 260.0);
             goal.z = goal.z.max(world.height(goal.x, goal.y) + 45.0);
             enemy.position +=
-                (goal - enemy.position) * (dt * if enemy.kind == 3 { 1.2 } else { 1.8 }).min(1.0);
+                (goal - enemy.position) * (dt * if enemy.kind >= 3 { 1.2 } else { 1.8 }).min(1.0);
             enemy.yaw += angle(flight.yaw - enemy.yaw) * (dt * 2.0).min(1.0);
             collision |=
                 segment_distance(enemy.position, previous, flight.position) < enemy.radius() + 7.0;
             enemy.cooldown -= dt;
             if enemy.cooldown <= 0.0 {
-                enemy.cooldown = if enemy.kind == 3 {
+                enemy.cooldown = if enemy.kind >= 3 {
                     if enraged { 0.7 } else { 1.3 }
                 } else {
                     2.5 - enemy.kind as f32 * 0.4
                 } / difficulty;
                 let aim = (flight.position - enemy.position).normalize_or_zero();
-                let count = if enemy.kind == 3 {
+                let count = if enemy.kind >= 3 {
                     if enraged { 11 } else { 7 }
                 } else {
                     1 + enemy.kind as i32
@@ -759,12 +777,25 @@ impl Mission {
                         break;
                     }
                     let offset = i as f32 - (count - 1) as f32 * 0.5;
-                    let vertical = if enraged {
-                        (i as f32 * 1.7 + enemy.phase).sin() * 0.16
-                    } else {
-                        0.0
+                    let (horizontal, vertical) = match enemy.kind {
+                        4 => (
+                            offset * 0.025 + (enemy.phase * 2.0).sin() * 0.16,
+                            offset * 0.045,
+                        ),
+                        5 => {
+                            let a = i as f32 * std::f32::consts::TAU / count as f32 + enemy.phase;
+                            (a.cos() * 0.24, a.sin() * 0.24)
+                        }
+                        _ => (
+                            offset * 0.075,
+                            if enraged {
+                                (i as f32 * 1.7 + enemy.phase).sin() * 0.16
+                            } else {
+                                0.0
+                            },
+                        ),
                     };
-                    let velocity = (aim + right * offset * 0.075 + Vec3::Z * vertical).normalize()
+                    let velocity = (aim + right * horizontal + Vec3::Z * vertical).normalize()
                         * (95.0 + 20.0 * difficulty);
                     self.shots.push(Shot {
                         position: enemy.position,
@@ -775,7 +806,7 @@ impl Mission {
                         weapon: Weapon::Orb,
                         hostile: true,
                         target: None,
-                        radius: if enemy.kind == 3 { 3.5 } else { 2.5 },
+                        radius: if enemy.kind >= 3 { 3.5 } else { 2.5 },
                     });
                 }
             }
@@ -869,14 +900,14 @@ impl Mission {
             self.combo = (self.combo + 1).min(10);
             self.combo_time = 5.0;
             self.best_combo = self.best_combo.max(self.combo);
-            self.score += (if kind == 3 {
+            self.score += (if kind >= 3 {
                 10000
             } else {
                 300 + kind as u32 * 150
             }) * (1 + self.combo / 3);
             self.effect(
                 position,
-                if kind == 3 { 90.0 } else { 23.0 },
+                if kind >= 3 { 90.0 } else { 23.0 },
                 [255, 160, 66],
             );
             let choice = (self.random() * 10.0) as usize;
@@ -914,5 +945,222 @@ impl Mission {
             self.invulnerable = 0.9;
             self.announce("SHIELD HIT / ROLL TO EVADE");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::flight::Controls;
+    use crate::vehicle::Vehicle;
+    use std::sync::OnceLock;
+
+    fn world() -> &'static World {
+        static WORLD: OnceLock<World> = OnceLock::new();
+        WORLD.get_or_init(|| World::new(7))
+    }
+
+    #[test]
+    fn gates_require_forward_crossing_and_preserve_order() {
+        let world = world();
+        let mut flight = Flight::new(world);
+        let mut m = Mission::new(Mode::Race, Difficulty::Cadet, &mut flight, world);
+        m.countdown = 0.0;
+        let gate = m.gates[0].clone();
+        let before = gate.position - gate.normal * 80.0;
+        flight.position = gate.position + gate.normal * 80.0;
+        m.step(1.0 / 30.0, &mut flight, world, before, false);
+        assert_eq!((m.gate_index, m.perfect, m.score), (1, 1, 750));
+        let gate = m.gates[1].clone();
+        flight.position = gate.position - gate.normal * 5.0;
+        m.step(
+            1.0 / 30.0,
+            &mut flight,
+            world,
+            gate.position + gate.normal * 5.0,
+            false,
+        );
+        assert_eq!(m.gate_index, 1);
+        flight.position = gate.position + gate.normal * 5.0 + Vec3::Z * 80.0;
+        m.step(
+            1.0 / 30.0,
+            &mut flight,
+            world,
+            gate.position - gate.normal * 5.0 + Vec3::Z * 80.0,
+            false,
+        );
+        assert_eq!(m.gate_index, 1);
+    }
+
+    #[test]
+    fn coin_chain_expires_and_pickups_apply_upgrades() {
+        let world = world();
+        let mut f = Flight::new(world);
+        let mut m = Mission::new(Mode::Coins, Difficulty::Cadet, &mut f, world);
+        m.countdown = 0.0;
+        for i in 0..2 {
+            let p = m.pickups[i].position;
+            f.position = p;
+            m.step(0.01, &mut f, world, p, false);
+        }
+        assert_eq!((m.combo, m.score), (2, 300));
+        let p = f.position;
+        m.step(5.1, &mut f, world, p, false);
+        assert_eq!(m.combo, 0);
+        m.pickups.clear();
+        for kind in [
+            PickupKind::Upgrade(Weapon::Laser),
+            PickupKind::Upgrade(Weapon::Laser),
+            PickupKind::Upgrade(Weapon::Laser),
+            PickupKind::Energy,
+            PickupKind::Shield,
+            PickupKind::Bomb,
+            PickupKind::Support,
+        ] {
+            m.pickups.push(Pickup {
+                position: p,
+                kind,
+                life: 10.0,
+                collected: false,
+            });
+        }
+        m.health = 10.0;
+        m.energy = 0.0;
+        m.collect(0.1, &f, p);
+        assert_eq!(m.levels[Weapon::Laser as usize], 3);
+        assert_eq!(m.weapon, Weapon::Laser);
+        assert_eq!(m.energy, 100.0);
+        assert_eq!(m.health, 50.0);
+        assert_eq!(m.bombs, 3);
+        assert_eq!(m.support, 30.0);
+    }
+
+    #[test]
+    fn weapons_hit_and_boss_enters_enraged_phase() {
+        let world = world();
+        for weapon in Weapon::ALL {
+            let mut f = Flight::new(world);
+            let mut m = Mission::new(Mode::Combat, Difficulty::Cadet, &mut f, world);
+            m.countdown = 0.0;
+            m.wave = 4;
+            m.spawn_wave(&f);
+            m.weapon = weapon;
+            m.enemies[0].position = f.position + f.axes()[1] * 180.0;
+            let before = m.enemies[0].health;
+            for _ in 0..180 {
+                let p = f.position;
+                m.step(1.0 / 30.0, &mut f, world, p, true);
+            }
+            assert!(
+                m.enemies[0].health < before,
+                "{} must damage target",
+                weapon.name()
+            );
+            assert!(m.energy >= 0.0 && m.shots.len() <= 180 && m.effects.len() <= 48);
+        }
+        let mut f = Flight::new(world);
+        let mut m = Mission::new(Mode::Combat, Difficulty::Ace, &mut f, world);
+        m.countdown = 0.0;
+        m.wave = 4;
+        m.spawn_wave(&f);
+        m.enemies[0].health = m.enemies[0].max_health * 0.4;
+        m.enemies[0].cooldown = 0.0;
+        let p = f.position;
+        m.step(0.01, &mut f, world, p, false);
+        assert_eq!(m.shots.iter().filter(|s| s.hostile).count(), 11);
+        let before = m.enemies[0].health;
+        m.bomb();
+        assert!(m.shots.iter().all(|s| !s.hostile));
+        assert_eq!(m.enemies[0].health, before - 130.0);
+    }
+
+    #[test]
+    fn all_vehicles_can_finish_race_and_coin_routes() {
+        let world = world();
+        for vehicle in Vehicle::ALL {
+            for mode in [Mode::Race, Mode::Coins] {
+                let mut f = Flight::new(world);
+                f.vehicle = vehicle;
+                let mut m = Mission::new(mode, Difficulty::Ace, &mut f, world);
+                for _ in 0..4500 {
+                    let Some(target) = m.target(&f) else {
+                        break;
+                    };
+                    let delta = target - f.position;
+                    let controls = Controls {
+                        turn: (angle(delta.x.atan2(-delta.y) - f.yaw) * 2.2 / vehicle.turn())
+                            .clamp(-1.0, 1.0),
+                        climb: (delta.z * 2.0 / (f.speed * 0.55)).clamp(-1.0, 1.0),
+                        manual: true,
+                        ..Default::default()
+                    };
+                    let p = f.position;
+                    if m.countdown <= 0.0 {
+                        f.step(1.0 / 30.0, &controls, world);
+                    }
+                    m.step(1.0 / 30.0, &mut f, world, p, false);
+                    if m.outcome.is_some() {
+                        break;
+                    }
+                }
+                println!(
+                    "{} {}: {:?}, {:.1}s score={} gates={} coins={}",
+                    vehicle.name(),
+                    mode.name(),
+                    m.outcome,
+                    m.elapsed,
+                    m.score,
+                    m.gate_index,
+                    m.collected
+                );
+                assert_eq!(m.outcome, Some(true), "{} {}", vehicle.name(), mode.name());
+            }
+        }
+    }
+
+    #[test]
+    fn full_combat_can_be_won_with_bounded_entities() {
+        let world = world();
+        let mut f = Flight::new(world);
+        let mut m = Mission::new(Mode::Combat, Difficulty::Cadet, &mut f, world);
+        for i in 0..9000 {
+            let target = m.target(&f).unwrap_or(f.position + f.axes()[1] * 200.0);
+            let delta = target - f.position;
+            let controls = Controls {
+                turn: (angle(delta.x.atan2(-delta.y) - f.yaw) * 2.0 / f.vehicle.turn())
+                    .clamp(-1.0, 1.0),
+                climb: (delta.z * 1.5 / (f.speed * 0.55)).clamp(-1.0, 1.0),
+                manual: true,
+                ..Default::default()
+            };
+            let p = f.position;
+            if m.countdown <= 0.0 {
+                f.step(1.0 / 30.0, &controls, world);
+            }
+            if i % 150 == 0 {
+                f.roll();
+                m.dodge();
+            }
+            if m.wave == 5 && i % 450 == 0 {
+                m.bomb();
+            }
+            m.step(1.0 / 30.0, &mut f, world, p, true);
+            assert!(
+                m.enemies.len() <= 16
+                    && m.shots.len() <= 180
+                    && m.effects.len() <= 48
+                    && m.pickups.len() <= 32
+            );
+            if m.outcome.is_some() {
+                break;
+            }
+        }
+        println!(
+            "combat {:?}: {:.1}s kills={} score={} shield={}",
+            m.outcome, m.elapsed, m.kills, m.score, m.health
+        );
+        assert_eq!(m.outcome, Some(true));
+        assert_eq!(m.wave, 5);
+        assert_eq!(m.kills, 23);
     }
 }

@@ -414,16 +414,20 @@ pub fn draw(app: &mut App) {
                 },
                 WHITE,
             );
-            if let Some(boss) = m.enemies.iter().find(|e| e.kind == 3) {
+            if let Some(boss) = m.enemies.iter().find(|e| e.kind >= 3) {
                 c.shade(70, 29, 180, 19);
                 c.text(
                     78,
                     30,
-                    if boss.health < boss.max_health * 0.5 {
-                        "DREADNOUGHT / ENRAGED"
-                    } else {
-                        "DREADNOUGHT / ARMORED"
-                    },
+                    &format!(
+                        "{} / {}",
+                        boss.boss_name(),
+                        if boss.health < boss.max_health * 0.5 {
+                            "RAGE"
+                        } else {
+                            "ARMOR"
+                        }
+                    ),
                     RED,
                 );
                 c.bar(78, 42, 164, boss.health / boss.max_health, RED);

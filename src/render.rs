@@ -456,22 +456,44 @@ impl Renderer {
                 }
             }
             if pickup.kind != PickupKind::Coin {
-                self.stroke(
-                    p - vec2(0.0, 2.0),
-                    p + vec2(0.0, 2.0),
-                    d - 1.0,
-                    rgb(255, 255, 255),
-                );
-                self.stroke(
-                    p - vec2(2.0, 0.0),
-                    p + vec2(2.0, 0.0),
-                    d - 1.0,
-                    rgb(255, 255, 255),
-                );
+                use font8x8::UnicodeFonts;
+                let label = match pickup.kind {
+                    PickupKind::Upgrade(w) => match w {
+                        Weapon::Gun => 'G',
+                        Weapon::Missile => 'M',
+                        Weapon::Laser => 'L',
+                        Weapon::Plasma => 'P',
+                        Weapon::Orb => 'O',
+                    },
+                    PickupKind::Shield => 'S',
+                    PickupKind::Energy => 'A',
+                    PickupKind::Bomb => 'B',
+                    PickupKind::Support => 'W',
+                    PickupKind::Time => 'T',
+                    PickupKind::Coin => 'C',
+                };
+                if let Some(glyph) = font8x8::BASIC_FONTS.get(label) {
+                    self.point(p, d - 1.0, color, 5, 0);
+                    self.point(p, d - 1.1, rgb(20, 32, 45), 4, 0);
+                    for (y, row) in glyph.iter().enumerate() {
+                        for x in 0..8 {
+                            if row & (1 << x) != 0 {
+                                self.point(
+                                    p + vec2(x as f32 - 3.0, y as f32 - 3.0),
+                                    d - 1.2,
+                                    rgb(244, 251, 240),
+                                    0,
+                                    0,
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
+
         for enemy in &mission.enemies {
-            let scale = if enemy.kind == 3 {
+            let scale = if enemy.kind >= 3 {
                 3.2
             } else {
                 0.75 + enemy.kind as f32 * 0.18
@@ -483,14 +505,16 @@ impl Renderer {
             let local = |x: f32, y: f32, z: f32| {
                 enemy.position + (right * x + forward * y + Vec3::Z * z) * scale
             };
-            let color = if enemy.hit > 0.0 {
+            let color = if enemy.hit > 0.1 {
                 rgb(255, 252, 232)
             } else {
                 match enemy.kind {
                     0 => rgb(239, 98, 112),
                     1 => rgb(171, 119, 235),
                     2 => rgb(209, 161, 101),
-                    _ => rgb(113, 133, 172),
+                    3 => rgb(113, 133, 172),
+                    4 => rgb(141, 208, 123),
+                    _ => rgb(189, 135, 215),
                 }
             };
             let dark = mix(color, rgb(22, 24, 42), 0.55);
@@ -522,7 +546,7 @@ impl Renderer {
                     ],
                     color,
                 );
-                if enemy.kind == 3 {
+                if enemy.kind >= 3 {
                     self.triangle(
                         camera,
                         [

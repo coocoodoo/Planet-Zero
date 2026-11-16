@@ -31,6 +31,19 @@ fn draw_frame(texture: &Texture2D) {
     );
 }
 
+fn save_capture(app: &App, path: &std::path::Path) {
+    let mut bytes = Vec::with_capacity(app.screen.len());
+    for row in app.screen.chunks_exact(WIDTH * 4).rev() {
+        bytes.extend_from_slice(row);
+    }
+    Image {
+        bytes,
+        width: WIDTH as u16,
+        height: HEIGHT as u16,
+    }
+    .export_png(path.to_str().unwrap());
+}
+
 fn capture(app: &mut App, path: &std::path::Path) {
     std::fs::create_dir_all(path).expect("无法创建截图目录");
     for (name, mode, frames, view) in [
@@ -56,22 +69,12 @@ fn capture(app: &mut App, path: &std::path::Path) {
             app.step(1.0 / 30.0, None);
         }
         app.draw();
-        Image {
-            bytes: app.screen.clone(),
-            width: WIDTH as u16,
-            height: HEIGHT as u16,
-        }
-        .export_png(path.join(format!("{name}.png")).to_str().unwrap());
+        save_capture(app, &path.join(format!("{name}.png")));
     }
     app.page = Page::Paused;
     app.selection = 0;
     app.draw();
-    Image {
-        bytes: app.screen.clone(),
-        width: WIDTH as u16,
-        height: HEIGHT as u16,
-    }
-    .export_png(path.join("pause.png").to_str().unwrap());
+    save_capture(app, &path.join("pause.png"));
     for vehicle in rust_fly::vehicle::Vehicle::ALL {
         app.mode = Mode::Free;
         app.flight.vehicle = vehicle;
@@ -82,16 +85,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
             app.step(1.0 / 30.0, None);
         }
         app.draw();
-        Image {
-            bytes: app.screen.clone(),
-            width: WIDTH as u16,
-            height: HEIGHT as u16,
-        }
-        .export_png(
-            path.join(format!("vehicle-{}.png", vehicle.name()))
-                .to_str()
-                .unwrap(),
-        );
+        save_capture(app, &path.join(format!("vehicle-{}.png", vehicle.name())));
     }
 }
 

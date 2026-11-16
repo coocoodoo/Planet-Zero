@@ -104,6 +104,10 @@ impl App {
             return;
         }
         self.mission = Mission::new(self.mode, self.difficulty, &mut self.flight, &self.world);
+        if let Ok(time) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            self.mission
+                .shuffle_encounters(time.subsec_nanos() ^ self.world.seed);
+        }
         self.auto = self.mode == Mode::Free;
         self.page = Page::Playing;
         self.new_record = false;
@@ -401,5 +405,52 @@ impl App {
             })();
             self.record_error = result.is_err();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn menus_pause_retry_and_hidden_ui_preserve_control() {
+        let mut app = App::new(World::new(7));
+        app.record_path = None;
+        assert_eq!(app.page, Page::Menu);
+        assert!(app.flight.demo);
+        app.mode = Mode::Combat;
+        app.start();
+        app.step(1.0, None);
+        app.key(25, 1);
+        app.key(25, 0);
+        assert_eq!(app.page, Page::Paused);
+        let before = (app.flight.position, app.mission.countdown);
+        app.step(0.1, None);
+        assert_eq!((app.flight.position, app.mission.countdown), before);
+        app.key(22, 1);
+        app.key(22, 0);
+        assert!(!app.flight.hud);
+        app.key(28, 1);
+        app.key(28, 0);
+        assert_eq!(app.page, Page::Playing);
+        app.mission.score = 3456;
+        app.mission.outcome = Some(true);
+        app.step(0.01, None);
+        assert_eq!(app.page, Page::Results);
+        assert_eq!(app.best_score, 3456);
+        app.key(19, 1);
+        app.key(19, 0);
+        assert_eq!(app.page, Page::Playing);
+        assert_eq!(app.mission.score, 0);
+        assert_eq!(app.mission.health, app.flight.vehicle.shield());
+        assert_eq!(app.best_score, 3456);
+        assert!(!app.flight.hud);
+        app.home();
+        app.key(35, 1);
+        app.key(35, 0);
+        assert_eq!(app.page, Page::Help);
+        app.key(28, 1);
+        app.key(28, 0);
+        assert_eq!(app.page, Page::Menu);
     }
 }
