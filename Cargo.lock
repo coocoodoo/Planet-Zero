@@ -273,7 +273,7 @@ checksum = "5a651516ddc9168ebd67b24afd085a718be02f8858fe406591b013d101ce2f40"
 
 [[package]]
 name = "rust-fly"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "font8x8",
  "glam",

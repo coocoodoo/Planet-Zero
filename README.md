@@ -1,6 +1,6 @@
 # Rust Fly
 
-使用 Rust 和 macroquad 复刻的像素飞行场景，核心是 Sprite Stacking、高度图和 CPU 软件渲染
+使用 Rust 实现的像素飞行场景，核心是 Sprite Stacking、高度图和 CPU 软件渲染。桌面版使用 macroquad 显示纹理，Cardputer Zero 版直接输出 RGB565 帧缓冲，渲染与游戏逻辑均由 Rust 实现
 
 ```sh
 cd <user-home>/src/rust-fly
@@ -16,11 +16,35 @@ cargo run --release
 | Space | 俯视、追尾、座舱之间平滑切换 |
 | B | 展开 / 合拢战机切片 |
 | V | 切换 0 / 1 / 2 架僚机 |
+| J | 开关自动特技演示 |
+| M / N | 下一类地图 / 同类型新种子 |
+| G | 晴天、雨、雪、雷雨、大雾、沙暴 |
 | T | 白天、日落、夜间 |
 | P / R | 暂停 / 重置飞行 |
 | H / F / Esc | 提示显隐 / 全屏 / 退出 |
 
-鼠标停止移动 5 秒、且没有方向键输入时恢复自动巡航
+鼠标停止移动 5 秒、且没有方向键输入时恢复自动巡航。演示模式使用独立的飞行脚本，方向键输入会结束演示并交还控制
+
+## 地图、比例与演示
+
+场景投影倍率为原版的 82%，战机模型倍率从 0.6 调整为 0.5，两者合计使追尾视角的战机尺寸约缩小 32%，视野内可见更多地形。座舱仪表保持原生像素字号
+
+地图从 2048 × 2048 扩展为 **4096 × 4096**，面积增大到四倍，每类地图支持新的随机种子。当前地图在内存中驻留，切图时在后台生成下一张地图，界面显示 `LOADING`，新地图就绪后切换
+
+| 地图 | 地形 |
+| --- | --- |
+| ISLANDS | 群岛、海滩、丘陵、森林 |
+| ALPINE | 雪峰、冰雪坡面、山谷、河流 |
+| CANYON | 分层台地、砂岩峡谷、谷底水道 |
+| DESERT | 风纹沙丘、荒漠台地、绿洲 |
+| WETLANDS | 湿地、泥岸、水道、密林 |
+| VOLCANIC | 火山锥、火山口、熔岩、玄武岩 |
+
+高度保护以地形最高点为基准，机群保持至少 **36 个世界单位**的离地距离，向前探测 1 秒内的航线和机翼两侧，接近地面时逐渐限制下降并拉起
+
+`J` 开启 56 秒循环演示：爬升、两次滚转、八字绕飞、俯冲拉起、僚机分离归队、螺旋爬升、高速通场，每段 8 秒，自动切换追尾和俯视镜头。演示期间 IMU 操纵输入由脚本接管，按 J 结束，方向键、Tab 或 I 也会结束演示
+
+天气与地图可以自由组合。雨雪和沙尘采用具有深度遮挡的粒子，雷雨带有分支闪电与短时照明，大雾和沙暴通过距离雾改变能见度。天气影响环境光、远景和座舱，原生像素仪表保持可读
 
 ## Cardputer Zero 设备版
 
@@ -32,15 +56,15 @@ bash scripts/build-cardputer.sh
 python3 scripts/package-cardputer.py
 ```
 
-构建生成 `dist/rust-fly-cardputer` 静态 AArch64 可执行文件和 `dist/rust-fly_0.2.0_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
+构建生成 `dist/rust-fly-cardputer` 静态 AArch64 可执行文件和 `dist/rust-fly_0.3.0_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
 
 将安装包复制到设备后执行：
 
 ```sh
-sudo apt install ./rust-fly_0.2.0_arm64.deb
+sudo apt install ./rust-fly_0.3.0_arm64.deb
 ```
 
-APPLaunch 中会出现带战机图标的 Rust Fly，选择即可启动
+APPLaunch 中会出现带战机图标的 Rust Fly，选择即可启动。菜单分为飞行与世界两页，在菜单中按 Z / C 翻页，Enter 恢复飞行
 
 | 实体键 | 功能 |
 | --- | --- |
@@ -53,6 +77,9 @@ APPLaunch 中会出现带战机图标的 Rust Fly，选择即可启动
 | Enter | 关闭菜单并继续 |
 | 长按 Esc 2 秒 | 退出并返回 APPLaunch |
 | V | 切换 0 / 1 / 2 架僚机 |
+| J | 开关自动特技演示 |
+| M / N | 下一类地图 / 同类型新种子 |
+| G | 晴天、雨、雪、雷雨、大雾、沙暴 |
 | I | 开关体感，开启时自动校准 |
 | K | 将当前握持姿态重新校准为中立位置 |
 | Tab | 自动巡航 / 手动驾驶 |
@@ -68,7 +95,21 @@ APPLaunch 中会出现带战机图标的 Rust Fly，选择即可启动
 
 内部画幅固定为 **320 × 170**，每个屏幕像素独立渲染，目标提交频率为 30 FPS。渲染采用列连续像素存储、三线程地形分区、预计算雾色和光照、单次体素投影、战机局部轮廓扫描，以及座舱遮挡区域裁剪
 
-真机 180 帧移动场景测量：俯视 15.27 ms、追尾 17.78 ms、座舱 28.45 ms，均包含两架僚机。完整座舱与真实 IMU 同时运行时，300 帧用时 10.069 秒，约 29.8 FPS；绘制平均 27.98 ms，RGB565 提交平均 1.96 ms。帧率随姿态、可见地形和系统负载变化
+0.3.0 真机七组地图/天气组合，各视角模拟并绘制 90 帧，结果如下，均包含两架僚机
+
+| 场景 | 俯视平均 | 追尾平均 | 座舱平均 |
+| --- | ---: | ---: | ---: |
+| 群岛 / 晴天 | 21.31 ms | 20.11 ms | 28.40 ms |
+| 湿地 / 雨 | 21.26 ms | 17.50 ms | 26.75 ms |
+| 雪山 / 雪 | 19.91 ms | 16.81 ms | 26.20 ms |
+| 峡谷 / 雷雨 | 20.38 ms | 16.68 ms | 26.04 ms |
+| 群岛 / 大雾 | 20.93 ms | 13.70 ms | 23.02 ms |
+| 沙漠 / 沙暴 | 20.84 ms | 15.00 ms | 24.40 ms |
+| 火山 / 晴天 | 20.31 ms | 20.01 ms | 29.33 ms |
+
+地图生成约 1.9–2.1 秒，单图测试进程峰值 RSS 46,700 KiB。包含两次后台切图、完整演示循环和手动接管的真机测试提交 2,406 帧，用时 80.498 秒，约 29.89 FPS；后台切图峰值 RSS 为 89,552 KiB，约 87.5 MiB
+
+完整座舱、两架僚机、雷雨和真实 IMU 同时开启，300 帧用时 10.023 秒，约 29.93 FPS；平均绘制 23.557 ms，P95 23.832 ms，屏幕提交平均 2.384 ms。帧率随姿态、可见地形和系统负载变化
 
 设备版通过 `glam` 复用场景数学，直接向 fbdev mmap 写入 RGB565，再用 evdev 接收完整按下/松开事件，运行时依赖静态链接在可执行文件中
 
@@ -78,7 +119,9 @@ APPLaunch 中会出现带战机图标的 Rust Fly，选择即可启动
 
 ```sh
 rust-fly-cardputer --benchmark 180 --scale 1 --capture-dir /tmp/rust-fly-captures
-rust-fly-cardputer --frames 300 --view cockpit
+rust-fly-cardputer --frames 300 --view cockpit --weather storm
+rust-fly-cardputer --map canyon --weather sandstorm --demo on
+rust-fly-cardputer --map alpine --seed 8082 --weather snow
 rust-fly-cardputer --imu-test 10 --imu-csv /tmp/rust-fly-imu.csv
 ```
 
@@ -88,8 +131,9 @@ rust-fly-cardputer --imu-test 10 --imu-csv /tmp/rust-fly-imu.csv
 
 ## 实现
 
-- `src/world.rs`：六个尺度的周期噪声、海平面分位数、阶梯地形、锥形树冠、云团和固定种子
-- `src/flight.rs`：飞行状态、机体坐标系、翻滚、轨迹、三种视角及统一投影
+- `src/world.rs`：4096² 地图、六类地形、周期噪声、树冠、云团、种子与后台生成
+- `src/flight.rs`：飞行状态、离地保护、特技演示、编队、轨迹、三种视角及统一投影
+- `src/weather.rs`：天气枚举、光照、能见度、降水和雷电参数
 - `src/render.rs`：多线程高度柱绘制、深度遮挡、切片采样、三机编队、阴影和尾焰
 - `src/cockpit.rs`：四层座舱、分层视差、光照、HUD、雷达、姿态球、仪表、油门和操纵杆
 - `src/cardputer/imu.rs`：IIO 采样、静止校准、重力与角速度融合、姿态控制和诊断 CSV
