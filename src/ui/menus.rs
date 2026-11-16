@@ -81,7 +81,7 @@ pub fn draw(app: &mut App) {
                 "Z X C F / WASD : STEER / CLIMB",
                 "4 VIEW  5 Q ROLL  6 SHIFT BOOST",
                 "I IMU ON/OFF   K RECALIBRATE",
-                "U UI  9 SOUND  -/+ VOLUME",
+                "PAUSE Z/C VOLUME  U UI  9 SOUND",
                 "HOLD ESC 2 SECONDS TO EXIT",
                 "8 H P PAUSE / ENTER START",
                 "Z/C PAGE       ENTER RETURN",
@@ -151,7 +151,7 @@ pub fn draw(app: &mut App) {
             45,
             145,
             &format!(
-                "9 SOUND {}  -/+ {}%",
+                "9 SOUND {}  Z/C VOL {}%",
                 app.audio_settings.name(),
                 app.audio_settings.volume * 10
             ),

@@ -83,6 +83,10 @@ impl App {
         }
         if self.page == Page::Paused {
             match code {
+                44 | 105 => {
+                    self.audio_settings.volume = self.audio_settings.volume.saturating_sub(1)
+                }
+                46 | 106 => self.audio_settings.volume = (self.audio_settings.volume + 1).min(10),
                 17 | 33 | 103 => self.selection = (self.selection + 5) % 6,
                 31 | 45 | 108 => self.selection = (self.selection + 1) % 6,
                 28 | 57 => self.activate(),

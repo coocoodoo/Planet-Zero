@@ -99,6 +99,13 @@ fn application_routes_results_pause_and_events_to_audio() {
     assert_eq!(app.audio_frame().events.iter().count(), 0);
     app.page = Page::Paused;
     assert!(app.audio_frame().paused);
+    app.key(44, 1);
+    app.key(44, 0);
+    assert_eq!(app.audio_settings.volume, 6);
+    app.key(46, 1);
+    app.key(46, 0);
+    assert_eq!(app.audio_settings.volume, 7);
+    assert_eq!(app.page, Page::Paused);
     app.page = Page::Results;
     app.mission.outcome = Some(true);
     assert_eq!(app.audio_frame().cue, Cue::Victory);
