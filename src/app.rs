@@ -268,7 +268,7 @@ impl App {
     pub fn activate(&mut self) {
         match self.page {
             Page::Menu => match self.selection {
-                0..=4 => self.adjust(1),
+                0..=4 => self.selection = 5,
                 5 => self.start(),
                 6 => self.help(),
                 7 => self.quit = true,
@@ -416,6 +416,23 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn menu_enter_moves_to_start_without_changing_options() {
+        let mut app = App::new(World::new(7));
+        for row in 0..5 {
+            app.selection = row;
+            app.key(28, 1);
+            app.key(28, 0);
+            assert_eq!(app.selection, 5);
+            assert_eq!(app.page, Page::Menu);
+            assert_eq!(app.mode, Mode::Free);
+            assert_eq!(app.flight.vehicle, Vehicle::Falcon);
+            assert!(app.loader.pending.is_none());
+        }
+        app.key(28, 1);
+        assert_eq!(app.page, Page::Playing);
+    }
 
     #[test]
     fn menus_pause_retry_and_hidden_ui_preserve_control() {
