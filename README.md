@@ -158,12 +158,22 @@ rust-fly-cardputer --mode combat --audio off --frames 450
 | DESERT | 风纹沙丘、荒漠台地、绿洲 |
 | WETLANDS | 湿地、泥岸、水道、密林 |
 | VOLCANIC | 火山锥、火山口、熔岩、玄武岩 |
+| MOON | 210 处撞击地形、环形山、中央峰、四处基地、太阳能阵列、通信天线与地球背景 |
+| SPACE | 宇宙飞船、人工卫星、小行星、恒星、行星、星云星空与成对虫洞 |
+
+月球与太空显示 `VACUUM`，使用无大气星空，关闭降水和大气雾。月球保留离地保护；太空使用立体空间，高度活动范围为 -240 至 650，座舱雷达显示附近空间实体。太空按 4096 单位周期布置飞船、卫星和小行星，虫洞位于固定探索坐标
+
+虫洞入口采用蓝色与橙色光环，从正面穿过有效区域后抵达另一端。窗口按玩家相机的位置和方向实时渲染出口场景，前景物体可遮挡入口，边缘采样周围画面产生折射、旋转扰动和辉光。穿越保留速度与姿态，将航向、相机及僚机一起映射到出口，清理尾迹并播放跃迁音效；0.8 秒冷却防止连续回跳，拾取和检查点检测按出口位置继续
+
+探索提示：自由飞行选择 SPACE 后，保持初始航向和约 140–150 高度，前方约 650 单位处有一个蓝色入口。键盘游玩时可用 Tab 关闭自动转向，体感游玩时保持设备中立。地图选择适用于四种模式；选择 STAGE 或进入下一关会加载原有六关战役对应的地图
+
+基地、飞船、出生点、撞击坑数量及虫洞位置配置保存在 `content/maps/moon.toml` 和 `content/maps/space.toml` 的 `cosmic` 区域。虫洞实时窗口采用一层对端渲染，保持原生像素分辨率
 
 高度保护以地形最高点为基准，机群保持至少 **36 个世界单位**的离地距离，向前探测 1 秒内的航线和机翼两侧，接近地面时逐渐限制下降并拉起
 
 `J` 开启 56 秒循环演示：爬升、两次滚转、八字绕飞、俯冲拉起、僚机分离归队、螺旋爬升、高速通场，每段 8 秒，自动切换追尾和俯视镜头。演示期间 IMU 操纵输入由脚本接管，按 J 结束，方向键、Tab 或 I 也会结束演示
 
-天气与地图可以自由组合。雨雪和沙尘采用具有深度遮挡的粒子，雷雨带有分支闪电与短时照明，大雾和沙暴通过距离雾改变能见度。天气影响环境光、远景和座舱，原生像素仪表保持可读
+六类地表地图支持天气自由组合。雨雪和沙尘采用具有深度遮挡的粒子，雷雨带有分支闪电与短时照明，大雾和沙暴通过距离雾改变能见度。天气影响环境光、远景和座舱，原生像素仪表保持可读
 
 ## Cardputer Zero 设备版
 
@@ -175,12 +185,12 @@ bash scripts/build-cardputer.sh
 python3 scripts/package-cardputer.py
 ```
 
-构建生成 `dist/rust-fly-cardputer` 静态 AArch64 可执行文件和 `dist/rust-fly_0.6.0_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
+构建生成 `dist/rust-fly-cardputer` 静态 AArch64 可执行文件和 `dist/rust-fly_0.7.0_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
 
 将安装包复制到设备后执行：
 
 ```sh
-sudo apt install ./rust-fly_0.6.0_arm64.deb
+sudo apt install ./rust-fly_0.7.0_arm64.deb
 ```
 
 APPLaunch 中会出现带战机图标的 Rust Fly，选择即可进入主菜单。F / X 上下选择，Z / C 调整，Enter 确认；操作说明分四页，Z / C 翻页
@@ -253,6 +263,16 @@ APPLaunch 中会出现带战机图标的 Rust Fly，选择即可进入主菜单�
 
 最终真机交互回放提交 1,300 帧，用时 43.443 秒，约 29.92 FPS，覆盖菜单配置、后台连续切图、五种武器、NOVA、翻滚、UI 显隐与恢复、暂停、重试、真实 IMU 校准、金币收集和退出。后台切图期间进程峰值 RSS 约 87.5 MiB
 
+0.7.0 实体显示测试使用 320 × 170 RGB565、完整座舱和音频，每组 360 帧；自由飞行包含两架僚机，使用确定性键盘输入，BMI270 采样线程保持运行
+
+| 场景 | 实际 FPS | 绘制平均 | 绘制 P95 | 峰值 RSS |
+| --- | ---: | ---: | ---: | ---: |
+| 月球基地航线 | 29.47 | 28.67 ms | 32.27 ms | 42.27 MiB |
+| 太空虫洞穿越 | 29.01 | 28.70 ms | 38.54 ms | 12.60 MiB |
+| 太空战斗 | 29.73 | 20.93 ms | 24.24 ms | 12.06 MiB |
+
+虫洞按列求交和窗口可见区域裁剪，对完整窗口内部直接复制对端像素，仅在边缘计算折射。近距离座舱基准平均耗时从约 38 ms 降至约 23 ms；最重入口 P95 从约 72 ms 降至约 35 ms。太空省去 36 MiB 地表与云层数组，星空纹理在进程内共享。实际显示包含音频、提交与调度开销，靠近虫洞时仍会出现部分超过 33.3 ms 的帧
+
 以下保留 0.3.0 多地图与天气的性能参考
 
 0.3.0 真机七组地图/天气组合，各视角模拟并绘制 90 帧，结果如下，均包含两架僚机
@@ -283,6 +303,9 @@ rust-fly-cardputer --mode combat --frames 300 --view cockpit --weather storm
 rust-fly-cardputer --mode race --vehicle 1 --level 3
 rust-fly-cardputer --mode combat --level 2 --view cockpit
 rust-fly-cardputer --mode combat --benchmark 180 --capture-dir /tmp/combat-check
+rust-fly-cardputer --map moon --mode free --view chase
+rust-fly-cardputer --map space --mode free --view cockpit
+rust-fly-cardputer --map space --benchmark 180 --capture-dir /tmp/space-check
 rust-fly-cardputer --map canyon --weather sandstorm --demo on
 rust-fly-cardputer --map alpine --seed 8082 --weather snow
 rust-fly-cardputer --imu-test 10 --imu-csv /tmp/rust-fly-imu.csv
@@ -303,7 +326,7 @@ content/
     04-sand-front.toml
     05-marsh-rescue.toml
     06-caldera.toml
-  maps/                   # 六类地图各一个 TOML 文件
+  maps/                   # 八类地图及月球、太空场景布局
   music/                  # 七首配乐的旋律、和声和段落编排
 assets/
   cockpit/                # 座舱四层索引色美术
@@ -321,7 +344,11 @@ src/
     tests.rs              # 玩法与六关完整流程测试
   content/                # TOML 读取、内容校验、载具与天气定义
   world/                  # 地形生成、噪声、采样与后台地图加载
+    celestial.rs          # 月面撞击地形、基地平台与空间实体布置
+    portal.rs             # 虫洞几何变换与线段穿越检测
   render/                 # 渲染管线、地形、飞行器、任务对象、天气和座舱
+    celestial.rs          # 星云立方体贴图、天体与基地、飞船网格
+    portals.rs            # 对端相机、窗口裁剪与边缘折射
   ui/                     # 菜单、任务 HUD、战斗侧栏和像素绘制
   cardputer/              # BMI270、evdev、RGB565 帧缓冲与设备适配
   flight.rs               # 飞行动力、离地保护、特技和相机
@@ -348,7 +375,7 @@ cargo run --release -- --capture captures
 
 截图模式会打开原生窗口，导出菜单、竞速、金币、空战、Boss、座舱、暂停和四种载具的 PNG，随后退出
 
-27 项单元测试覆盖离地保护、演示、IMU、顺序穿越与越界判定、金币连击、全部武器与补给、六个关卡完整通关、四种载具的完整赛道与金币路线、菜单确认、胜利下一关、失败重试、护航失败和战斗侧栏的中央视野，以及实际音效事件、整曲循环、节拍切换、静音恢复和混音幅值。设备基准在倒计时结束后测量实际玩法，空战额外包含三个视角的 Boss 场景，性能采样维持双方护盾与双僚机，持续呈现任务或 Boss 的战斗负载；实体显示帧率另行记录
+35 项单元测试覆盖离地保护、演示、IMU、顺序穿越与越界判定、金币连击、全部武器与补给、六个关卡完整通关、四种载具的完整赛道与金币路线、菜单确认、胜利下一关、失败重试、护航失败和战斗侧栏的中央视野，以及实际音效事件、整曲循环、节拍切换、静音恢复和混音幅值。宇宙场景测试覆盖高速穿越、边缘与背面过滤、可逆变换、相机投影一致、编队和速度保持、空间下降，以及实时窗口随对端实体变化和跨地图误拾取防护。设备基准在倒计时结束后测量实际玩法，空战额外包含三个视角的 Boss 场景，性能采样维持双方护盾与双僚机，持续呈现任务或 Boss 的战斗负载；实体显示帧率另行记录
 
 ## 来源与复刻范围
 
