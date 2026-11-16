@@ -53,7 +53,11 @@ pub struct Flight {
 
 impl Flight {
     pub fn new(world: &World) -> Self {
-        let position = vec3(world.spawn.0, world.spawn.1, 110.0);
+        let position = vec3(
+            world.spawn.0,
+            world.spawn.1,
+            110.0_f32.max(world.height(world.spawn.0, world.spawn.1) + 70.0),
+        );
         let mut flight = Self {
             wingmen: Vec::new(),
             wing_count: 2,
@@ -86,6 +90,16 @@ impl Flight {
             flight.wingmen.push(wing);
         }
         flight
+    }
+
+    pub fn change_world(&mut self, world: &World) {
+        let (view, weights, demo, wing_count) =
+            (self.view, self.weights, self.demo, self.wing_count);
+        *self = Self::new(world);
+        self.view = view;
+        self.weights = weights;
+        self.demo = demo;
+        self.wing_count = wing_count;
     }
 
     pub fn set_demo(&mut self, enabled: bool) {
@@ -343,6 +357,8 @@ mod tests {
             materials: vec![0; SIZE * SIZE],
             clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
             spawn: (256.0, 350.0),
+            kind: crate::world::MapKind::Islands,
+            seed: 7,
         }
     }
 

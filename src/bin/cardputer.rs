@@ -1,4 +1,5 @@
 use rust_fly::cardputer::{Game, HEIGHT, WIDTH};
+use rust_fly::world::{MapKind, World};
 use std::error::Error;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -17,6 +18,8 @@ struct Options {
     imu_csv: Option<PathBuf>,
     imu: bool,
     demo: bool,
+    map: MapKind,
+    seed: Option<u32>,
 }
 
 fn options() -> Result<Options, Box<dyn Error>> {
@@ -31,17 +34,23 @@ fn options() -> Result<Options, Box<dyn Error>> {
         imu_csv: None,
         imu: true,
         demo: false,
+        map: MapKind::Islands,
+        seed: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         if arg == "--help" {
             println!(
-                "rust-fly-cardputer [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--imu-test SECONDS] [--imu-csv PATH]"
+                "rust-fly-cardputer [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic] [--seed N] [--imu-test SECONDS] [--imu-csv PATH]"
             );
             std::process::exit(0);
         }
         let value = args.next().ok_or_else(|| format!("{arg} 缺少参数值"))?;
         match arg.as_str() {
+            "--map" => {
+                result.map = MapKind::parse(&value).ok_or("未知地图，请使用 --help 查看地图名称")?
+            }
+            "--seed" => result.seed = Some(value.parse()?),
             "--demo" => {
                 result.demo = match value.as_str() {
                     "on" => true,
@@ -225,7 +234,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     let start = Instant::now();
-    let mut game = Game::new();
+    let mut game = Game::with_world(World::generate(
+        options.map,
+        options.seed.unwrap_or(options.map.seed()),
+    ));
     eprintln!("地形生成：{:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
     game.flight.set_demo(options.demo);
     game.flight.view = if options.demo { 1 } else { options.view };

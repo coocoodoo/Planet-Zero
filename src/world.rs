@@ -1,17 +1,89 @@
-pub const SIZE: usize = 2048;
-pub const CLOUD_SIZE: usize = 1024;
-pub const CLOUD_ALT: usize = 40;
-pub const MAX_HEIGHT: usize = 48;
+use std::thread::JoinHandle;
+
+pub const SIZE: usize = 4096;
+pub const CLOUD_SIZE: usize = 2048;
+pub const CLOUD_ALT: usize = 80;
+pub const MAX_HEIGHT: usize = 96;
+pub const MATERIAL_COUNT: usize = 27;
+const NOISE_SIZE: usize = 1024;
+const CELL: usize = SIZE / NOISE_SIZE;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MapKind {
+    #[default]
+    Islands,
+    Alpine,
+    Canyon,
+    Desert,
+    Wetlands,
+    Volcanic,
+}
+
+impl MapKind {
+    pub const ALL: [Self; 6] = [
+        Self::Islands,
+        Self::Alpine,
+        Self::Canyon,
+        Self::Desert,
+        Self::Wetlands,
+        Self::Volcanic,
+    ];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Islands => "ISLANDS",
+            Self::Alpine => "ALPINE",
+            Self::Canyon => "CANYON",
+            Self::Desert => "DESERT",
+            Self::Wetlands => "WETLANDS",
+            Self::Volcanic => "VOLCANIC",
+        }
+    }
+    pub fn next(self) -> Self {
+        Self::ALL[(self as usize + 1) % Self::ALL.len()]
+    }
+    pub fn seed(self) -> u32 {
+        [7, 163, 97, 431, 991, 2027][self as usize]
+    }
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|kind| kind.name().eq_ignore_ascii_case(name))
+    }
+}
 
 pub struct World {
     pub heights: Vec<u8>,
     pub materials: Vec<u8>,
     pub clouds: Vec<u8>,
     pub spawn: (f32, f32),
+    pub kind: MapKind,
+    pub seed: u32,
+}
+
+#[derive(Default)]
+pub struct WorldLoader {
+    job: Option<JoinHandle<World>>,
+    pub pending: Option<MapKind>,
+}
+
+impl WorldLoader {
+    pub fn start(&mut self, kind: MapKind, seed: u32) {
+        if self.job.is_none() {
+            self.pending = Some(kind);
+            self.job = Some(std::thread::spawn(move || World::generate(kind, seed)));
+        }
+    }
+    pub fn poll(&mut self) -> Option<World> {
+        if self.job.as_ref().is_some_and(JoinHandle::is_finished) {
+            self.pending = None;
+            Some(self.job.take().unwrap().join().expect("地图生成线程失败"))
+        } else {
+            None
+        }
+    }
 }
 
 struct Random(u32);
-
 impl Random {
     fn next(&mut self) -> f32 {
         self.0 = self.0.wrapping_add(0x6d2b79f5);
@@ -33,14 +105,14 @@ pub fn index(x: i32, y: i32, size: usize) -> usize {
 }
 
 fn octave(field: &mut [f32], cell: usize, amplitude: f32, random: &mut Random) {
-    let count = SIZE / cell;
+    let count = NOISE_SIZE / cell;
     let lattice: Vec<f32> = (0..count * count).map(|_| random.next()).collect();
-    for y in 0..SIZE {
+    for y in 0..NOISE_SIZE {
         let y0 = y / cell;
         let y1 = (y0 + 1) % count;
         let f = (y % cell) as f32 / cell as f32;
         let ty = f * f * (3.0 - 2.0 * f);
-        for x in 0..SIZE {
+        for x in 0..NOISE_SIZE {
             let x0 = x / cell;
             let x1 = (x0 + 1) % count;
             let f = (x % cell) as f32 / cell as f32;
@@ -49,177 +121,274 @@ fn octave(field: &mut [f32], cell: usize, amplitude: f32, random: &mut Random) {
             let b = lattice[y0 * count + x1];
             let c = lattice[y1 * count + x0];
             let d = lattice[y1 * count + x1];
-            field[y * SIZE + x] +=
+            field[y * NOISE_SIZE + x] +=
                 (a + (b - a) * tx + (c - a + (d - c - b + a) * tx) * ty) * amplitude;
         }
     }
 }
 
+fn normalize(field: &mut [f32]) {
+    let low = field.iter().copied().fold(f32::INFINITY, f32::min);
+    let high = field.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    for v in field {
+        *v = (*v - low) / (high - low);
+    }
+}
+
 impl World {
     pub fn new(seed: u32) -> Self {
+        Self::generate(MapKind::Islands, seed)
+    }
+
+    pub fn generate(kind: MapKind, seed: u32) -> Self {
         let mut random = Random(seed.wrapping_mul(7919).wrapping_add(13));
-        for _ in 0..65536 {
-            random.next();
-        }
-        let mut elevation = vec![0.0_f32; SIZE * SIZE];
+        let mut elevation = vec![0.0_f32; NOISE_SIZE * NOISE_SIZE];
+        let mut moisture = vec![0.0_f32; NOISE_SIZE * NOISE_SIZE];
         for (cell, amp) in [
-            (512, 0.55),
-            (256, 1.0),
-            (128, 0.5),
-            (64, 0.25),
-            (32, 0.11),
-            (16, 0.05),
+            (128, 0.7),
+            (64, 1.0),
+            (32, 0.5),
+            (16, 0.24),
+            (8, 0.1),
+            (4, 0.04),
         ] {
             octave(&mut elevation, cell, amp, &mut random);
         }
-        let low = elevation.iter().copied().fold(f32::INFINITY, f32::min);
-        let high = elevation.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        let mut bins = [0_usize; 1024];
-        for e in &mut elevation {
-            *e = (*e - low) / (high - low);
-            bins[(*e * 1023.0) as usize] += 1;
+        for (cell, amp) in [(128, 1.0), (32, 0.3), (8, 0.08)] {
+            octave(&mut moisture, cell, amp, &mut random);
         }
-        let target = (SIZE * SIZE) as f32 * 0.67;
-        let mut accumulated = 0;
+        normalize(&mut elevation);
+        normalize(&mut moisture);
+        let mut bins = [0_usize; 1024];
+        for &e in &elevation {
+            bins[(e * 1023.0) as usize] += 1;
+        }
+        let coverage = if kind == MapKind::Wetlands { 0.4 } else { 0.59 };
+        let mut count = 0;
         let mut sea = 0.5;
-        for (b, count) in bins.iter().enumerate() {
-            accumulated += count;
-            if accumulated as f32 >= target {
-                sea = (b + 1) as f32 / 1023.0;
+        for (i, &n) in bins.iter().enumerate() {
+            count += n;
+            if count as f32 >= elevation.len() as f32 * coverage {
+                sea = i as f32 / 1023.0;
                 break;
             }
         }
-        let span = (1.0 - sea - 0.012).max(0.05);
+        let mut lava = vec![false; elevation.len()];
+        for y in 0..NOISE_SIZE {
+            for x in 0..NOISE_SIZE {
+                let at = y * NOISE_SIZE + x;
+                let e = elevation[at];
+                let m = moisture[at];
+                elevation[at] = match kind {
+                    MapKind::Islands => (e - sea) / (1.0 - sea) * 59.0,
+                    MapKind::Alpine => {
+                        let ridge =
+                            (e * e * 79.0 + 5.0) * ((m - 0.49).abs() / 0.075).clamp(0.0, 1.0);
+                        if ridge < 1.1 { -1.0 } else { ridge }
+                    }
+                    MapKind::Canyon => {
+                        let canyon = ((m - 0.5).abs() - 0.025).max(0.0) / 0.075;
+                        if canyon < 0.08 {
+                            -1.0
+                        } else {
+                            (14.0 + (e * 6.0).floor() * 8.0) * canyon.min(1.0)
+                        }
+                    }
+                    MapKind::Desert => {
+                        if m > 0.73 && e < 0.4 {
+                            -1.0
+                        } else {
+                            8.0 + e * 19.0
+                                + (x as f32 * 0.13 + y as f32 * 0.047 + m * 6.0).sin() * 5.0
+                                + (e - 0.64).max(0.0) * 78.0
+                        }
+                    }
+                    MapKind::Wetlands => {
+                        if (m - 0.5).abs() < 0.028 {
+                            -1.0
+                        } else {
+                            (e - sea) * 30.0
+                        }
+                    }
+                    MapKind::Volcanic => {
+                        let d = ((x as f32 - 532.0).powi(2) + (y as f32 - 508.0).powi(2)).sqrt();
+                        let cone = (1.0 - d / 155.0).max(0.0) * 79.0;
+                        lava[at] = d < 25.0 || cone > 22.0 && (m - 0.5).abs() < 0.017;
+                        if d < 30.0 {
+                            27.0 + d * 0.35
+                        } else {
+                            ((e - 0.38) * 55.0).max(cone)
+                        }
+                    }
+                };
+            }
+        }
         let mut world = Self {
             heights: vec![0; SIZE * SIZE],
             materials: vec![0; SIZE * SIZE],
             clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
-            spawn: (1024.0, 1024.0),
+            spawn: (2048.0, 2048.0),
+            kind,
+            seed,
         };
-        for y in 0..SIZE as i32 {
-            for x in 0..SIZE as i32 {
-                let i = index(x, y, SIZE);
-                let d = elevation[i] - sea;
-                let noise = hash(i as u32);
-                if d < 0.0 {
-                    let depth = -d + (noise as f32 - 128.0) * 0.00004;
-                    world.materials[i] = if depth > 0.07 {
+        for y in 0..SIZE {
+            let gy = y / CELL;
+            let gy1 = (gy + 1) % NOISE_SIZE;
+            let ty = (y % CELL) as f32 / CELL as f32;
+            for x in 0..SIZE {
+                let gx = x / CELL;
+                let gx1 = (gx + 1) % NOISE_SIZE;
+                let tx = (x % CELL) as f32 / CELL as f32;
+                let a = elevation[gy * NOISE_SIZE + gx];
+                let b = elevation[gy * NOISE_SIZE + gx1];
+                let c = elevation[gy1 * NOISE_SIZE + gx];
+                let d = elevation[gy1 * NOISE_SIZE + gx1];
+                let h = a + (b - a) * tx + (c - a + (d - c - b + a) * tx) * ty;
+                let at = y * SIZE + x;
+                let n = hash(at as u32 ^ seed);
+                let level = h.max(0.0).round().min(79.0) as u8;
+                world.heights[at] = level;
+                world.materials[at] = if h < 0.2 {
+                    if kind == MapKind::Wetlands {
+                        if n < 15 { 3 } else { 2 }
+                    } else if h < -12.0 {
                         0
-                    } else if depth > 0.03 {
+                    } else if h < -5.0 {
                         1
-                    } else if depth > 0.008 {
+                    } else if h < -0.6 {
                         2
                     } else {
                         3
-                    };
-                } else if d < 0.012 {
-                    world.materials[i] = if noise < 34 { 5 } else { 4 };
+                    }
                 } else {
-                    let h = (d - 0.012) / span;
-                    let level = if h < 0.5 {
-                        1 + (h * 16.0) as u8
-                    } else if h < 0.78 {
-                        9 + ((h - 0.5) / 0.07) as u8
-                    } else {
-                        13 + ((h - 0.78) / 0.09) as u8
-                    }
-                    .min(15);
-                    world.heights[i] = if level <= 8 {
-                        level * 2
-                    } else {
-                        16 + (level - 8) * 3
-                    };
-                    let gradient =
-                        elevation[index(x - 2, y - 2, SIZE)] - elevation[index(x + 2, y + 2, SIZE)];
-                    world.materials[i] = if level >= 13 {
-                        if gradient > 0.007 { 16 } else { 15 }
-                    } else if level >= 9 {
-                        if gradient < -0.007 {
-                            14
-                        } else if gradient > 0.007 || noise < 26 {
-                            13
-                        } else {
-                            12
-                        }
-                    } else if gradient < -0.007 {
-                        8
-                    } else if gradient > 0.007 || noise < 22 {
-                        7
-                    } else if noise > 240 {
-                        8
-                    } else {
-                        6
-                    };
-                }
-            }
-        }
-        for gy in (0..SIZE as i32).step_by(5) {
-            for gx in (0..SIZE as i32).step_by(5) {
-                let noise = hash((gy * 977 + gx * 131 + 7) as u32);
-                let cx = gx + (noise & 3) as i32;
-                let cy = gy + ((noise >> 2) & 3) as i32;
-                let i = index(cx, cy, SIZE);
-                let h0 = world.heights[i];
-                if !(6..=8).contains(&world.materials[i]) || h0 > 14 {
-                    continue;
-                }
-                let density =
-                    (elevation[index(SIZE as i32 - 1 - cx + 911, cy + 613, SIZE)] - sea) * 30.0;
-                if density <= 0.0 || density * 255.0 < hash(i as u32 + 99) as f32 {
-                    continue;
-                }
-                let radius = 2 + ((noise >> 4) & 1) as i32;
-                for dy in -radius..=radius {
-                    for dx in -radius..=radius {
-                        let distance = ((dx * dx + dy * dy) as f32).sqrt();
-                        if distance > radius as f32 + 0.3 {
-                            continue;
-                        }
-                        let at = index(cx + dx, cy + dy, SIZE);
-                        if world.materials[at] < 4 {
-                            continue;
-                        }
-                        let height = h0
-                            + 1
-                            + ((1.0 - distance / (radius as f32 + 0.5)) * (radius + 1) as f32)
-                                .round() as u8;
-                        if height > world.heights[at] {
-                            world.heights[at] = height;
-                            world.materials[at] = if distance < 1.1 {
-                                9
-                            } else if distance < radius as f32 - 0.5 {
-                                10
+                    match kind {
+                        MapKind::Islands => {
+                            if h < 1.6 {
+                                if n < 40 { 5 } else { 4 }
+                            } else if h > 45.0 {
+                                15 + u8::from(n < 80)
+                            } else if h > 28.0 {
+                                12 + n % 3
                             } else {
-                                11
-                            };
+                                6 + u8::from(n < 40) + u8::from(n > 240) * 2
+                            }
+                        }
+                        MapKind::Alpine => {
+                            if h > 44.0 {
+                                if n < 40 { 26 } else { 15 + u8::from(n < 90) }
+                            } else if h > 25.0 {
+                                12 + n % 3
+                            } else {
+                                6 + u8::from(n < 60)
+                            }
+                        }
+                        MapKind::Canyon => {
+                            if h < 4.0 {
+                                17
+                            } else if (level / 5).is_multiple_of(2) {
+                                19
+                            } else {
+                                20
+                            }
+                        }
+                        MapKind::Desert => {
+                            if (b - a) + (d - c) > 0.0 {
+                                17
+                            } else {
+                                18
+                            }
+                        }
+                        MapKind::Wetlands => {
+                            if h < 1.8 {
+                                25
+                            } else if n < 70 {
+                                6
+                            } else {
+                                24
+                            }
+                        }
+                        MapKind::Volcanic => {
+                            if lava[gy * NOISE_SIZE + gx] {
+                                23
+                            } else if level > 50 || n < 50 {
+                                22
+                            } else {
+                                21
+                            }
+                        }
+                    }
+                };
+            }
+        }
+        if matches!(kind, MapKind::Islands | MapKind::Alpine | MapKind::Wetlands) {
+            for gy in (0..SIZE as i32).step_by(6) {
+                for gx in (0..SIZE as i32).step_by(6) {
+                    let n = hash((gy * 977 + gx * 131) as u32 ^ seed);
+                    let cx = gx + (n & 3) as i32;
+                    let cy = gy + ((n >> 2) & 3) as i32;
+                    let at = index(cx, cy, SIZE);
+                    let material = world.materials[at];
+                    if !(6..=8).contains(&material) && material != 24 {
+                        continue;
+                    }
+                    if n > if kind == MapKind::Wetlands { 170 } else { 115 } {
+                        continue;
+                    }
+                    let base = world.heights[at];
+                    let radius = 1 + (n & 1) as i32;
+                    for dy in -radius..=radius {
+                        for dx in -radius..=radius {
+                            let distance = dx.abs() + dy.abs();
+                            if distance > radius + 1 {
+                                continue;
+                            }
+                            let cell = index(cx + dx, cy + dy, SIZE);
+                            if world.materials[cell] < 6 {
+                                continue;
+                            }
+                            let height = base + 2 + (radius + 1 - distance).max(0) as u8;
+                            if height > world.heights[cell] {
+                                world.heights[cell] = height;
+                                world.materials[cell] = if distance == 0 {
+                                    9
+                                } else if dx + dy < 0 {
+                                    10
+                                } else {
+                                    11
+                                };
+                            }
                         }
                     }
                 }
             }
         }
-        let mut best = -1;
-        for _ in 0..400 {
+        let mut best = -1.0;
+        for _ in 0..600 {
             let x = (random.next() * SIZE as f32) as i32;
             let y = (random.next() * SIZE as f32) as i32;
-            if world.materials[index(x, y, SIZE)] > 2 {
-                continue;
+            let base = world.height(x as f32, y as f32);
+            let mut score = 0.0;
+            for a in 0..8 {
+                let angle = a as f32 * std::f32::consts::FRAC_PI_4;
+                let at = index(
+                    x + (angle.sin() * 160.0) as i32,
+                    y - (angle.cos() * 160.0) as i32,
+                    SIZE,
+                );
+                score += (world.heights[at] as f32 - base).abs();
+                if world.materials[at] < 4 {
+                    score += 4.0;
+                }
             }
-            let nearby = (0..8)
-                .filter(|a| {
-                    let angle = *a as f32 * std::f32::consts::FRAC_PI_4;
-                    world.materials[index(
-                        x + (angle.cos() * 120.0) as i32,
-                        y + (angle.sin() * 120.0) as i32,
-                        SIZE,
-                    )] >= 4
-                })
-                .count() as i32;
-            if nearby > best && nearby <= 5 {
-                best = nearby;
+            if score > best && base < 45.0 {
+                best = score;
                 world.spawn = (x as f32, y as f32);
             }
         }
-        for cluster in 0..200 {
+        if kind == MapKind::Volcanic {
+            world.spawn = (532.0 * CELL as f32 - 180.0, 508.0 * CELL as f32 + 630.0);
+        }
+        for cluster in 0..800 {
             let rank = (cluster & 15) as u8;
             let cx = random.next() * CLOUD_SIZE as f32;
             let cy = random.next() * CLOUD_SIZE as f32;
@@ -255,7 +424,6 @@ impl World {
     pub fn height(&self, x: f32, y: f32) -> f32 {
         self.heights[index(x.floor() as i32, y.floor() as i32, SIZE)] as f32
     }
-
     pub fn cloud(&self, x: f32, y: f32, time: f32) -> usize {
         let cell = self.clouds[index(
             (x - time * 7.0).floor() as i32,
@@ -266,6 +434,45 @@ impl World {
             (cell & 15) as usize
         } else {
             0
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_have_distinct_terrain_and_valid_periodic_samples() {
+        let mut signatures = std::collections::HashSet::new();
+        for kind in MapKind::ALL {
+            let world = World::generate(kind, kind.seed());
+            assert_eq!(world.heights.len(), SIZE * SIZE);
+            assert!(world.heights.iter().all(|&h| (h as usize) <= MAX_HEIGHT));
+            assert!(
+                world
+                    .materials
+                    .iter()
+                    .all(|&m| (m as usize) < MATERIAL_COUNT)
+            );
+            let signature = world
+                .heights
+                .iter()
+                .zip(&world.materials)
+                .step_by(997)
+                .fold(0_u64, |sum, (&h, &m)| {
+                    sum.wrapping_mul(31).wrapping_add(h as u64 * 32 + m as u64)
+                });
+            assert!(signatures.insert(signature));
+            assert_eq!(
+                world.height(-17.0, 85.0),
+                world.height(SIZE as f32 - 17.0, 85.0)
+            );
+            assert_eq!(
+                world.height(124.0, SIZE as f32 + 71.0),
+                world.height(124.0, 71.0)
+            );
+            assert!(world.height(world.spawn.0, world.spawn.1) < 80.0);
         }
     }
 }

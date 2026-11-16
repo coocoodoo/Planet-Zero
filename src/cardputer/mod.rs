@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use crate::flight::{Controls, Flight};
 use crate::render::Renderer;
-use crate::world::World;
+use crate::world::{World, WorldLoader};
 
 #[cfg(target_os = "linux")]
 pub mod linux;
@@ -16,6 +16,8 @@ pub const HEIGHT: usize = 170;
 
 pub struct Game {
     pub world: World,
+    loader: WorldLoader,
+    menu_page: usize,
     pub flight: Flight,
     pub renderer: Renderer,
     pub screen: Vec<u8>,
@@ -39,10 +41,15 @@ impl Default for Game {
 
 impl Game {
     pub fn new() -> Self {
-        let world = World::new(7);
+        Self::with_world(World::new(7))
+    }
+
+    pub fn with_world(world: World) -> Self {
         let flight = Flight::new(&world);
         Self {
             world,
+            loader: WorldLoader::default(),
+            menu_page: 0,
             flight,
             renderer: Renderer::new(),
             screen: vec![0; WIDTH * HEIGHT * 4],
@@ -75,6 +82,10 @@ impl Game {
         if value != 1 || !self.keys.insert(code) {
             return;
         }
+        if self.menu && [44, 46, 105, 106].contains(&code) {
+            self.menu_page = (self.menu_page + 1) % 2;
+            return;
+        }
         match code {
             1 => self.escape_since = Some(Instant::now()),
             40 | 5 | 57 => self.flight.view = (self.flight.view + 1) % 3,
@@ -92,6 +103,13 @@ impl Game {
                 self.flight = Flight::new(&self.world);
                 self.auto = !self.imu_enabled;
             }
+            50 => {
+                let kind = self.world.kind.next();
+                self.loader.start(kind, kind.seed());
+            }
+            49 => self
+                .loader
+                .start(self.world.kind, self.world.seed.wrapping_add(7919)),
             36 => self.flight.set_demo(!self.flight.demo),
             23 => {
                 self.flight.set_demo(false);
@@ -123,6 +141,10 @@ impl Game {
     }
 
     pub fn step(&mut self, dt: f32) {
+        if let Some(world) = self.loader.poll() {
+            self.flight.change_world(&world);
+            self.world = world;
+        }
         if self
             .escape_since
             .is_some_and(|t| t.elapsed() >= Duration::from_secs(2))
@@ -199,12 +221,20 @@ impl Game {
             },
             [224, 241, 245],
         );
+        if !self.menu {
+            let label = self.loader.pending.map_or_else(
+                || self.world.kind.name().to_owned(),
+                |map| format!("LOADING {}", map.name()),
+            );
+            shade(&mut self.screen, 4, 14, 180, 11);
+            text(&mut self.screen, 8, 16, &label, [206, 227, 225]);
+        }
         if self.flight.demo && !self.menu {
-            shade(&mut self.screen, 4, 16, 160, 12);
+            shade(&mut self.screen, 4, 27, 160, 12);
             text(
                 &mut self.screen,
                 8,
-                18,
+                29,
                 self.flight.demonstration(),
                 [255, 205, 135],
             );
@@ -221,16 +251,32 @@ impl Game {
         }
         if self.menu || self.paused {
             shade(&mut self.screen, 10, 15, 300, 150);
-            let lines = [
-                "RUST FLY / PAUSED",
-                "Z X C F   LEFT DOWN RIGHT UP",
-                "4 SPACE   VIEW     5 Q  ROLL",
-                "6 SHIFT   BOOST    7 T  LIGHT",
-                "8 H ESC   MENU     V    WINGS",
-                "I MOTION  K ZERO   TAB  AUTO",
-                "J DEMO  B SLICES  R RESET  P PAUSE",
-                "ENTER RESUME  HOLD ESC EXIT",
-            ];
+            let lines: Vec<String> = if self.menu_page == 0 {
+                [
+                    "RUST FLY / FLIGHT 1/2",
+                    "Z X C F   LEFT DOWN RIGHT UP",
+                    "4 SPACE   VIEW     5 Q  ROLL",
+                    "6 SHIFT   BOOST    7 T  LIGHT",
+                    "I MOTION  K ZERO   TAB  AUTO",
+                    "J DEMO    V WINGS  P    PAUSE",
+                    "8 H ESC MENU  HOLD ESC EXIT",
+                    "Z/C PAGE    ENTER RESUME",
+                ]
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+            } else {
+                vec![
+                    "RUST FLY / WORLD 2/2".into(),
+                    format!("MAP {}", self.world.kind.name()),
+                    "M NEXT MAP   N NEW SEED".into(),
+                    format!("SEED {}", self.world.seed),
+                    "J DEMO   V WINGS   B SLICES".into(),
+                    "R RESET  7 T LIGHT  P PAUSE".into(),
+                    "8 H ESC MENU  HOLD ESC EXIT".into(),
+                    "Z/C PAGE    ENTER RESUME".into(),
+                ]
+            };
             for (row, line) in lines.iter().enumerate() {
                 text(
                     &mut self.screen,

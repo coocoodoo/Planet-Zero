@@ -2,10 +2,10 @@ use glam::{Vec2, vec2, vec3};
 
 use crate::flight::{Camera, Flight, MODEL_SCALE};
 use crate::palette::JET;
-use crate::world::{CLOUD_ALT, MAX_HEIGHT, SIZE, World, hash, index};
+use crate::world::{CLOUD_ALT, MATERIAL_COUNT, MAX_HEIGHT, SIZE, World, hash, index};
 
 const MODEL: &[u8] = include_bytes!("../assets/jet.bin");
-const TOP: [[u8; 3]; 17] = [
+const TOP: [[u8; 3]; MATERIAL_COUNT] = [
     [36, 104, 180],
     [44, 124, 198],
     [66, 160, 216],
@@ -23,8 +23,18 @@ const TOP: [[u8; 3]; 17] = [
     [178, 172, 162],
     [246, 250, 255],
     [214, 226, 244],
+    [206, 155, 76],
+    [242, 194, 112],
+    [172, 101, 58],
+    [219, 144, 78],
+    [43, 45, 53],
+    [86, 76, 80],
+    [255, 98, 23],
+    [58, 126, 89],
+    [107, 99, 64],
+    [119, 194, 215],
 ];
-const SIDE: [[u8; 3]; 17] = [
+const SIDE: [[u8; 3]; MATERIAL_COUNT] = [
     [36, 104, 180],
     [44, 124, 198],
     [66, 160, 216],
@@ -42,6 +52,16 @@ const SIDE: [[u8; 3]; 17] = [
     [104, 98, 98],
     [186, 202, 228],
     [176, 192, 220],
+    [166, 116, 58],
+    [198, 149, 80],
+    [116, 64, 41],
+    [159, 96, 53],
+    [28, 30, 39],
+    [53, 48, 57],
+    [181, 41, 13],
+    [39, 83, 59],
+    [74, 67, 45],
+    [76, 133, 163],
 ];
 
 pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
@@ -314,18 +334,18 @@ impl Renderer {
             2 => rgb(28, 44, 92),
             _ => rgb(188, 224, 246),
         };
-        let mut colors = [[[[0_u32; 2]; 19]; 2]; 11];
+        let mut colors = [[[[0_u32; 2]; MATERIAL_COUNT + 2]; 2]; 11];
         let mut clouds = [[0_u32; 9]; 11];
         for fog in 0..=10 {
             let amount = fog as f32 / 10.0;
             for (shade, materials) in colors[fog].iter_mut().enumerate() {
                 for (material, faces) in materials.iter_mut().enumerate() {
                     let color = match material {
-                        17 => grade(rgb(240, 252, 255), theme),
-                        18 => grade(rgb(160, 211, 244), theme),
+                        MATERIAL_COUNT => grade(rgb(240, 252, 255), theme),
+                        m if m == MATERIAL_COUNT + 1 => grade(rgb(160, 211, 244), theme),
                         _ => top[material],
                     };
-                    let side = if !(4..17).contains(&material) {
+                    let side = if !(4..MATERIAL_COUNT).contains(&material) {
                         color
                     } else {
                         sides[material]
@@ -378,7 +398,7 @@ impl Renderer {
         } else {
             view_distance
         };
-        let mut rows = [0_i32; 49];
+        let mut rows = [0_i32; MAX_HEIGHT + 1];
         for (z, row) in rows.iter_mut().enumerate() {
             *row = (cy - scale / (1.0 + q * distance) * (slope * distance - altitude + z as f32))
                 .floor() as i32;
@@ -476,12 +496,12 @@ impl Renderer {
                     if material == 3
                         && hash((at as u32).wrapping_add((flight.time * 36.0) as u32)) < 120
                     {
-                        material = 17;
+                        material = MATERIAL_COUNT;
                     } else if material < 3
                         && inverse < 1.8
                         && hash(index((gx + (flight.time * 6.0) as i32) >> 2, gy, 256) as u32) > 247
                     {
-                        material = 18;
+                        material = MATERIAL_COUNT + 1;
                     }
                     let [color, side] = colors[fog_index][usize::from(shade)][material];
                     if previous[h] < highest {

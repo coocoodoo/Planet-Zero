@@ -1,7 +1,7 @@
 use macroquad::prelude::*;
 use rust_fly::flight::{Camera, Controls, Flight, angle};
 use rust_fly::render::Renderer;
-use rust_fly::world::World;
+use rust_fly::world::{World, WorldLoader};
 use std::path::Path;
 use std::time::Instant;
 
@@ -154,7 +154,8 @@ async fn capture(directory: &Path, world: &World, renderer: &mut Renderer) {
 #[macroquad::main(configuration)]
 async fn main() {
     let started = Instant::now();
-    let world = World::new(7);
+    let mut world = World::new(7);
+    let mut loader = WorldLoader::default();
     println!(
         "地形生成完成：{:.0} ms",
         started.elapsed().as_secs_f64() * 1000.0
@@ -179,6 +180,17 @@ async fn main() {
     let mut render_ms = 0.0;
     loop {
         let dt = get_frame_time().min(0.05);
+        if let Some(next) = loader.poll() {
+            flight.change_world(&next);
+            world = next;
+        }
+        if is_key_pressed(KeyCode::M) {
+            let kind = world.kind.next();
+            loader.start(kind, kind.seed());
+        }
+        if is_key_pressed(KeyCode::N) {
+            loader.start(world.kind, world.seed.wrapping_add(7919));
+        }
         let width = (screen_width() / 3.0).round().clamp(160.0, 720.0) as usize;
         let height = (width as f32 * screen_height() / screen_width())
             .round()
@@ -290,6 +302,23 @@ async fn main() {
         draw_frame(&texture);
         if hint {
             help(&flight, theme, render_ms, paused);
+            let label = loader.pending.map_or_else(
+                || {
+                    format!(
+                        "{} / SEED {} / M MAP / N SEED",
+                        world.kind.name(),
+                        world.seed
+                    )
+                },
+                |map| format!("LOADING {}", map.name()),
+            );
+            draw_text(
+                &label,
+                28.0,
+                88.0,
+                16.0,
+                Color::from_rgba(212, 232, 226, 255),
+            );
         }
         next_frame().await;
     }
