@@ -1,0 +1,240 @@
+use glam::{Vec2, Vec3, vec2, vec3};
+use std::collections::VecDeque;
+use std::f32::consts::TAU;
+
+use crate::world::World;
+
+pub fn angle(value: f32) -> f32 {
+    value - TAU * (value / TAU).round()
+}
+
+pub fn ease(rate: f32, dt: f32) -> f32 {
+    1.0 - (-rate * dt).exp()
+}
+
+#[derive(Default)]
+pub struct Controls {
+    pub bank: Option<f32>,
+    pub turn: f32,
+    pub climb: f32,
+    pub boost: bool,
+    pub manual: bool,
+}
+
+#[derive(Clone)]
+pub struct Flight {
+    pub wingmen: Vec<Flight>,
+    pub wing_count: usize,
+    pub position: Vec3,
+    pub yaw: f32,
+    pub bank: f32,
+    pub pitch: f32,
+    pub rate: f32,
+    pub boost: f32,
+    pub speed: f32,
+    pub time: f32,
+    pub spin: f32,
+    pub view: usize,
+    pub weights: [f32; 3],
+    pub follow: Vec3,
+    pub camera_yaw: f32,
+    pub trails: VecDeque<[Vec3; 2]>,
+    pub spread: f32,
+    pub exploded: bool,
+    roll_time: f32,
+    trail_time: f32,
+}
+
+impl Flight {
+    pub fn new(world: &World) -> Self {
+        let position = vec3(world.spawn.0, world.spawn.1, 110.0);
+        let mut flight = Self {
+            wingmen: Vec::new(),
+            wing_count: 2,
+            position,
+            yaw: 0.55,
+            bank: 0.0,
+            pitch: 0.0,
+            rate: 0.0,
+            boost: 0.0,
+            speed: 92.0,
+            time: 0.0,
+            spin: 0.0,
+            view: 0,
+            weights: [1.0, 0.0, 0.0],
+            follow: position,
+            camera_yaw: -0.33,
+            trails: VecDeque::with_capacity(160),
+            spread: 1.0,
+            exploded: false,
+            roll_time: -1.0,
+            trail_time: 0.0,
+        };
+        for side in [-1.0, 1.0] {
+            let mut wing = flight.clone();
+            wing.wingmen.clear();
+            wing.wing_count = 0;
+            wing.position = flight.local(vec3(side * 45.0, 116.0, 3.0));
+            flight.wingmen.push(wing);
+        }
+        flight
+    }
+
+    pub fn roll(&mut self) {
+        if self.roll_time < 0.0 {
+            self.roll_time = 0.0;
+        }
+    }
+
+    pub fn axes(&self) -> [Vec3; 3] {
+        let (sy, cy) = self.yaw.sin_cos();
+        let (sr, cr) = (self.bank + self.spin).sin_cos();
+        let (sp, cp) = self.pitch.sin_cos();
+        let right = vec3(cy * cr, sy * cr, -sr);
+        let up = vec3(cy * sr, sy * sr, cr);
+        let forward = vec3(sy, -cy, 0.0);
+        [right, forward * cp + up * sp, up * cp - forward * sp]
+    }
+
+    pub fn local(&self, point: Vec3) -> Vec3 {
+        let [right, forward, up] = self.axes();
+        self.position + (right * point.x + forward * point.y + up * point.z) * 0.6
+    }
+
+    pub fn step(&mut self, dt: f32, controls: &Controls, world: &World) {
+        self.time += dt;
+        let boost_goal = f32::from(controls.boost);
+        self.boost += (boost_goal - self.boost) * ease(4.0, dt);
+        self.speed = 92.0 * (1.0 + self.boost * 0.8);
+        let turn = if controls.manual {
+            controls.turn
+        } else {
+            0.62 * (self.time * 0.31 + 1.3).sin() + 0.38 * (self.time * 0.73 + 0.4).sin()
+        };
+        self.rate += (turn.clamp(-1.0, 1.0) * 1.25 - self.rate) * ease(2.6, dt);
+        self.yaw += self.rate * dt;
+        self.bank += (controls
+            .bank
+            .unwrap_or(self.rate / 1.25 * 52.0_f32.to_radians())
+            - self.bank)
+            * ease(5.0, dt);
+        self.position.x += self.yaw.sin() * self.speed * dt;
+        self.position.y -= self.yaw.cos() * self.speed * dt;
+        let climb = if controls.manual {
+            controls.climb * self.speed * 0.55
+        } else {
+            (110.0 - self.position.z) * 0.6
+        };
+        let ahead = self.position + vec3(self.yaw.sin(), -self.yaw.cos(), 0.0) * self.speed * 0.6;
+        let floor = world
+            .height(ahead.x, ahead.y)
+            .max(world.height(self.position.x, self.position.y))
+            + 7.0;
+        self.position.z = (self.position.z + climb * dt).clamp(floor, 300.0);
+        self.pitch += ((climb / self.speed).clamp(-0.5, 0.5) - self.pitch) * ease(4.0, dt);
+        if self.roll_time >= 0.0 {
+            self.roll_time += dt / 1.0;
+            let t = self.roll_time.min(1.0);
+            self.spin = t * t * (3.0 - 2.0 * t) * TAU;
+            if self.roll_time >= 1.0 {
+                self.roll_time = -1.0;
+                self.spin = 0.0;
+            }
+        }
+        self.follow += (self.position - self.follow) * ease(4.5, dt);
+        self.camera_yaw += angle(-self.yaw * 0.6 - self.camera_yaw) * ease(1.5, dt);
+        for i in 0..3 {
+            self.weights[i] += (f32::from(i == self.view) - self.weights[i]) * ease(3.2, dt);
+        }
+        self.spread += ((if self.exploded { 5.0 } else { 1.0 }) - self.spread) * ease(5.0, dt);
+        for (i, wing) in self.wingmen.iter_mut().enumerate() {
+            let side = if i == 0 { -1.0 } else { 1.0 };
+            let (sy, cy) = self.yaw.sin_cos();
+            let goal = self.position
+                + vec3(cy, sy, 0.0) * side * 27.0
+                + vec3(sy, -cy, 0.0) * 70.0
+                + vec3(0.0, 0.0, 2.0 + (self.time * 1.3 + i as f32 * 2.0).sin());
+            wing.position += (goal - wing.position) * ease(4.5, dt);
+            wing.yaw += angle(self.yaw - wing.yaw) * ease(4.0, dt);
+            wing.bank += (self.bank - wing.bank) * ease(3.2, dt);
+            wing.pitch += (self.pitch - wing.pitch) * ease(3.0, dt);
+            wing.time = self.time + i as f32 * 0.17;
+            wing.boost = self.boost;
+            wing.speed = self.speed;
+            wing.rate = self.rate;
+            wing.spin = self.spin;
+            wing.trail_time += dt;
+            if wing.trail_time >= 0.025 {
+                wing.trail_time %= 0.025;
+                wing.trails.push_front([
+                    wing.local(vec3(-15.5, -7.7, -1.0)),
+                    wing.local(vec3(15.5, -7.7, -1.0)),
+                ]);
+                wing.trails.truncate(100);
+            }
+        }
+        self.trail_time += dt;
+        if self.trail_time >= 0.025 {
+            self.trail_time %= 0.025;
+            self.trails.push_front([
+                self.local(vec3(-15.5, -7.7, -1.0)),
+                self.local(vec3(15.5, -7.7, -1.0)),
+            ]);
+            self.trails.truncate(160);
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Camera {
+    pub position: Vec3,
+    pub yaw: f32,
+    pub q: f32,
+    pub scale: f32,
+    pub slope: f32,
+    pub center: Vec2,
+}
+
+impl Camera {
+    pub fn new(flight: &Flight, width: usize, height: usize) -> Self {
+        let [top, chase, cockpit] = flight.weights;
+        let w = width as f32;
+        let h = height as f32;
+        let zoom = (0.19 * w / (34.0 * 0.6)).max(1.0);
+        let focal = w * 0.6;
+        let target = flight.position + vec3(flight.yaw.sin() * 64.0, -flight.yaw.cos() * 64.0, 1.8);
+        let position = flight.follow.lerp(target, cockpit);
+        let q = chase / (2.6 * 46.0 * 0.6 * (1.0 - 0.16 * flight.boost)) + cockpit / 64.0;
+        let scale = (chase * zoom.ln() + cockpit * (focal / 64.0).ln()).exp();
+        let slope = (45.0 * top + 12.0 * chase).to_radians().tan() - flight.pitch * 0.5 * chase;
+        Self {
+            position,
+            yaw: flight.camera_yaw + angle(-flight.yaw - flight.camera_yaw) * (chase + cockpit),
+            q,
+            scale,
+            slope: slope.max((2.0 - position.z) * q),
+            center: vec2(
+                w * 0.5,
+                h * (0.5 * top + 0.64 * chase + 0.43 * cockpit)
+                    + cockpit * focal * flight.pitch.tan(),
+            ),
+        }
+    }
+
+    pub fn project(&self, point: Vec3) -> Option<(Vec2, f32, f32)> {
+        // q 为零时使用等比例投影，增大 q 后远处的物体逐渐缩小
+        let delta = point - self.position;
+        let (s, c) = self.yaw.sin_cos();
+        let depth = -(delta.x * s + delta.y * c);
+        let denominator = 1.0 + self.q * depth;
+        if denominator < 0.12 {
+            return None;
+        }
+        let scale = self.scale / denominator;
+        Some((
+            self.center + vec2(delta.x * c - delta.y * s, -(delta.z + self.slope * depth)) * scale,
+            depth,
+            scale,
+        ))
+    }
+}

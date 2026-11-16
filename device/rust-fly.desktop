@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Rust Fly
+Exec=/usr/share/APPLaunch/bin/rust-fly-cardputer
+Icon=share/images/rust-fly.png
+Terminal=false
+Categories=Game;
