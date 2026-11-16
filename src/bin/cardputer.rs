@@ -133,29 +133,74 @@ fn report(name: &str, scale: usize, samples: &mut [f64]) {
     );
 }
 
+fn keep_benchmark_active(game: &mut Game) {
+    if game.mode == rust_fly::arcade::Mode::Combat {
+        // 性能采样期间维持双方护盾和僚机，持续绘制战斗场景
+        game.mission.health = game.mission.max_health;
+        game.mission.support = 30.0;
+        for enemy in &mut game.mission.enemies {
+            enemy.health = enemy.max_health;
+        }
+    }
+}
+
 fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Box<dyn Error>> {
-    for (view, name) in ["top", "chase", "cockpit"].into_iter().enumerate() {
+    let scenes = if game.mode == rust_fly::arcade::Mode::Combat {
+        6
+    } else {
+        3
+    };
+    for scene in 0..scenes {
+        let view = scene % 3;
+        let base = ["top", "chase", "cockpit"][view];
+        let name = if scene >= 3 {
+            format!("boss-{base}")
+        } else {
+            base.to_owned()
+        };
         game.start();
+        game.mission.shuffle_encounters(7109);
+        if game.mode == rust_fly::arcade::Mode::Combat {
+            game.mission.wave = if scene >= 3 { 4 } else { 3 };
+            game.mission.support = 30.0;
+        }
+
         game.flight.set_demo(options.demo);
         game.flight.weather = options.weather;
         game.flight.view = view;
         game.flight.weights = [0.0; 3];
         game.flight.weights[view] = 1.0;
-        for _ in 0..60 {
+        for _ in 0..if game.mode == rust_fly::arcade::Mode::Free {
+            60
+        } else {
+            240
+        } {
+            keep_benchmark_active(game);
             game.step(1.0 / 30.0);
         }
         let mut samples = Vec::with_capacity(frames);
         let mut stages = [0.0; 3];
+        let mut peak_projectiles = 0;
         for _ in 0..frames {
             let start = Instant::now();
+            keep_benchmark_active(game);
             game.step(1.0 / 30.0);
+            peak_projectiles = peak_projectiles.max(game.mission.shots.len());
             game.draw();
             for (total, value) in stages.iter_mut().zip(game.renderer.stages) {
                 *total += value;
             }
             samples.push(start.elapsed().as_secs_f64() * 1000.0);
         }
-        report(name, options.scale, &mut samples);
+        report(&name, options.scale, &mut samples);
+        println!(
+            "{{\"scene\":\"{name}\",\"mode\":\"{}\",\"wave\":{},\"enemies\":{},\"projectiles\":{},\"peak_projectiles\":{peak_projectiles},\"page\":\"{:?}\"}}",
+            game.mode.name(),
+            game.mission.wave,
+            game.mission.enemies.len(),
+            game.mission.shots.len(),
+            game.page
+        );
         eprintln!(
             "{name} stages [cockpit, world, jets]: {:?}",
             stages.map(|t| t / frames as f64)

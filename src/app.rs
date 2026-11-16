@@ -128,6 +128,11 @@ impl App {
         self.keys.clear();
     }
 
+    pub fn release_keys(&mut self) {
+        self.keys.clear();
+        self.escape_since = None;
+    }
+
     pub fn controls(&self) -> Controls {
         let held = |codes: &[u16]| codes.iter().any(|code| self.keys.contains(code));
         Controls {

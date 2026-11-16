@@ -45,7 +45,9 @@ impl Game {
             if code == 23 {
                 self.imu_enabled = !self.imu_enabled;
                 self.auto = false;
-                self.flight.set_demo(false);
+                if self.page == Page::Playing {
+                    self.flight.set_demo(false);
+                }
                 if self.imu_enabled {
                     self.calibrate_imu = true;
                 }
@@ -63,7 +65,7 @@ impl Game {
         }
     }
     pub fn release_keys(&mut self) {
-        self.app.keys.clear();
+        self.app.release_keys();
     }
     pub fn step(&mut self, dt: f32) {
         let mut controls = self.app.controls();

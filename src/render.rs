@@ -577,6 +577,37 @@ impl Renderer {
                 rgb(144, 238, 255),
             );
         }
+        if flight.hud && mission.mode == Mode::Combat {
+            for enemy in &mission.enemies {
+                if let Some((p, d, scale)) = camera.project(enemy.position) {
+                    let r = (enemy.radius() * scale + 3.0).clamp(4.0, 24.0);
+                    let color = if enemy.kind >= 3 {
+                        rgb(255, 181, 97)
+                    } else {
+                        rgb(255, 112, 137)
+                    };
+                    for side in [-1.0, 1.0] {
+                        for top in [-1.0, 1.0] {
+                            let corner = p + vec2(side * r, top * r * 0.6);
+                            self.stroke(corner, corner - vec2(side * 3.0, 0.0), d - 30.0, color);
+                            self.stroke(corner, corner - vec2(0.0, top * 3.0), d - 30.0, color);
+                        }
+                    }
+                }
+            }
+            if flight.weights[2] < 0.5
+                && let Some((p, d, _)) = camera.project(flight.position + flight.axes()[1] * 180.0)
+            {
+                for side in [-1.0, 1.0] {
+                    self.stroke(
+                        p + vec2(side * 3.0, 0.0),
+                        p + vec2(side * 6.0, 0.0),
+                        d - 30.0,
+                        rgb(173, 255, 233),
+                    );
+                }
+            }
+        }
         for shot in &mission.shots {
             let color = if shot.hostile {
                 rgb(255, 91, 116)
@@ -749,7 +780,10 @@ impl Renderer {
                     f.position + vec3(0.5, 0.32, 0.0) * f.position.z,
                     js,
                     jc,
-                    1.0 / (MODEL_SCALE * (f.bank + f.spin).cos().abs().max(0.3)),
+                    1.0 / (MODEL_SCALE
+                        * f.vehicle.shape().x
+                        * (f.bank + f.spin).cos().abs().max(0.3)),
+                    1.0 / (MODEL_SCALE * f.vehicle.shape().y),
                 )
             })
             .collect();
@@ -818,12 +852,12 @@ impl Renderer {
                 if rows[h] < highest || previous[h] < highest {
                     let mut material = world.materials[at] as usize;
                     let mut shade = world.cloud(wx + 20.0, wy + 12.8, flight.time) > 1;
-                    for &(shadow, js, jc, bank_scale) in &shadows {
+                    for &(shadow, js, jc, bank_scale, length_scale) in &shadows {
                         let dx = wx - shadow.x + 0.5 * h as f32;
                         let dy = wy - shadow.y + 0.32 * h as f32;
                         if dx.abs() < 35.0 && dy.abs() < 35.0 {
                             let a = (dx * jc + dy * js) * bank_scale;
-                            let b = (dx * js - dy * jc) / MODEL_SCALE;
+                            let b = (dx * js - dy * jc) * length_scale;
                             let ix = (a + 17.0).floor() as i32;
                             let iy = (25.8 - b).floor() as i32;
                             if (0..34).contains(&ix) && (0..46).contains(&iy) {

@@ -258,7 +258,11 @@ impl Mission {
             energy: 100.0,
             weapon: Weapon::Gun,
             levels: [1; 5],
-            bombs: 2,
+            bombs: if flight.vehicle == crate::vehicle::Vehicle::Atlas {
+                3
+            } else {
+                2
+            },
             support: 0.0,
             invulnerable: 0.0,
             flash: 0.0,
@@ -315,6 +319,10 @@ impl Mission {
             }
         }
         mission
+    }
+
+    pub fn coin_goal(&self) -> u32 {
+        [3000, 6000, 12000][self.difficulty as usize]
     }
 
     pub fn shuffle_encounters(&mut self, seed: u32) {
@@ -471,7 +479,7 @@ impl Mission {
             self.combat(dt, flight, world, previous, fire || self.autofire);
         }
         if self.remaining <= 0.0 && self.outcome.is_none() {
-            self.outcome = Some(self.mode == Mode::Coins && self.score >= 3000);
+            self.outcome = Some(self.mode == Mode::Coins && self.score >= self.coin_goal());
             self.announce("TIME COMPLETE");
         }
     }
@@ -505,13 +513,13 @@ impl Mission {
                 PickupKind::Coin => {
                     self.combo = (self.combo + 1).min(10);
                     self.best_combo = self.best_combo.max(self.combo);
-                    self.combo_time = 5.0;
+                    self.combo_time = 5.0 - self.difficulty as usize as f32;
                     self.score += 100 * self.combo;
                     self.announce("COIN CHAIN");
                 }
                 PickupKind::Time => {
                     self.remaining += 8.0;
-                    self.combo_time = 5.0;
+                    self.combo_time = 5.0 - self.difficulty as usize as f32;
                     self.score += 250;
                     self.announce("TIME +8 SECONDS");
                 }

@@ -137,7 +137,7 @@ pub fn draw(app: &mut App) {
                 "MISSION MANUAL / 2 OF 3",
                 "RACE : CROSS GREEN GATES IN ORDER",
                 "GATE CENTER GIVES PERFECT BONUS",
-                "COINS : 5 SECOND CHAIN / MAX X10",
+                "COINS : 3-5 SECOND CHAIN / MAX X10",
                 "WHITE PICKUP ADDS 8 SECONDS",
                 "RADAR AND ARROW POINT TO TARGET",
                 "R RETRY        ESC PAUSE",
@@ -148,9 +148,9 @@ pub fn draw(app: &mut App) {
                 "3 L FIRE       2 AUTO FIRE",
                 "O WEAPON       1 E NOVA BOMB",
                 "Q ROLL : BRIEF DAMAGE PROTECTION",
-                "COLOR ORBS UPGRADE EACH WEAPON",
-                "RED NOVA  GREEN SHIELD  BLUE AMMO",
-                "VIOLET WINGMEN SUPPORT / 30 SEC",
+                "G M L P O UPGRADE EACH WEAPON",
+                "B NOVA   S SHIELD   A ENERGY",
+                "W WINGMEN SUPPORT / 30 SECONDS",
                 "Z/C PAGE       ENTER RETURN",
             ],
         ];
@@ -440,20 +440,22 @@ pub fn draw(app: &mut App) {
             }
         } else {
             c.shade(0, 158, 320, 12);
-            c.text(
-                4,
-                161,
-                if m.mode == Mode::Race {
-                    "4 VIEW 6 BOOST  R RETRY  8 PAUSE"
-                } else {
-                    "GOLD COINS / WHITE +8S / GOAL 3000"
-                },
-                WHITE,
-            );
+            let footer = if m.mode == Mode::Race {
+                "4 VIEW 6 BOOST  R RETRY  8 PAUSE".to_owned()
+            } else {
+                format!("COINS / T +8S / GOAL {}", m.coin_goal())
+            };
+            c.text(4, 161, &footer, WHITE);
             if m.mode == Mode::Coins && m.combo > 0 {
                 c.shade(4, 30, 120, 23);
                 c.text(8, 32, &format!("CHAIN X{}", m.combo), GOLD);
-                c.bar(8, 46, 104, m.combo_time / 5.0, GOLD);
+                c.bar(
+                    8,
+                    46,
+                    104,
+                    m.combo_time / (5.0 - m.difficulty as usize as f32),
+                    GOLD,
+                );
             }
         }
         if m.message_time > 0.0 && m.countdown <= 0.0 {
