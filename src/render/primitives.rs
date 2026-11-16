@@ -81,8 +81,10 @@ impl Renderer {
             .max(b)
             .max(c)
             .min(vec2(self.w as f32 - 1.0, self.h as f32 - 1.0));
-        for y in min.y as i32..=max.y as i32 {
-            for x in min.x as i32..=max.x as i32 {
+        for x in min.x as i32..=max.x as i32 {
+            let y0 = (min.y as i32).max(self.visible[x as usize].0);
+            let y1 = (max.y as i32 + 1).min(self.visible[x as usize].1);
+            for y in y0..y1 {
                 let p = vec2(x as f32, y as f32);
                 let u = (b - p).perp_dot(c - p) / area;
                 let v = (c - p).perp_dot(a - p) / area;
@@ -113,7 +115,13 @@ impl Renderer {
         let y = p.y.round() as i32;
         for yy in y - radius..=y + radius {
             for xx in x - radius..=x + radius {
-                if xx >= 0 && yy >= 0 && xx < self.w as i32 && yy < self.h as i32 {
+                if xx >= 0
+                    && yy >= 0
+                    && xx < self.w as i32
+                    && yy < self.h as i32
+                    && (self.clip_plane.is_none()
+                        || (yy >= self.visible[xx as usize].0 && yy < self.visible[xx as usize].1))
+                {
                     let at = xx as usize * self.h + yy as usize;
                     if self.depth[at] >= depth - 1.0
                         && self

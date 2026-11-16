@@ -238,6 +238,9 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
             capture(path, &format!("{name}-{}x", options.scale), game)?;
         }
     }
+    if let Some(path) = &options.capture {
+        capture_landmarks(game, path)?;
+    }
     if game.world.kind == MapKind::Space {
         benchmark_portals(options, game, frames)?;
     }
@@ -246,6 +249,35 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
         game.draw();
         capture(path, "menu", game)?;
     }
+    Ok(())
+}
+
+fn capture_landmarks(game: &mut Game, path: &Path) -> Result<(), Box<dyn Error>> {
+    use glam::vec3;
+    let scenes = match game.world.kind {
+        MapKind::Moon => vec![
+            ("lunar-base", vec3(2180.0, 2725.0, 150.0), 0.0, 0),
+            ("lunar-crater", vec3(2210.0, 3080.0, 240.0), 0.10, 1),
+        ],
+        MapKind::Space => vec![("stellar-sun", vec3(2048.0, 2900.0, 150.0), -0.6, 1)],
+        _ => vec![],
+    };
+    for (name, position, yaw, view) in scenes {
+        game.mode = rust_fly::gameplay::Mode::Free;
+        game.start();
+        game.flight.position = position;
+        game.flight.follow = position;
+        game.flight.yaw = yaw;
+        game.flight.camera_yaw = -yaw;
+        game.flight.view = view;
+        game.flight.weights = [0.0; 3];
+        game.flight.weights[view] = 1.0;
+        game.flight.wing_count = 0;
+        game.flight.hud = false;
+        game.draw();
+        capture(path, name, game)?;
+    }
+    game.flight.hud = true;
     Ok(())
 }
 

@@ -78,9 +78,15 @@ impl World {
         Self::generate(MapKind::Islands, seed)
     }
     pub fn height(&self, x: f32, y: f32) -> f32 {
+        if self.kind == MapKind::Space {
+            return 0.0;
+        }
         self.heights[index(x.floor() as i32, y.floor() as i32, SIZE)] as f32
     }
     pub fn cloud(&self, x: f32, y: f32, time: f32) -> usize {
+        if self.kind.vacuum() {
+            return 0;
+        }
         let cell = self.clouds[index(
             (x - time * 7.0).floor() as i32,
             (y - time * 3.0).floor() as i32,

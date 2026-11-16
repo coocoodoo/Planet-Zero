@@ -323,8 +323,14 @@ fn instruments(p: &mut Paint<'_>, f: &Flight, world: &World) {
                 (f.position.y + (dx * sy - dy * cy) * 15.0) as i32,
                 SIZE,
             );
-            let material = world.materials[at];
-            let mut tone = if material >= 6 {
+            let material = if world.kind == crate::world::MapKind::Space {
+                0
+            } else {
+                world.materials[at]
+            };
+            let mut tone = if world.kind == crate::world::MapKind::Moon {
+                1 + (world.heights[at] as usize / 14).min(3)
+            } else if material >= 6 {
                 3
             } else if material >= 4 {
                 2
@@ -347,6 +353,25 @@ fn instruments(p: &mut Paint<'_>, f: &Flight, world: &World) {
                 tone = 5;
             }
             p.put(47 + x, 112 + y, crt[tone]);
+        }
+    }
+    if world.kind.vacuum() {
+        for object in &world.scenery {
+            let d = object.position - f.position;
+            let x = ((d.x * cy + d.y * sy) / 15.0).round() as i32;
+            let y = -((d.x * sy - d.y * cy) / 15.0).round() as i32;
+            if x.abs() < 23 && y.abs() < 13 {
+                p.rect(71 + x, 126 + y, 2, 2, crt[4]);
+            }
+        }
+        for portal in &world.portals {
+            let d = portal.center - f.position;
+            let x = ((d.x * cy + d.y * sy) / 15.0).round() as i32;
+            let y = -((d.x * sy - d.y * cy) / 15.0).round() as i32;
+            if x.abs() < 22 && y.abs() < 12 {
+                p.rect(70 + x, 125 + y, 3, 3, rgb(105, 211, 242));
+                p.put(71 + x, 126 + y, crt[0]);
+            }
         }
     }
     for wing in f.wingmen.iter().take(f.wing_count) {

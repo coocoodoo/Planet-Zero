@@ -5,3 +5,32 @@ height_scale = 1.0
 tree_threshold = 0
 cloud_clusters = 0
 elevation_octaves = [[128, 1.0], [32, 0.25], [8, 0.06]]
+
+[cosmic]
+spawn = [2048.0, 2900.0]
+crater_count = 210
+featured_crater = [2312.0, 2400.0, 420.0]
+
+[[cosmic.landmarks]]
+kind = "base"
+position = [2210.0, 2630.0, 0.0]
+yaw = 0.0
+scale = 1.0
+
+[[cosmic.landmarks]]
+kind = "base"
+position = [1100.0, 900.0, 0.0]
+yaw = 0.0
+scale = 1.0
+
+[[cosmic.landmarks]]
+kind = "base"
+position = [3250.0, 1100.0, 0.0]
+yaw = 0.0
+scale = 1.0
+
+[[cosmic.landmarks]]
+kind = "base"
+position = [700.0, 3200.0, 0.0]
+yaw = 0.0
+scale = 1.0

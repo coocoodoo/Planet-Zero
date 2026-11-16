@@ -35,30 +35,49 @@ impl Renderer {
             let mut samples = Vec::new();
             remote.visible.fill((self.h as i32, 0));
             let normal = entry.normal();
+            let right = entry.right();
+            let (sin, cos) = camera.yaw.sin_cos();
+            let forward = vec3(-sin, -cos, 0.0);
+            // 门平面垂直，同一屏幕列的交点深度相同
             for x in 0..self.w {
-                let (origin, mut ray) = camera.ray(vec2(x as f32, self.visible[x].0 as f32));
-                for y in self.visible[x].0..self.visible[x].1 {
-                    let (origin, direction) = if camera.q > 0.00001 {
-                        (origin, ray)
-                    } else {
-                        camera.ray(vec2(x as f32, y as f32))
-                    };
-                    let divisor = direction.dot(normal);
-                    if divisor.abs() > 0.00001 {
-                        let t = (entry.center - origin).dot(normal) / divisor;
-                        let hit = origin + direction * t;
-                        let radius = (hit - entry.center).length() / entry.radius;
-                        if (t > 0.0 || camera.q <= 0.00001) && radius < 1.19 {
-                            let depth = camera.project(hit).map_or(f32::INFINITY, |p| p.1);
-                            let at = x * self.h + y as usize;
-                            if depth < self.depth[at] {
-                                samples.push((x, y as usize, depth, radius));
-                                remote.visible[x].0 = remote.visible[x].0.min(y);
-                                remote.visible[x].1 = remote.visible[x].1.max(y + 1);
-                            }
-                        }
+                if self.visible[x].0 >= self.visible[x].1 {
+                    continue;
+                }
+                let (origin, ray) = camera.ray(vec2(x as f32, 0.0));
+                let divisor = ray.dot(normal);
+                if divisor.abs() < 0.00001 {
+                    continue;
+                }
+                let t = (entry.center - origin).dot(normal) / divisor;
+                if camera.q > 0.00001 && t <= 0.0 {
+                    continue;
+                }
+                let hit = origin + ray * t;
+                let horizontal = (hit - entry.center).dot(right) / entry.radius;
+                let extent2 = 1.19_f32.powi(2) - horizontal * horizontal;
+                if extent2 <= 0.0 {
+                    continue;
+                }
+                let step = if camera.q > 0.00001 {
+                    camera.q * t / camera.scale
+                } else {
+                    1.0 / camera.scale
+                };
+                let center_y = (hit.z - entry.center.z) / step;
+                let extent_y = extent2.sqrt() * entry.radius / step;
+                let y0 = ((center_y - extent_y).ceil() as i32).max(self.visible[x].0);
+                let y1 = ((center_y + extent_y).floor() as i32 + 1).min(self.visible[x].1);
+                let depth = (hit - camera.position).dot(forward);
+                for y in y0..y1 {
+                    let at = x * self.h + y as usize;
+                    if depth >= self.depth[at] {
+                        continue;
                     }
-                    ray.z -= camera.q / camera.scale;
+                    let vertical = (hit.z - entry.center.z - step * y as f32) / entry.radius;
+                    let radius2 = horizontal * horizontal + vertical * vertical;
+                    samples.push((x, y as usize, depth, radius2));
+                    remote.visible[x].0 = remote.visible[x].0.min(y);
+                    remote.visible[x].1 = remote.visible[x].1.max(y + 1);
                 }
             }
             if samples.is_empty() {
@@ -88,8 +107,14 @@ impl Renderer {
             } else {
                 rgb(255, 159, 62)
             };
-            for (x, y, depth, radius) in samples {
+            for (x, y, depth, radius2) in samples {
                 let at = x * self.h + y;
+                if radius2 < 0.94_f32.powi(2) {
+                    self.pixels[at] = remote.pixels[at];
+                    self.depth[at] = depth;
+                    continue;
+                }
+                let radius = radius2.sqrt();
                 let offset = vec2(x as f32, y as f32) - center;
                 let bend = (1.0 - ((radius - 1.0) / 0.19).abs()).max(0.0);
                 let swirl = (flight.time * 2.0 + radius * 18.0).sin() * bend;
@@ -152,5 +177,48 @@ mod tests {
                 assert!((origin + ray * t).distance(point) < 0.002);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod window_tests {
+    use super::*;
+    use crate::world::celestial::{Scenery, Structure};
+    #[test]
+    fn window_renders_changes_at_the_remote_exit() {
+        let mut world = World::generate(crate::world::MapKind::Space, 1999);
+        let entry = world.portals[0];
+        let exit = world.portals[1];
+        world.scenery = vec![Scenery {
+            position: exit.center + exit.normal() * 160.0,
+            yaw: 0.0,
+            scale: 1.5,
+            kind: Structure::Satellite,
+        }];
+        let mut flight = Flight::new(&world);
+        flight.position = entry.center + entry.normal() * 140.0;
+        flight.follow = flight.position;
+        flight.yaw = entry.yaw + std::f32::consts::PI;
+        flight.camera_yaw = -flight.yaw;
+        flight.weights = [0.0, 1.0, 0.0];
+        flight.wing_count = 0;
+        let mut renderer = Renderer::single();
+        renderer.render(&world, &flight, 320, 170, 0);
+        let before = renderer.rgba.clone();
+        world.scenery[0].yaw = 1.5;
+        renderer.render(&world, &flight, 320, 170, 0);
+        let changed: Vec<_> = before
+            .chunks_exact(4)
+            .zip(renderer.rgba.chunks_exact(4))
+            .enumerate()
+            .filter(|(_, (a, b))| a != b)
+            .map(|(i, _)| (i % 320, i / 320))
+            .collect();
+        assert!(changed.len() > 20);
+        assert!(
+            changed
+                .iter()
+                .all(|(x, y)| (100..220).contains(x) && (30..155).contains(y))
+        );
     }
 }

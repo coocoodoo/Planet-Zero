@@ -113,7 +113,7 @@ impl Renderer {
             self.planet(
                 camera,
                 camera.position + vec3(-0.55, -0.81, 0.3) * 12000.0,
-                260.0,
+                480.0,
                 true,
                 time,
             );
@@ -132,7 +132,9 @@ impl Renderer {
         let min = (p - Vec2::splat(extent)).max(Vec2::ZERO);
         let max = (p + Vec2::splat(extent)).min(vec2(self.w as f32 - 1.0, self.h as f32 - 1.0));
         for x in min.x as usize..=max.x as usize {
-            for y in min.y as usize..=max.y as usize {
+            let y0 = (min.y as i32).max(self.visible[x].0);
+            let y1 = (max.y as i32 + 1).min(self.visible[x].1);
+            for y in y0.max(0) as usize..y1.max(0) as usize {
                 let uv = (vec2(x as f32, y as f32) - p) / r;
                 let d = uv.length_squared();
                 let at = x * self.h + y;
@@ -451,16 +453,27 @@ impl Renderer {
             )
         });
         for (i, face) in [
-            [0, 1, 3, 2],
+            [0, 2, 3, 1],
             [4, 5, 7, 6],
             [0, 1, 5, 4],
-            [2, 3, 7, 6],
-            [0, 2, 6, 4],
+            [2, 6, 7, 3],
+            [0, 4, 6, 2],
             [1, 3, 7, 5],
         ]
         .into_iter()
         .enumerate()
         {
+            let (eye, ray) = camera.ray(camera.center);
+            let normal = (vertices[face[1]] - vertices[face[0]])
+                .cross(vertices[face[2]] - vertices[face[0]]);
+            let toward = if camera.q > 0.00001 {
+                eye - vertices[face[0]]
+            } else {
+                -ray
+            };
+            if normal.dot(toward) <= 0.0 {
+                continue;
+            }
             let shade = mix(
                 color,
                 rgb(13, 22, 40),

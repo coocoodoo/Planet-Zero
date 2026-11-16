@@ -1,8 +1,9 @@
 use super::*;
 use glam::{Vec3, vec3};
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Structure {
     Base,
     Satellite,
@@ -20,11 +21,21 @@ pub struct Scenery {
 
 impl World {
     pub(super) fn cosmic(kind: MapKind, seed: u32) -> Self {
+        let profile = crate::content::maps::definition(kind);
+        let layout = profile.cosmic.as_ref().expect("月球和太空需要场景配置");
         let mut world = Self {
-            heights: vec![0; SIZE * SIZE],
-            materials: vec![27; SIZE * SIZE],
-            clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
-            spawn: (2048.0, 2900.0),
+            heights: if kind == MapKind::Moon {
+                vec![0; SIZE * SIZE]
+            } else {
+                vec![]
+            },
+            materials: if kind == MapKind::Moon {
+                vec![27; SIZE * SIZE]
+            } else {
+                vec![]
+            },
+            clouds: vec![],
+            spawn: (layout.spawn[0], layout.spawn[1]),
             kind,
             seed,
             scenery: vec![],
@@ -33,7 +44,7 @@ impl World {
         let mut rng = Random(seed);
         if kind == MapKind::Moon {
             let mut field = vec![0.0; NOISE_SIZE * NOISE_SIZE];
-            for &(cell, amplitude) in &crate::content::maps::definition(kind).elevation_octaves {
+            for &(cell, amplitude) in &profile.elevation_octaves {
                 octave(&mut field, cell, amplitude, &mut rng);
             }
             normalize(&mut field);
@@ -41,9 +52,13 @@ impl World {
                 *value = 21.0 + *value * 18.0;
             }
             // 大型环形山和小型撞击坑共用周期高度图
-            for i in 0..210 {
+            for i in 0..layout.crater_count {
                 let (cx, cy, radius) = if i == 0 {
-                    (578.0, 600.0, 105.0)
+                    (
+                        layout.featured_crater[0] / CELL as f32,
+                        layout.featured_crater[1] / CELL as f32,
+                        layout.featured_crater[2] / CELL as f32,
+                    )
                 } else {
                     (
                         rng.next() * 1024.0,
@@ -94,12 +109,8 @@ impl World {
                     };
                 }
             }
-            for (x, y) in [
-                (2210.0, 2630.0),
-                (1100.0, 900.0),
-                (3250.0, 1100.0),
-                (700.0, 3200.0),
-            ] {
+            for landmark in &layout.landmarks {
+                let [x, y, _] = landmark.position;
                 let z = world.height(x, y);
                 for dy in -78..=78 {
                     for dx in -110..=110 {
@@ -112,39 +123,30 @@ impl World {
                 }
                 world.scenery.push(Scenery {
                     position: vec3(x, y, z),
-                    yaw: 0.0,
-                    scale: 1.0,
-                    kind: Structure::Base,
+                    yaw: landmark.yaw,
+                    scale: landmark.scale,
+                    kind: landmark.kind,
                 });
             }
         } else {
-            let forward = vec3(0.55_f32.sin(), -0.55_f32.cos(), 0.0);
-            world.portals = vec![
-                portal::Portal {
-                    center: vec3(2048.0, 2900.0, 140.0) + forward * 650.0,
-                    yaw: 0.55 + PI,
-                    radius: 58.0,
-                },
-                portal::Portal {
-                    center: vec3(800.0, 900.0, 190.0),
-                    yaw: -1.1,
-                    radius: 58.0,
-                },
-            ];
-            for (position, yaw, scale, kind) in [
-                (vec3(2350.0, 2510.0, 120.0), -0.3, 1.4, Structure::Cruiser),
-                (vec3(2110.0, 2620.0, 185.0), 0.4, 1.0, Structure::Satellite),
-                (vec3(480.0, 560.0, 230.0), 1.8, 1.8, Structure::Cruiser),
-                (vec3(540.0, 850.0, 220.0), 0.0, 1.3, Structure::Satellite),
-            ] {
-                world.scenery.push(Scenery {
-                    position,
-                    yaw,
-                    scale,
-                    kind,
-                });
-            }
-            for i in 0..110 {
+            world.portals = layout
+                .portals
+                .iter()
+                .map(|p| portal::Portal {
+                    center: Vec3::from_array(p.position),
+                    yaw: p.yaw,
+                    radius: p.radius,
+                })
+                .collect();
+            world
+                .scenery
+                .extend(layout.landmarks.iter().map(|p| Scenery {
+                    position: Vec3::from_array(p.position),
+                    yaw: p.yaw,
+                    scale: p.scale,
+                    kind: p.kind,
+                }));
+            for i in 0..layout.debris_count {
                 world.scenery.push(Scenery {
                     position: vec3(
                         rng.next() * SIZE as f32,

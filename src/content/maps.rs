@@ -11,6 +11,39 @@ pub struct MapDefinition {
     pub tree_threshold: u8,
     pub cloud_clusters: usize,
     pub elevation_octaves: Vec<(usize, f32)>,
+    #[serde(default)]
+    pub cosmic: Option<CosmicDefinition>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CosmicDefinition {
+    pub spawn: [f32; 2],
+    #[serde(default)]
+    pub crater_count: usize,
+    #[serde(default)]
+    pub featured_crater: [f32; 3],
+    #[serde(default)]
+    pub debris_count: usize,
+    #[serde(default)]
+    pub landmarks: Vec<Landmark>,
+    #[serde(default)]
+    pub portals: Vec<PortalDefinition>,
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Landmark {
+    pub position: [f32; 3],
+    pub yaw: f32,
+    pub scale: f32,
+    pub kind: crate::world::celestial::Structure,
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PortalDefinition {
+    pub position: [f32; 3],
+    pub yaw: f32,
+    pub radius: f32,
 }
 
 pub fn definition(kind: MapKind) -> &'static MapDefinition {

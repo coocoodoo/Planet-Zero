@@ -14,8 +14,26 @@ mod tests {
             assert_eq!(op.phases[2], Phase::Boss);
             assert!(op.durations[..2].iter().all(|v| *v >= 60.0 && *v < 180.0));
             assert!(op.reinforcement_seconds >= 5.0);
-            let map = super::maps::definition(op.map);
-            assert!(map.water_coverage > 0.0 && map.water_coverage < 1.0);
+        }
+        for kind in crate::world::MapKind::ALL {
+            let map = super::maps::definition(kind);
+            assert!(map.water_coverage >= 0.0 && map.water_coverage < 1.0);
+            assert_eq!(kind.vacuum(), map.cosmic.is_some());
+            if let Some(layout) = &map.cosmic {
+                assert!(
+                    layout
+                        .landmarks
+                        .iter()
+                        .all(|p| p.scale > 0.0 && p.position.iter().all(|n| n.is_finite()))
+                );
+                assert!(layout.portals.is_empty() || layout.portals.len() == 2);
+                assert!(
+                    layout
+                        .portals
+                        .iter()
+                        .all(|p| p.radius > 4.0 && p.yaw.is_finite())
+                );
+            }
             assert!(map.height_scale > 0.0 && map.height_scale <= 1.5);
             assert!(
                 map.elevation_octaves

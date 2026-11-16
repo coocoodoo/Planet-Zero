@@ -5,7 +5,14 @@ fn maps_have_distinct_terrain_and_valid_periodic_samples() {
     let mut signatures = std::collections::HashSet::new();
     for kind in MapKind::ALL {
         let world = World::generate(kind, kind.seed());
-        assert_eq!(world.heights.len(), SIZE * SIZE);
+        assert_eq!(
+            world.heights.len(),
+            if kind == MapKind::Space {
+                0
+            } else {
+                SIZE * SIZE
+            }
+        );
         assert!(world.heights.iter().all(|&h| (h as usize) <= MAX_HEIGHT));
         assert!(
             world
