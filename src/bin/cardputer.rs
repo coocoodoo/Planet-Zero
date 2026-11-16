@@ -16,6 +16,7 @@ struct Options {
     imu_test: Option<f32>,
     imu_csv: Option<PathBuf>,
     imu: bool,
+    demo: bool,
 }
 
 fn options() -> Result<Options, Box<dyn Error>> {
@@ -29,17 +30,25 @@ fn options() -> Result<Options, Box<dyn Error>> {
         imu_test: None,
         imu_csv: None,
         imu: true,
+        demo: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         if arg == "--help" {
             println!(
-                "rust-fly-cardputer [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--imu-test SECONDS] [--imu-csv PATH]"
+                "rust-fly-cardputer [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--imu-test SECONDS] [--imu-csv PATH]"
             );
             std::process::exit(0);
         }
         let value = args.next().ok_or_else(|| format!("{arg} 缺少参数值"))?;
         match arg.as_str() {
+            "--demo" => {
+                result.demo = match value.as_str() {
+                    "on" => true,
+                    "off" => false,
+                    _ => return Err("demo 支持 on 或 off".into()),
+                }
+            }
             "--imu-test" => result.imu_test = Some(value.parse()?),
             "--imu-csv" => result.imu_csv = Some(value.into()),
             "--imu" => {
@@ -100,6 +109,7 @@ fn report(name: &str, scale: usize, samples: &mut [f64]) {
 fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Box<dyn Error>> {
     for (view, name) in ["top", "chase", "cockpit"].into_iter().enumerate() {
         game.flight = rust_fly::flight::Flight::new(&game.world);
+        game.flight.set_demo(options.demo);
         game.flight.view = view;
         game.flight.weights = [0.0; 3];
         game.flight.weights[view] = 1.0;
@@ -217,9 +227,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let start = Instant::now();
     let mut game = Game::new();
     eprintln!("地形生成：{:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
-    game.flight.view = options.view;
+    game.flight.set_demo(options.demo);
+    game.flight.view = if options.demo { 1 } else { options.view };
     game.flight.weights = [0.0; 3];
-    game.flight.weights[options.view] = 1.0;
+    game.flight.weights[game.flight.view] = 1.0;
     if let Some(frames) = options.benchmark {
         return benchmark(&options, &mut game, frames);
     }

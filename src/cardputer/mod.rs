@@ -92,7 +92,9 @@ impl Game {
                 self.flight = Flight::new(&self.world);
                 self.auto = !self.imu_enabled;
             }
+            36 => self.flight.set_demo(!self.flight.demo),
             23 => {
+                self.flight.set_demo(false);
                 self.imu_enabled = !self.imu_enabled;
                 self.auto = false;
                 if self.imu_enabled {
@@ -101,12 +103,16 @@ impl Game {
             }
             37 => self.calibrate_imu = true,
             15 => {
+                self.flight.set_demo(false);
                 self.auto = !self.auto;
                 if self.auto {
                     self.imu_enabled = false;
                 }
             }
-            44 | 45 | 46 | 33 | 103 | 108 | 105 | 106 | 30 | 31 | 32 | 17 => self.auto = false,
+            44 | 45 | 46 | 33 | 103 | 108 | 105 | 106 | 30 | 31 | 32 | 17 => {
+                self.auto = false;
+                self.flight.set_demo(false);
+            }
             _ => {}
         }
     }
@@ -134,7 +140,7 @@ impl Game {
             boost: held(&[43, 7, 42, 54]),
             manual: !self.auto,
         };
-        if self.imu_enabled && self.motion.available && self.motion.ready {
+        if !self.flight.demo && self.imu_enabled && self.motion.available && self.motion.ready {
             let roll = imu::axis(self.motion.roll, 35.0_f32.to_radians());
             let pitch = imu::axis(self.motion.pitch, 30.0_f32.to_radians());
             if controls.turn == 0.0 {
@@ -176,7 +182,9 @@ impl Game {
             &mut self.screen,
             276,
             2,
-            if self.imu_enabled {
+            if self.flight.demo {
+                "DEMO"
+            } else if self.imu_enabled {
                 if !self.motion.available {
                     "FAIL"
                 } else if self.motion.ready {
@@ -191,7 +199,17 @@ impl Game {
             },
             [224, 241, 245],
         );
-        if self.imu_enabled && !self.motion.ready && !self.menu {
+        if self.flight.demo && !self.menu {
+            shade(&mut self.screen, 4, 16, 160, 12);
+            text(
+                &mut self.screen,
+                8,
+                18,
+                self.flight.demonstration(),
+                [255, 205, 135],
+            );
+        }
+        if !self.flight.demo && self.imu_enabled && !self.motion.ready && !self.menu {
             shade(&mut self.screen, 76, 18, 168, 12);
             text(
                 &mut self.screen,
@@ -210,7 +228,7 @@ impl Game {
                 "6 SHIFT   BOOST    7 T  LIGHT",
                 "8 H ESC   MENU     V    WINGS",
                 "I MOTION  K ZERO   TAB  AUTO",
-                "B SLICES  R RESET  P    PAUSE",
+                "J DEMO  B SLICES  R RESET  P PAUSE",
                 "ENTER RESUME  HOLD ESC EXIT",
             ];
             for (row, line) in lines.iter().enumerate() {

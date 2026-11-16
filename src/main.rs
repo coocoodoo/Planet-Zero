@@ -43,6 +43,9 @@ fn help(flight: &Flight, theme: usize, milliseconds: f32, paused: bool) {
         size,
         Color::from_rgba(226, 239, 243, 255),
     );
+    if flight.demo {
+        draw_text(flight.demonstration(), 28.0, 66.0, 18.0, ORANGE);
+    }
     let status = format!(
         "SPD {:03.0}   ALT {:03.0}   {:.1} ms{}",
         flight.speed,
@@ -62,7 +65,7 @@ fn help(flight: &Flight, theme: usize, milliseconds: f32, paused: bool) {
     draw_text(&status, x, 35.0, 16.0, Color::from_rgba(226, 239, 243, 255));
     let hint = "MOVE TO STEER  /  CLICK TO ROLL  /  HOLD TO BOOST  /  SPACE VIEW";
     let secondary =
-        "WASD FLY    SHIFT BOOST    B SLICES    T LIGHT    P PAUSE    R RESET    H HIDE";
+        "WASD FLY   SHIFT BOOST   J DEMO   B SLICES   T LIGHT   P PAUSE   R RESET   H HIDE";
     for (text, bottom, size) in [(hint, 39.0, 18), (secondary, 17.0, 14)] {
         let measure = measure_text(text, None, size, 1.0);
         let x = (screen_width() - measure.width) * 0.5;
@@ -186,6 +189,9 @@ async fn main() {
         if is_key_pressed(KeyCode::Space) {
             flight.view = (flight.view + 1) % 3;
         }
+        if is_key_pressed(KeyCode::J) {
+            flight.set_demo(!flight.demo);
+        }
         if is_key_pressed(KeyCode::V) {
             flight.wing_count = (flight.wing_count + 1) % 3;
         }
@@ -231,6 +237,9 @@ async fn main() {
         let up = is_key_down(KeyCode::W) || is_key_down(KeyCode::Up);
         let down = is_key_down(KeyCode::S) || is_key_down(KeyCode::Down);
         let keyboard = left || right || up || down;
+        if keyboard {
+            flight.set_demo(false);
+        }
         let mut controls = Controls {
             bank: None,
             turn: f32::from(right) - f32::from(left),

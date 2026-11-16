@@ -29,6 +29,8 @@ pub struct Controls {
 pub struct Flight {
     pub wingmen: Vec<Flight>,
     pub wing_count: usize,
+    pub demo: bool,
+    pub demo_time: f32,
     pub position: Vec3,
     pub yaw: f32,
     pub bank: f32,
@@ -55,6 +57,8 @@ impl Flight {
         let mut flight = Self {
             wingmen: Vec::new(),
             wing_count: 2,
+            demo: false,
+            demo_time: 0.0,
             position,
             yaw: 0.55,
             bank: 0.0,
@@ -84,6 +88,57 @@ impl Flight {
         flight
     }
 
+    pub fn set_demo(&mut self, enabled: bool) {
+        self.demo = enabled;
+        self.demo_time = 0.0;
+        if enabled {
+            self.view = 1;
+        }
+    }
+
+    pub fn demonstration(&self) -> &'static str {
+        [
+            "CLIMB",
+            "BARREL ROLLS",
+            "FIGURE EIGHT",
+            "DIVE / PULL UP",
+            "FORMATION SPLIT",
+            "SPIRAL CLIMB",
+            "FAST PASS",
+        ][(self.demo_time / 8.0) as usize % 7]
+    }
+
+    fn demo_controls(&mut self, dt: f32) -> Controls {
+        self.demo_time += dt;
+        let stage = (self.demo_time / 8.0) as usize % 7;
+        let phase = self.demo_time % 8.0;
+        if phase < dt || self.demo_time <= dt {
+            self.view = if stage == 2 || stage == 4 { 0 } else { 1 };
+        }
+        let wave = (phase * std::f32::consts::PI / 8.0).sin();
+        let (turn, altitude, boost) = match stage {
+            0 => (0.2, 220.0, true),
+            1 => {
+                if [1.0, 4.5].iter().any(|&t| phase >= t && phase - dt < t) {
+                    self.roll();
+                }
+                (0.15, 220.0, phase < 5.5)
+            }
+            2 => ((phase * TAU / 8.0).sin() * 0.95, 180.0, false),
+            3 => (wave * 0.4, 220.0 - 120.0 * wave * wave, phase > 4.0),
+            4 => (-0.15, 175.0, false),
+            5 => (0.85, 140.0 + phase * 14.0, true),
+            _ => (0.22, 95.0, true),
+        };
+        Controls {
+            turn,
+            climb: ((altitude - self.position.z) * 1.4 / (self.speed * 0.55)).clamp(-1.0, 1.0),
+            boost,
+            manual: true,
+            bank: None,
+        }
+    }
+
     pub fn roll(&mut self) {
         if self.roll_time < 0.0 {
             self.roll_time = 0.0;
@@ -106,6 +161,12 @@ impl Flight {
     }
 
     pub fn step(&mut self, dt: f32, controls: &Controls, world: &World) {
+        let scripted = if self.demo {
+            Some(self.demo_controls(dt))
+        } else {
+            None
+        };
+        let controls = scripted.as_ref().unwrap_or(controls);
         self.time += dt;
         let boost_goal = f32::from(controls.boost);
         self.boost += (boost_goal - self.boost) * ease(4.0, dt);
@@ -164,14 +225,21 @@ impl Flight {
         for (i, wing) in self.wingmen.iter_mut().enumerate() {
             let side = if i == 0 { -1.0 } else { 1.0 };
             let (sy, cy) = self.yaw.sin_cos();
+            let split = if self.demo && (self.demo_time / 8.0) as usize % 7 == 4 {
+                (std::f32::consts::PI * (self.demo_time % 8.0) / 8.0)
+                    .sin()
+                    .powi(2)
+            } else {
+                0.0
+            };
             let goal = self.position
-                + vec3(cy, sy, 0.0) * side * 27.0
+                + vec3(cy, sy, 0.0) * side * (27.0 + split * 55.0)
                 + vec3(sy, -cy, 0.0) * 70.0
                 + vec3(0.0, 0.0, 2.0 + (self.time * 1.3 + i as f32 * 2.0).sin());
             wing.position += (goal - wing.position) * ease(4.5, dt);
             wing.position.z = wing.position.z.max(clearance_floor(world, wing.position));
             wing.yaw += angle(self.yaw - wing.yaw) * ease(4.0, dt);
-            wing.bank += (self.bank - wing.bank) * ease(3.2, dt);
+            wing.bank += (self.bank - side * split * 0.7 - wing.bank) * ease(3.2, dt);
             wing.pitch += (self.pitch - wing.pitch) * ease(3.0, dt);
             wing.time = self.time + i as f32 * 0.17;
             wing.boost = self.boost;
@@ -306,6 +374,37 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn demonstration_completes_a_safe_cycle_and_releases_control() {
+        let world = terrain();
+        let mut flight = Flight::new(&world);
+        flight.set_demo(true);
+        let mut seen = std::collections::HashSet::new();
+        let mut rolled = false;
+        let mut min_altitude = f32::INFINITY;
+        let mut max_altitude = 0.0_f32;
+        for _ in 0..3600 {
+            flight.step(1.0 / 60.0, &Controls::default(), &world);
+            seen.insert(flight.demonstration());
+            rolled |= flight.spin > 3.0;
+            min_altitude = min_altitude.min(flight.position.z);
+            max_altitude = max_altitude.max(flight.position.z);
+            assert!(flight.position.is_finite() && flight.position.z >= MIN_CLEARANCE);
+        }
+        assert_eq!(seen.len(), 7);
+        assert!(rolled && max_altitude - min_altitude > 100.0);
+        flight.set_demo(false);
+        let controls = Controls {
+            turn: -1.0,
+            manual: true,
+            ..Default::default()
+        };
+        for _ in 0..180 {
+            flight.step(1.0 / 60.0, &controls, &world);
+        }
+        assert!(flight.rate < -1.0 && !flight.demo);
     }
 
     #[test]
