@@ -28,6 +28,9 @@ pub struct Controls {
 #[derive(Clone)]
 pub struct Flight {
     pub wingmen: Vec<Flight>,
+    pub space: bool,
+    pub warp_flash: f32,
+    portal_cooldown: f32,
     pub wing_count: usize,
     pub demo: bool,
     pub hud: bool,
@@ -63,6 +66,9 @@ impl Flight {
         );
         let mut flight = Self {
             wingmen: Vec::new(),
+            space: world.kind == crate::world::MapKind::Space,
+            warp_flash: 0.0,
+            portal_cooldown: 0.0,
             wing_count: 2,
             demo: false,
             hud: true,
@@ -112,6 +118,34 @@ impl Flight {
         self.weather = weather;
         self.hud = hud;
         self.vehicle = vehicle;
+    }
+
+    pub fn traverse_portal(&mut self, world: &World, previous: Vec3) -> bool {
+        if world.portals.len() != 2 || self.portal_cooldown > 0.0 {
+            return false;
+        }
+        for (i, entry) in world.portals.iter().enumerate() {
+            if entry.crossed(previous, self.position) {
+                let exit = world.portals[1 - i];
+                let rotation = entry.rotation_to(exit);
+                self.position = entry.transform(exit, self.position);
+                self.follow = entry.transform(exit, self.follow);
+                self.yaw += rotation;
+                self.camera_yaw -= rotation;
+                self.trails.clear();
+                for wing in &mut self.wingmen {
+                    wing.position = entry.transform(exit, wing.position);
+                    wing.follow = entry.transform(exit, wing.follow);
+                    wing.yaw += rotation;
+                    wing.camera_yaw -= rotation;
+                    wing.trails.clear();
+                }
+                self.portal_cooldown = 0.8;
+                self.warp_flash = 0.45;
+                return true;
+            }
+        }
+        false
     }
 
     pub fn set_demo(&mut self, enabled: bool) {
@@ -195,6 +229,11 @@ impl Flight {
         };
         let controls = scripted.as_ref().unwrap_or(controls);
         self.time += dt;
+        self.portal_cooldown = (self.portal_cooldown - dt).max(0.0);
+        self.warp_flash = (self.warp_flash - dt).max(0.0);
+        if world.kind.vacuum() {
+            self.weather = crate::content::weather::Weather::Clear;
+        }
         let boost_goal = f32::from(controls.boost);
         self.boost += (boost_goal - self.boost) * ease(4.0, dt);
         self.speed = self.vehicle.speed() * (1.0 + self.boost * 0.8);
@@ -224,14 +263,15 @@ impl Flight {
         for seconds in [0.25, 0.6, 1.0] {
             for side in [-1.0, 0.0, 1.0] {
                 let probe = self.position + forward * self.speed * seconds + right * side * 12.0;
-                ahead_floor = ahead_floor.max(world.height(probe.x, probe.y) + MIN_CLEARANCE);
+                ahead_floor = ahead_floor.max(clearance_floor(world, probe));
             }
         }
         // 前方地形触发爬升，下降速度随剩余离地空间收敛
         climb = climb.max((ahead_floor + 12.0 - self.position.z) * 1.8);
         climb = climb.clamp(-self.speed * 0.55, self.speed * 0.8);
         let old_altitude = self.position.z;
-        self.position.z = (old_altitude + climb * dt).clamp(floor, 300.0);
+        self.position.z =
+            (old_altitude + climb * dt).clamp(floor, if self.space { 650.0 } else { 300.0 });
         let actual_climb = (self.position.z - old_altitude) / dt.max(0.001);
         self.pitch += ((actual_climb / self.speed).clamp(-0.5, 0.6) - self.pitch) * ease(4.0, dt);
         if self.roll_time >= 0.0 {
@@ -298,6 +338,9 @@ impl Flight {
 }
 
 fn clearance_floor(world: &World, position: Vec3) -> f32 {
+    if world.kind == crate::world::MapKind::Space {
+        return -240.0;
+    }
     let mut height = 0.0_f32;
     for y in [-8.0, 0.0, 8.0] {
         for x in [-8.0, 0.0, 8.0] {
@@ -334,7 +377,11 @@ impl Camera {
             yaw: flight.camera_yaw + angle(-flight.yaw - flight.camera_yaw) * (chase + cockpit),
             q,
             scale,
-            slope: slope.max((2.0 - position.z) * q),
+            slope: if flight.space {
+                slope
+            } else {
+                slope.max((2.0 - position.z) * q)
+            },
             center: vec2(
                 w * 0.5,
                 h * (0.5 * top + 0.64 * chase + 0.43 * cockpit)
@@ -374,7 +421,53 @@ mod tests {
             spawn: (256.0, 350.0),
             kind: crate::world::MapKind::Islands,
             seed: 7,
+            scenery: vec![],
+            portals: vec![],
         }
+    }
+
+    #[test]
+    fn warp_preserves_speed_camera_formation_and_cooldown() {
+        let world = World::generate(crate::world::MapKind::Space, 1999);
+        let [entry, exit] = [world.portals[0], world.portals[1]];
+        let mut f = Flight::new(&world);
+        f.position = entry.center - entry.normal() * 3.0;
+        f.follow = f.position + entry.normal() * 12.0;
+        f.speed = 170.0;
+        let old_follow = f.follow;
+        let old_wing = f.wingmen[0].position;
+        let yaw = f.yaw;
+        assert!(f.traverse_portal(&world, entry.center + entry.normal() * 4.0));
+        assert!(f.position.distance(exit.center + exit.normal() * 3.0) < 0.001);
+        assert!(f.follow.distance(entry.transform(exit, old_follow)) < 0.001);
+        assert!(
+            f.wingmen[0]
+                .position
+                .distance(entry.transform(exit, old_wing))
+                < 0.001
+        );
+        assert_eq!(f.speed, 170.0);
+        assert!((f.yaw - yaw - entry.rotation_to(exit)).abs() < 0.001);
+        assert!(!f.traverse_portal(&world, exit.center + exit.normal() * 4.0));
+        assert!(f.trails.is_empty());
+    }
+    #[test]
+    fn space_flight_can_descend_below_the_surface_reference() {
+        let world = World::generate(crate::world::MapKind::Space, 1999);
+        let mut f = Flight::new(&world);
+        for _ in 0..150 {
+            f.step(
+                0.033,
+                &Controls {
+                    manual: true,
+                    climb: -1.0,
+                    ..Default::default()
+                },
+                &world,
+            );
+        }
+        assert!(f.position.z < 0.0);
+        assert!(Camera::new(&f, 320, 170).position.is_finite());
     }
 
     #[test]

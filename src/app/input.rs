@@ -196,7 +196,8 @@ impl App {
             1 => self.flight.vehicle = Vehicle::ALL[next(self.flight.vehicle as usize, 4)],
             2 => {
                 let current = self.loader.pending.unwrap_or(self.world.kind);
-                let kind = crate::world::MapKind::ALL[next(current as usize, 6)];
+                let kind = crate::world::MapKind::ALL
+                    [next(current as usize, crate::world::MapKind::ALL.len())];
                 self.loader.start(kind, kind.seed());
             }
             3 => {

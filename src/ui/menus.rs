@@ -35,7 +35,14 @@ pub fn draw(app: &mut App) {
             ("MODE", app.mode.name()),
             ("AIRCRAFT", f.vehicle.name()),
             ("MAP", app.loader.pending.unwrap_or(app.world.kind).name()),
-            ("WEATHER", f.weather.name()),
+            (
+                "WEATHER",
+                if app.loader.pending.unwrap_or(app.world.kind).vacuum() {
+                    "VACUUM"
+                } else {
+                    f.weather.name()
+                },
+            ),
             ("SKILL", app.difficulty.name()),
             ("STAGE", stage.as_str()),
             (

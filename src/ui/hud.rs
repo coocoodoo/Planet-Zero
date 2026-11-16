@@ -41,7 +41,17 @@ pub fn draw(app: &mut App) {
     c.text(280, 3, "U UI", WHITE);
     if m.mode == Mode::Free {
         let label = app.loader.pending.map_or_else(
-            || format!("{} / {}", app.world.kind.name(), f.weather.name()),
+            || {
+                format!(
+                    "{} / {}",
+                    app.world.kind.name(),
+                    if app.world.kind.vacuum() {
+                        "VACUUM"
+                    } else {
+                        f.weather.name()
+                    }
+                )
+            },
             |map| format!("LOADING {}", map.name()),
         );
         c.shade(4, 16, (label.len() * 8 + 8).min(312), 12);

@@ -1,7 +1,9 @@
 mod aircraft;
+mod celestial;
 mod cockpit;
 mod objects;
 mod palette;
+mod portals;
 mod primitives;
 mod terrain;
 mod weather;
@@ -42,6 +44,9 @@ const TOP: [[u8; 3]; MATERIAL_COUNT] = [
     [58, 126, 89],
     [107, 99, 64],
     [119, 194, 215],
+    [164, 167, 174],
+    [205, 207, 211],
+    [105, 109, 120],
 ];
 const SIDE: [[u8; 3]; MATERIAL_COUNT] = [
     [36, 104, 180],
@@ -71,6 +76,9 @@ const SIDE: [[u8; 3]; MATERIAL_COUNT] = [
     [39, 83, 59],
     [74, 67, 45],
     [76, 133, 163],
+    [66, 67, 76],
+    [99, 100, 108],
+    [49, 52, 63],
 ];
 
 pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
@@ -107,6 +115,9 @@ fn grade(c: u32, theme: usize) -> u32 {
 
 pub struct Renderer {
     workers: Vec<Renderer>,
+    portal_view: Option<Box<Renderer>>,
+    clip_plane: Option<(Vec3, Vec3)>,
+    clip_depth: Vec<f32>,
     cockpit: crate::render::cockpit::Cockpit,
     visible: Vec<(i32, i32)>,
     mapping: Vec<usize>,
@@ -154,6 +165,9 @@ impl Renderer {
         }
         Self {
             workers: vec![],
+            portal_view: None,
+            clip_plane: None,
+            clip_depth: vec![],
             cockpit: crate::render::cockpit::Cockpit::new(),
             visible: vec![],
             mapping: vec![],
@@ -252,9 +266,15 @@ impl Renderer {
         }
         self.stages[0] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
-        if self.workers.is_empty() {
+        if world.kind == crate::world::MapKind::Space {
+            self.cosmos(world, &camera, flight.time);
+        } else if self.workers.is_empty() {
             self.world(world, flight, &camera, theme);
-            self.sky(&camera, flight, theme, height);
+            if world.kind.vacuum() {
+                self.cosmos(world, &camera, flight.time);
+            } else {
+                self.sky(&camera, flight, theme, height);
+            }
         } else {
             let strip = self.w.div_ceil(self.workers.len());
             let w = self.w;
@@ -281,7 +301,11 @@ impl Renderer {
                     view.center.x -= start as f32;
                     scope.spawn(move || {
                         worker.world(world, flight, &view, theme);
-                        worker.sky(&view, flight, theme, height);
+                        if world.kind.vacuum() {
+                            worker.cosmos(world, &view, flight.time);
+                        } else {
+                            worker.sky(&view, flight, theme, height);
+                        }
                     });
                 }
             });
@@ -292,6 +316,8 @@ impl Renderer {
                 self.depth[start..end].copy_from_slice(&worker.depth);
             }
         }
+        self.scenery(world, &camera, flight.time);
+        self.portals(world, flight, &camera, mission);
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
         let mut jets: Vec<&Flight> = flight.wingmen.iter().take(flight.wing_count).collect();
@@ -312,7 +338,9 @@ impl Renderer {
         if let Some(mission) = mission {
             self.mission(mission, flight, &camera);
         }
-        self.precipitation(flight, &camera, theme);
+        if !world.kind.vacuum() {
+            self.precipitation(flight, &camera, theme);
+        }
         for i in 0..width * height {
             self.output[i] = if has_panel && self.cockpit.pixels[i] != 0 {
                 self.cockpit.pixels[i]
@@ -326,6 +354,11 @@ impl Renderer {
         self.stages[2] = started.elapsed().as_secs_f64() * 1000.0;
         self.rgba.resize(width * height * 4, 0);
         for (dest, color) in self.rgba.chunks_exact_mut(4).zip(&self.output) {
+            let color = if flight.warp_flash > 0.0 {
+                mix(*color, rgb(139, 220, 255), flight.warp_flash * 0.55)
+            } else {
+                *color
+            };
             dest.copy_from_slice(&color.to_le_bytes());
         }
     }

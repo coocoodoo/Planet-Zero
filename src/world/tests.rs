@@ -33,3 +33,23 @@ fn maps_have_distinct_terrain_and_valid_periodic_samples() {
         assert!(world.height(world.spawn.0, world.spawn.1) < 80.0);
     }
 }
+
+#[test]
+fn lunar_sites_and_space_landmarks_are_present_without_atmosphere() {
+    use celestial::Structure;
+    let moon = World::generate(MapKind::Moon, 1969);
+    assert_eq!(
+        moon.scenery
+            .iter()
+            .filter(|s| s.kind == Structure::Base)
+            .count(),
+        4
+    );
+    assert!(moon.clouds.iter().all(|c| *c == 0));
+    assert!(moon.materials.iter().all(|m| *m >= 27));
+    assert!(moon.height(578.0 * 4.0, 600.0 * 4.0) < moon.height(578.0 * 4.0 + 370.0, 600.0 * 4.0));
+    let space = World::generate(MapKind::Space, 1999);
+    assert_eq!(space.portals.len(), 2);
+    assert!(space.scenery.iter().any(|s| s.kind == Structure::Cruiser));
+    assert!(space.scenery.iter().any(|s| s.kind == Structure::Satellite));
+}

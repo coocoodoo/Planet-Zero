@@ -2,6 +2,9 @@ use super::*;
 
 impl World {
     pub fn generate(kind: MapKind, seed: u32) -> Self {
+        if kind.vacuum() {
+            return Self::cosmic(kind, seed);
+        }
         let profile = crate::content::maps::definition(kind);
         let mut random = Random(seed.wrapping_mul(7919).wrapping_add(13));
         let mut elevation = vec![0.0_f32; NOISE_SIZE * NOISE_SIZE];
@@ -35,6 +38,7 @@ impl World {
                 let e = elevation[at];
                 let m = moisture[at];
                 elevation[at] = match kind {
+                    MapKind::Moon | MapKind::Space => unreachable!(),
                     MapKind::Islands => (e - sea) / (1.0 - sea) * 59.0,
                     MapKind::Alpine => {
                         let ridge =
@@ -85,6 +89,8 @@ impl World {
             spawn: (2048.0, 2048.0),
             kind,
             seed,
+            scenery: vec![],
+            portals: vec![],
         };
         for y in 0..SIZE {
             let gy = y / CELL;
@@ -117,6 +123,7 @@ impl World {
                     }
                 } else {
                     match kind {
+                        MapKind::Moon | MapKind::Space => unreachable!(),
                         MapKind::Islands => {
                             if h < 1.6 {
                                 if n < 40 { 5 } else { 4 }

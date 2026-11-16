@@ -92,3 +92,37 @@ fn success_advances_with_reward_and_failure_retries_snapshot() {
     assert_eq!(app.page, Page::Playing);
     assert_eq!(app.mission.loadout(), entry);
 }
+
+#[test]
+fn teleport_does_not_collect_pickups_between_portal_endpoints() {
+    use crate::gameplay::{Pickup, PickupKind};
+    use glam::Vec3;
+    let mut app = App::new(World::generate(crate::world::MapKind::Space, 1999));
+    app.mode = Mode::Coins;
+    app.start();
+    app.mission.countdown = 0.0;
+    let entry = app.world.portals[0];
+    let exit = app.world.portals[1];
+    app.flight.position = entry.center + entry.normal() * 1.0;
+    app.flight.follow = app.flight.position;
+    app.flight.yaw = entry.yaw + std::f32::consts::PI;
+    let middle = entry.center.lerp(exit.center, 0.5);
+    app.mission.pickups = vec![Pickup {
+        position: middle,
+        kind: PickupKind::Coin,
+        collected: false,
+        life: 100.0,
+    }];
+    app.step(
+        0.05,
+        Some(Controls {
+            manual: true,
+            ..Default::default()
+        }),
+    );
+    assert!(app.flight.position.distance(exit.center) < 10.0);
+    assert_eq!(app.mission.collected, 0);
+    assert!(!app.mission.pickups[0].collected);
+    assert!(app.sounds.iter().any(|s| s == crate::audio::Sound::Warp));
+    assert!(app.flight.position != Vec3::ZERO);
+}

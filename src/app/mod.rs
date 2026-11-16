@@ -217,16 +217,22 @@ impl App {
             || self.page == Page::Menu
             || (self.page == Page::Help && self.help_return == Page::Menu)
         {
+            let previous = self.flight.position;
             self.flight.step(dt, &Controls::default(), &self.world);
+            self.flight.traverse_portal(&self.world, previous);
             return;
         }
         if self.page != Page::Playing {
             return;
         }
         let controls = external.unwrap_or_else(|| self.controls());
-        let previous = self.flight.position;
+        let mut previous = self.flight.position;
         if self.mission.countdown <= 0.0 {
             self.flight.step(dt, &controls, &self.world);
+        }
+        if self.flight.traverse_portal(&self.world, previous) {
+            previous = self.flight.position;
+            self.sounds.push(crate::audio::Sound::Warp);
         }
         let fire = self.keys.contains(&38) || self.keys.contains(&39) || self.keys.contains(&4);
         self.mission

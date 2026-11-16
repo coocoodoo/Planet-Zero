@@ -55,7 +55,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
     while let Some(arg) = args.next() {
         if arg == "--help" {
             println!(
-                "rust-fly-cardputer [--audio on|off] [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..3] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
+                "rust-fly-cardputer [--audio on|off] [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..3] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic|moon|space] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
             );
             std::process::exit(0);
         }
@@ -238,10 +238,67 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
             capture(path, &format!("{name}-{}x", options.scale), game)?;
         }
     }
+    if game.world.kind == MapKind::Space {
+        benchmark_portals(options, game, frames)?;
+    }
     if let Some(path) = &options.capture {
         game.home();
         game.draw();
         capture(path, "menu", game)?;
+    }
+    Ok(())
+}
+
+fn benchmark_portals(
+    options: &Options,
+    game: &mut Game,
+    frames: usize,
+) -> Result<(), Box<dyn Error>> {
+    use rust_fly::flight::Controls;
+    for entrance in 0..2 {
+        for view in [1, 2] {
+            game.mode = rust_fly::gameplay::Mode::Free;
+            game.start();
+            game.auto = false;
+            let entry = game.world.portals[entrance];
+            game.flight.position = entry.center + entry.normal() * 165.0;
+            game.flight.follow = game.flight.position;
+            game.flight.yaw = entry.yaw + std::f32::consts::PI;
+            game.flight.camera_yaw = -game.flight.yaw;
+            game.flight.view = view;
+            game.flight.weights = [0.0; 3];
+            game.flight.weights[view] = 1.0;
+            game.flight.wing_count = 0;
+            let name = format!("portal-{entrance}-{}", ["top", "chase", "cockpit"][view]);
+            let mut samples = Vec::with_capacity(frames.max(90));
+            let mut crossings = 0;
+            for frame in 0..frames.max(90) {
+                let previous = game.flight.position;
+                let start = Instant::now();
+                game.app.step(
+                    1.0 / 30.0,
+                    Some(Controls {
+                        manual: true,
+                        ..Default::default()
+                    }),
+                );
+                if previous.distance(game.flight.position) > 1000.0 {
+                    crossings += 1;
+                }
+                game.draw();
+                samples.push(start.elapsed().as_secs_f64() * 1000.0);
+                if let Some(path) = &options.capture
+                    && [10, 40, 65].contains(&frame)
+                {
+                    capture(path, &format!("{name}-{frame}"), game)?;
+                }
+            }
+            report(&name, 1, &mut samples);
+            println!("{{\"scene\":\"{name}\",\"crossings\":{crossings}}}");
+            if crossings != 1 {
+                return Err(format!("{name} 虫洞穿越次数异常：{crossings}").into());
+            }
+        }
     }
     Ok(())
 }

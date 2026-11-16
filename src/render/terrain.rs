@@ -26,7 +26,11 @@ impl Renderer {
         let altitude = camera.position.z;
         let cx = camera.center.x;
         let cy = camera.center.y;
-        let weather = flight.weather;
+        let weather = if world.kind.vacuum() {
+            Weather::Clear
+        } else {
+            flight.weather
+        };
         let flash = weather.flash(flight.time);
         let lighting = |color| {
             mix(
@@ -38,7 +42,11 @@ impl Renderer {
         let top = TOP.map(|v| lighting(rgb(v[0], v[1], v[2])));
         let sides = SIDE.map(|v| lighting(rgb(v[0], v[1], v[2])));
         let shadow_color = rgb(13, 26, 56);
-        let haze = mix(weather.haze(theme), rgb(225, 234, 255), flash);
+        let haze = if world.kind.vacuum() {
+            rgb(8, 10, 18)
+        } else {
+            mix(weather.haze(theme), rgb(225, 234, 255), flash)
+        };
         let mut colors = [[[[0_u32; 2]; MATERIAL_COUNT + 2]; 2]; 11];
         let mut clouds = [[0_u32; 9]; 11];
         for fog in 0..=10 {
@@ -95,7 +103,11 @@ impl Renderer {
         } else {
             nearest
         };
-        let (fog_start, view_distance) = weather.visibility(altitude);
+        let (fog_start, view_distance) = if world.kind.vacuum() {
+            (2400.0, 2600.0)
+        } else {
+            weather.visibility(altitude)
+        };
         let above = cy + 2.0;
         let end = if scale * slope > q * above {
             view_distance.min((scale * altitude + above) / (scale * slope - q * above))

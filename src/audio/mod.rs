@@ -17,6 +17,7 @@ pub enum Sound {
     Confirm,
     Countdown(u8),
     Roll,
+    Warp,
     Gun,
     Missile,
     Laser,

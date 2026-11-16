@@ -143,6 +143,7 @@ impl Mixer {
             Sound::Overdrive => (19, 0.5),
             Sound::Phase => (20, 0.5),
             Sound::Boss => (21, 1.5),
+            Sound::Warp => (22, 0.6),
         };
         if self.clock - self.last_effect[index] < cooldown {
             return;

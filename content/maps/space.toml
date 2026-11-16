@@ -1,0 +1,7 @@
+name = "SPACE"
+seed = 1999
+water_coverage = 0.0
+height_scale = 1.0
+tree_threshold = 0
+cloud_clusters = 0
+elevation_octaves = [[128, 1.0], [32, 0.25], [8, 0.06]]

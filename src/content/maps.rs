@@ -23,6 +23,8 @@ pub fn definition(kind: MapKind) -> &'static MapDefinition {
             include_str!("../../content/maps/desert.toml"),
             include_str!("../../content/maps/wetlands.toml"),
             include_str!("../../content/maps/volcanic.toml"),
+            include_str!("../../content/maps/moon.toml"),
+            include_str!("../../content/maps/space.toml"),
         ]
         .into_iter()
         .map(|source| toml::from_str(source).expect("地图配置格式错误"))

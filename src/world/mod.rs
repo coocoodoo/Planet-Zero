@@ -1,7 +1,9 @@
 pub use noise::{hash, index};
+pub mod celestial;
 mod generation;
 mod loader;
 mod noise;
+pub mod portal;
 #[cfg(test)]
 mod tests;
 pub use loader::WorldLoader;
@@ -12,7 +14,7 @@ pub const SIZE: usize = 4096;
 pub const CLOUD_SIZE: usize = 2048;
 pub const CLOUD_ALT: usize = 80;
 pub const MAX_HEIGHT: usize = 96;
-pub const MATERIAL_COUNT: usize = 27;
+pub const MATERIAL_COUNT: usize = 30;
 const NOISE_SIZE: usize = 1024;
 const CELL: usize = SIZE / NOISE_SIZE;
 
@@ -26,17 +28,24 @@ pub enum MapKind {
     Desert,
     Wetlands,
     Volcanic,
+    Moon,
+    Space,
 }
 
 impl MapKind {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 8] = [
         Self::Islands,
         Self::Alpine,
         Self::Canyon,
         Self::Desert,
         Self::Wetlands,
         Self::Volcanic,
+        Self::Moon,
+        Self::Space,
     ];
+    pub fn vacuum(self) -> bool {
+        matches!(self, Self::Moon | Self::Space)
+    }
     pub fn name(self) -> &'static str {
         &crate::content::maps::definition(self).name
     }
@@ -60,6 +69,8 @@ pub struct World {
     pub spawn: (f32, f32),
     pub kind: MapKind,
     pub seed: u32,
+    pub scenery: Vec<celestial::Scenery>,
+    pub portals: Vec<portal::Portal>,
 }
 
 impl World {

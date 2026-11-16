@@ -32,6 +32,11 @@ pub fn tones(sound: Sound, mut emit: impl FnMut(Tone)) {
                 0.0,
             );
         }
+        Sound::Warp => {
+            blip(Wave::Fm, 90.0, 1600.0, 0.24, 0.22, 0.0);
+            blip(Wave::Noise, 700.0, 180.0, 0.12, 0.38, 0.03);
+            blip(Wave::Sine, 1200.0, 150.0, 0.22, 0.35, 0.18);
+        }
         Sound::Roll => {
             blip(Wave::Noise, 300.0, 1500.0, 0.11, 0.32, 0.0);
             blip(Wave::Triangle, 220.0, 660.0, 0.06, 0.25, 0.0);

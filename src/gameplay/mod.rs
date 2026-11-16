@@ -151,7 +151,11 @@ impl Mission {
     ) -> Self {
         flight.set_demo(false);
         flight.change_world(world);
-        flight.yaw = 0.0;
+        flight.yaw = if mode == Mode::Free && world.kind.vacuum() {
+            0.55
+        } else {
+            0.0
+        };
         flight.camera_yaw = 0.0;
         flight.position.z = 150.0;
         flight.follow = flight.position;
