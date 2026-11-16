@@ -30,8 +30,8 @@ shutil.copy2(ROOT / "README.md", stage / "usr/share/doc/rust-fly/README.md")
     "Maintainer: Rust Fly contributors <rust-fly@localhost>\n"
     "Section: games\nPriority: optional\n"
     f"Installed-Size: {(binary.stat().st_size + icon.stat().st_size + 1023) // 1024}\n"
-    "Description: Sprite-stack flight scene for Cardputer Zero\n"
-    " Rust software rendering with RGB565 framebuffer output and physical keyboard controls\n"
+    "Description: Pixel flight arcade for Cardputer Zero\n"
+    " Race, coin rush and aerial combat with Rust rendering, RGB565 output and IMU controls\n"
 )
 package = ROOT / f"dist/rust-fly_{version}_arm64.deb"
 command = ["dpkg-deb", "--root-owner-group", "--build", str(stage), str(package)]
