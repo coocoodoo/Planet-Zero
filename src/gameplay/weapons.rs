@@ -89,9 +89,18 @@ impl Mission {
                 e.health > 0.0 && (e.position - position).normalize_or_zero().dot(forward) > cone
             })
             .min_by(|a, b| {
-                a.position
-                    .distance_squared(position)
-                    .total_cmp(&b.position.distance_squared(position))
+                let score = |e: &Enemy| {
+                    e.position.distance_squared(position)
+                        * if self.phase() == Phase::Strike
+                            && self.weapon == Weapon::Missile
+                            && e.is_ground()
+                        {
+                            0.08
+                        } else {
+                            1.0
+                        }
+                };
+                score(a).total_cmp(&score(b))
             })
             .map(|e| (e.id, e.position))
     }

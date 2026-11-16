@@ -260,6 +260,7 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
     let mut rendering = Vec::new();
     let mut presenting = Vec::new();
     let began = Instant::now();
+    let mut previous_state = None;
     while !stopped() && !game.quit && options.frames.is_none_or(|limit| count < limit) {
         let start = Instant::now();
         keyboard.poll(game)?;
@@ -271,6 +272,30 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
             game.motion = sensor.motion();
         }
         game.step((start - previous).as_secs_f32());
+        let state = (
+            game.page,
+            game.level,
+            game.mission.phase_index,
+            game.selection,
+        );
+        if previous_state != Some(state) {
+            eprintln!(
+                "{{\"event\":\"state\",\"page\":\"{:?}\",\"level\":{},\"phase\":{},\"elapsed\":{:.2},\"score\":{},\"health\":{:.1},\"outcome\":\"{}\",\"selection\":{}}}",
+                game.page,
+                game.level,
+                game.mission.phase_index,
+                game.mission.elapsed,
+                game.mission.score,
+                game.mission.health,
+                match game.mission.outcome {
+                    Some(true) => "win",
+                    Some(false) => "loss",
+                    None => "active",
+                },
+                game.selection
+            );
+            previous_state = Some(state);
+        }
         previous = start;
         game.draw();
         let drawn = Instant::now();
@@ -349,7 +374,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let start = Instant::now();
     let mut game = Game::with_world(World::generate(
         options.map,
-        options.seed.unwrap_or(options.map.seed()),
+        options.seed.unwrap_or_else(|| {
+            options
+                .map
+                .seed()
+                .wrapping_add((options.level - 1) / 6 * 7919)
+        }),
     ));
     eprintln!("地形生成：{:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
     game.level = options.level;

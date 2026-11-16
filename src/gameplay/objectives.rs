@@ -84,9 +84,15 @@ impl Mission {
                 .iter()
                 .filter(|e| e.health > 0.0)
                 .min_by(|a, b| {
-                    a.position
-                        .distance_squared(flight.position)
-                        .total_cmp(&b.position.distance_squared(flight.position))
+                    let score = |e: &Enemy| {
+                        e.position.distance_squared(flight.position)
+                            * if self.phase() == Phase::Strike && e.is_ground() {
+                                0.08
+                            } else {
+                                1.0
+                            }
+                    };
+                    score(a).total_cmp(&score(b))
                 })
                 .map(|e| e.position),
             Mode::Free => None,

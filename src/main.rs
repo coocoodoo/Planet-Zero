@@ -75,6 +75,29 @@ fn capture(app: &mut App, path: &std::path::Path) {
     app.selection = 0;
     app.draw();
     save_capture(app, &path.join("pause.png"));
+    app.mission.outcome = Some(true);
+    app.page = Page::Results;
+    app.draw();
+    save_capture(app, &path.join("results-win.png"));
+    app.mission.outcome = Some(false);
+    app.mission.message = "AIRCRAFT LOST";
+    app.draw();
+    save_capture(app, &path.join("results-loss.png"));
+    for level in [2, 3, 6] {
+        app.level = level;
+        let profile = rust_fly::content::levels::operation(level);
+        app.world = World::generate(profile.map, profile.map.seed());
+        app.mode = Mode::Combat;
+        app.flight.weather = profile.weather;
+        app.start();
+        app.flight.view = 1;
+        app.flight.weights = [0.0, 1.0, 0.0];
+        for _ in 0..240 {
+            app.step(1.0 / 30.0, None);
+        }
+        app.draw();
+        save_capture(app, &path.join(format!("stage-{level}.png")));
+    }
     for vehicle in rust_fly::content::vehicles::Vehicle::ALL {
         app.mode = Mode::Free;
         app.flight.vehicle = vehicle;

@@ -43,6 +43,7 @@ impl Mission {
             + forward * (if boss { 270.0 } else { 220.0 } + self.random() * 75.0)
             + right * lane;
         if kind == 6 {
+            position += forward * 220.0;
             position.z = world.height(position.x, position.y) + 5.0;
         }
         self.next_id += 1;

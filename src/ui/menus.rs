@@ -192,12 +192,15 @@ pub fn draw(app: &mut App) {
             28,
             94,
             &format!(
-                "BEST {:07}{}",
-                app.best_score,
-                if app.new_record { " NEW" } else { "" }
+                "RUN {:07} BEST {:07}",
+                app.run_score + if won { m.score } else { 0 },
+                app.best_score
             ),
             CYAN,
         );
+        if app.new_record {
+            c.icon(289, 94, '+', GOLD);
+        }
         if won && m.mode == Mode::Combat {
             c.text(
                 28,

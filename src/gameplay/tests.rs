@@ -305,3 +305,18 @@ fn convoy_loss_and_phase_objectives_control_progression() {
     mission.direct_combat(0.1, &flight, world);
     assert_eq!(mission.phase_index, 1);
 }
+
+#[test]
+fn all_three_bosses_are_spawnable() {
+    let world = world();
+    let mut kinds = std::collections::HashSet::new();
+    for seed in 1_u32..=32 {
+        let mut flight = Flight::new(world);
+        let mut mission = Mission::new(Mode::Combat, Difficulty::Cadet, &mut flight, world);
+        mission.shuffle_encounters(seed.wrapping_mul(0x9e3779b9));
+        mission.prepare_benchmark(true);
+        mission.direct_combat(0.1, &flight, world);
+        kinds.insert(mission.enemies.iter().find(|e| e.is_boss()).unwrap().kind);
+    }
+    assert_eq!(kinds, std::collections::HashSet::from([3, 4, 5]));
+}
