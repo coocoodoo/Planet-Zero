@@ -20,7 +20,7 @@ impl Tables {
         }
     }
     pub fn sine(&self, phase: f32) -> f32 {
-        let p = phase.rem_euclid(1.0) * 2048.0;
+        let p = (phase - phase.floor()) * 2048.0;
         let i = p as usize;
         let t = p - i as f32;
         self.sine[i & 2047] * (1.0 - t) + self.sine[(i + 1) & 2047] * t
@@ -56,7 +56,7 @@ impl Oscillator {
     pub fn sample(&mut self, wave: Wave, step: f32, shape: f32, tables: &Tables) -> f32 {
         let dt = step.clamp(0.00001, 0.45);
         let p = self.phase;
-        self.phase = (p + dt).fract();
+        self.phase = if p + dt >= 1.0 { p + dt - 1.0 } else { p + dt };
         match wave {
             Wave::Sine => tables.sine(p),
             Wave::Triangle => 1.0 - 4.0 * (p - 0.5).abs(),
@@ -64,7 +64,9 @@ impl Oscillator {
             Wave::Pulse => {
                 let duty = shape.clamp(0.12, 0.88);
                 let raw = if p < duty { 1.0 } else { -1.0 };
-                raw + blep(p, dt) - blep((p - duty).rem_euclid(1.0), dt) - (2.0 * duty - 1.0)
+                raw + blep(p, dt)
+                    - blep(if p >= duty { p - duty } else { p - duty + 1.0 }, dt)
+                    - (2.0 * duty - 1.0)
             }
             Wave::Fm => tables.sine(p + shape * tables.sine(p * 2.0) * 0.23),
             Wave::Noise => {
@@ -130,6 +132,10 @@ pub struct Voice {
     age: f32,
     pan: [f32; 2],
     release_at: f32,
+    attack_rate: f32,
+    decay_rate: f32,
+    release_rate: f32,
+    pitch_slope: f32,
 }
 impl Voice {
     pub fn new(tone: Tone, seed: u32) -> Self {
@@ -141,6 +147,10 @@ impl Voice {
             age: -tone.delay,
             pan: [((1.0 - pan) * 0.5).sqrt(), ((1.0 + pan) * 0.5).sqrt()],
             release_at,
+            attack_rate: 1.0 / tone.attack.max(0.001),
+            decay_rate: 1.0 / tone.decay.max(0.001),
+            release_rate: 1.0 / tone.release.max(0.001),
+            pitch_slope: (tone.end_hz - tone.hz) / tone.hold.max(0.01),
         }
     }
     pub fn remaining(&self) -> f32 {
@@ -151,14 +161,23 @@ impl Voice {
             self.release_at = self.level();
             self.tone.hold = self.age;
             self.tone.release = seconds;
+            self.release_rate = 1.0 / seconds.max(0.001);
         }
     }
     fn level(&self) -> f32 {
         if self.age < self.tone.hold {
-            envelope(self.age, &self.tone)
+            if self.age < self.tone.attack {
+                (self.age * self.attack_rate).max(0.0)
+            } else {
+                self.tone.sustain
+                    + (1.0 - self.tone.sustain)
+                        * (1.0 - (self.age - self.tone.attack) * self.decay_rate)
+                            .max(0.0)
+                            .powi(2)
+            }
         } else {
             self.release_at
-                * (1.0 - (self.age - self.tone.hold) / self.tone.release.max(0.001))
+                * (1.0 - (self.age - self.tone.hold) * self.release_rate)
                     .max(0.0)
                     .powi(2)
         }
@@ -168,10 +187,12 @@ impl Voice {
         if self.age < 0.0 {
             return [0.0; 2];
         }
-        let t = (self.age / self.tone.hold.max(0.01)).min(1.0);
-        let hz = self.tone.hz + (self.tone.end_hz - self.tone.hz) * t;
-        let vibrato =
-            1.0 + self.tone.vibrato * tables.sine(self.age * 5.4) * (self.age * 6.0).min(1.0);
+        let hz = self.tone.hz + self.pitch_slope * self.age.min(self.tone.hold);
+        let vibrato = if self.tone.vibrato == 0.0 {
+            1.0
+        } else {
+            1.0 + self.tone.vibrato * tables.sine(self.age * 5.4) * (self.age * 6.0).min(1.0)
+        };
         let value = self
             .osc
             .sample(self.tone.wave, hz * vibrato * dt, self.tone.shape, tables)

@@ -64,11 +64,23 @@ pub fn open(receiver: Receiver<Frame>) -> Result<Handle, Box<dyn std::error::Err
                     return;
                 }
             }
+            let mut last_cue = mixer.cue();
+            let mut rendered = 1440_u64;
+            eprintln!("音乐：{}", last_cue.name());
             while !stopped.load(Ordering::Relaxed) {
                 while let Ok(frame) = receiver.try_recv() {
                     mixer.update(frame);
                 }
                 mixer.render(&mut samples);
+                rendered += 480;
+                if mixer.cue() != last_cue {
+                    last_cue = mixer.cue();
+                    eprintln!(
+                        "音乐：{} / {:.3} s",
+                        last_cue.name(),
+                        rendered as f64 / 48000.0
+                    );
+                }
                 for (value, bytes) in samples.iter().zip(bytes.chunks_exact_mut(2)) {
                     bytes.copy_from_slice(&((*value * 32767.0) as i16).to_le_bytes());
                 }

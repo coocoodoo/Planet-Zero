@@ -34,3 +34,18 @@ impl Output {
         let _ = self.sender.try_send(app.audio_frame());
     }
 }
+
+impl Drop for Output {
+    fn drop(&mut self) {
+        let frame = Frame {
+            settings: super::Settings {
+                volume: 0,
+                profile: 3,
+            },
+            ..Frame::default()
+        };
+        if self.sender.try_send(frame).is_ok() {
+            std::thread::sleep(std::time::Duration::from_millis(180));
+        }
+    }
+}

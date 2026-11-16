@@ -105,3 +105,67 @@ fn application_routes_results_pause_and_events_to_audio() {
     app.mission.outcome = Some(false);
     assert_eq!(app.audio_frame().cue, Cue::Defeat);
 }
+
+#[test]
+fn actual_gameplay_emits_weapon_pickup_and_countdown_sounds() {
+    use crate::{
+        app::App,
+        gameplay::{Mode, Pickup, PickupKind, Weapon},
+        world::World,
+    };
+    let mut app = App::new(World::new(7));
+    app.mode = Mode::Combat;
+    app.start();
+    app.mission.countdown = 1.02;
+    app.step(0.05, None);
+    assert!(
+        app.audio_frame()
+            .events
+            .iter()
+            .any(|s| s == Sound::Countdown(1))
+    );
+    app.mission.countdown = 0.0;
+    for expected in [
+        Sound::Gun,
+        Sound::Missile,
+        Sound::Laser,
+        Sound::Plasma,
+        Sound::Orb,
+    ] {
+        app.step(0.02, None);
+        assert!(
+            app.audio_frame().events.iter().any(|s| s == expected),
+            "{expected:?}"
+        );
+        app.mission.cycle_weapon();
+    }
+    for (kind, sound) in [
+        (PickupKind::Coin, Sound::Coin(1)),
+        (PickupKind::Upgrade(Weapon::Laser), Sound::Upgrade),
+        (PickupKind::Support, Sound::Support),
+    ] {
+        app.mission.pickups.push(Pickup {
+            position: app.flight.position,
+            kind,
+            life: 5.0,
+            collected: false,
+        });
+        app.step(0.01, None);
+        assert!(app.audio_frame().events.iter().any(|s| s == sound));
+    }
+}
+
+#[test]
+fn full_score_wraps_without_an_empty_bar() {
+    let mut mixer = Mixer::new(8000);
+    mixer.start_cue(Cue::Flight);
+    let mut block = [0.0; 1600];
+    for i in 0..1075 {
+        mixer.render(&mut block);
+        if i >= 1040 {
+            assert!(block.iter().any(|v| v.abs() > 0.01));
+        }
+    }
+    assert!(mixer.step() < 16);
+    assert_eq!(mixer.transitions, 0);
+}
