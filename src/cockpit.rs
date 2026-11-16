@@ -21,7 +21,7 @@ const GLYPHS: [[u8; 5]; 10] = [
 
 struct Layer {
     pixels: Vec<u8>,
-    colors: [[u32; 256]; 6],
+    colors: Vec<[u32; 256]>,
 }
 
 pub struct Cockpit {
@@ -58,6 +58,14 @@ impl Cockpit {
                     colors[4][i] = mix(color, rgb(12, 24, 49), 0.45);
                     colors[5][i] = colors[4][i];
                 }
+                let colors = crate::weather::Weather::ALL
+                    .into_iter()
+                    .flat_map(|weather| {
+                        colors.map(|palette| {
+                            palette.map(|color| if color == 0 { 0 } else { weather.shade(color) })
+                        })
+                    })
+                    .collect();
                 Layer {
                     pixels: bytes[2 + count * 4..].to_vec(),
                     colors,
@@ -106,8 +114,12 @@ impl Cockpit {
                     }
                     let color_index =
                         self.layers[layer].pixels[sy as usize * 342 + sx as usize] as usize;
-                    let lit = usize::from((x - sunlight + (y - 95) / 2).abs() < 40);
-                    let color = self.layers[layer].colors[theme * 2 + lit][color_index];
+                    let lit = usize::from(
+                        flight.weather == crate::weather::Weather::Clear
+                            && (x - sunlight + (y - 95) / 2).abs() < 40,
+                    );
+                    let color = self.layers[layer].colors
+                        [flight.weather as usize * 6 + theme * 2 + lit][color_index];
                     if color == 0 {
                         continue;
                     }

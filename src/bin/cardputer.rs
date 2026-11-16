@@ -19,6 +19,7 @@ struct Options {
     imu: bool,
     demo: bool,
     map: MapKind,
+    weather: rust_fly::weather::Weather,
     seed: Option<u32>,
 }
 
@@ -35,18 +36,23 @@ fn options() -> Result<Options, Box<dyn Error>> {
         imu: true,
         demo: false,
         map: MapKind::Islands,
+        weather: rust_fly::weather::Weather::Clear,
         seed: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         if arg == "--help" {
             println!(
-                "rust-fly-cardputer [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic] [--seed N] [--imu-test SECONDS] [--imu-csv PATH]"
+                "rust-fly-cardputer [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
             );
             std::process::exit(0);
         }
         let value = args.next().ok_or_else(|| format!("{arg} 缺少参数值"))?;
         match arg.as_str() {
+            "--weather" => {
+                result.weather = rust_fly::weather::Weather::parse(&value)
+                    .ok_or("未知天气，请使用 --help 查看天气名称")?
+            }
             "--map" => {
                 result.map = MapKind::parse(&value).ok_or("未知地图，请使用 --help 查看地图名称")?
             }
@@ -119,6 +125,7 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
     for (view, name) in ["top", "chase", "cockpit"].into_iter().enumerate() {
         game.flight = rust_fly::flight::Flight::new(&game.world);
         game.flight.set_demo(options.demo);
+        game.flight.weather = options.weather;
         game.flight.view = view;
         game.flight.weights = [0.0; 3];
         game.flight.weights[view] = 1.0;
@@ -208,7 +215,7 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
         report("present", 1, &mut presenting);
     }
     println!(
-        "{{\"display_frames\":{count},\"elapsed_seconds\":{:.3},\"view\":{},\"auto\":{},\"speed\":{:.2},\"altitude\":{:.2},\"yaw\":{:.4},\"bank\":{:.4},\"pitch\":{:.4},\"wings\":{},\"imu_enabled\":{},\"imu_ready\":{},\"width\":320,\"height\":170}}",
+        "{{\"display_frames\":{count},\"elapsed_seconds\":{:.3},\"view\":{},\"auto\":{},\"speed\":{:.2},\"altitude\":{:.2},\"yaw\":{:.4},\"bank\":{:.4},\"pitch\":{:.4},\"wings\":{},\"imu_enabled\":{},\"imu_ready\":{},\"width\":320,\"height\":170,\"map\":\"{}\",\"seed\":{},\"weather\":\"{}\",\"demo\":{},\"clearance\":{:.2}}}",
         began.elapsed().as_secs_f64(),
         game.flight.view,
         game.auto,
@@ -219,7 +226,15 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
         game.flight.pitch,
         game.flight.wing_count,
         game.imu_enabled,
-        game.motion.ready
+        game.motion.ready,
+        game.world.kind.name(),
+        game.world.seed,
+        game.flight.weather.name(),
+        game.flight.demo,
+        game.flight.position.z
+            - game
+                .world
+                .height(game.flight.position.x, game.flight.position.y)
     );
     if let Some(path) = &options.capture {
         capture(path, "screen", game)?;
@@ -240,6 +255,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     ));
     eprintln!("地形生成：{:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
     game.flight.set_demo(options.demo);
+    game.flight.weather = options.weather;
     game.flight.view = if options.demo { 1 } else { options.view };
     game.flight.weights = [0.0; 3];
     game.flight.weights[game.flight.view] = 1.0;

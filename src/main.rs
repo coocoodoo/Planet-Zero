@@ -184,6 +184,9 @@ async fn main() {
             flight.change_world(&next);
             world = next;
         }
+        if is_key_pressed(KeyCode::G) {
+            flight.weather = flight.weather.next();
+        }
         if is_key_pressed(KeyCode::M) {
             let kind = world.kind.next();
             loader.start(kind, kind.seed());
@@ -220,7 +223,7 @@ async fn main() {
             paused = !paused;
         }
         if is_key_pressed(KeyCode::R) {
-            flight = Flight::new(&world);
+            flight.change_world(&world);
         }
         if is_key_pressed(KeyCode::F) {
             fullscreen = !fullscreen;
@@ -305,9 +308,9 @@ async fn main() {
             let label = loader.pending.map_or_else(
                 || {
                     format!(
-                        "{} / SEED {} / M MAP / N SEED",
+                        "{} / {} / M MAP / N SEED / G WEATHER",
                         world.kind.name(),
-                        world.seed
+                        flight.weather.name()
                     )
                 },
                 |map| format!("LOADING {}", map.name()),

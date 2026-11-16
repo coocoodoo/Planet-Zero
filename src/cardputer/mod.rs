@@ -100,9 +100,10 @@ impl Game {
             48 => self.flight.exploded = !self.flight.exploded,
             47 => self.flight.wing_count = (self.flight.wing_count + 1) % 3,
             19 => {
-                self.flight = Flight::new(&self.world);
+                self.flight.change_world(&self.world);
                 self.auto = !self.imu_enabled;
             }
+            34 => self.flight.weather = self.flight.weather.next(),
             50 => {
                 let kind = self.world.kind.next();
                 self.loader.start(kind, kind.seed());
@@ -223,10 +224,16 @@ impl Game {
         );
         if !self.menu {
             let label = self.loader.pending.map_or_else(
-                || self.world.kind.name().to_owned(),
+                || {
+                    format!(
+                        "{} / {}",
+                        self.world.kind.name(),
+                        self.flight.weather.name()
+                    )
+                },
                 |map| format!("LOADING {}", map.name()),
             );
-            shade(&mut self.screen, 4, 14, 180, 11);
+            shade(&mut self.screen, 4, 14, 200, 11);
             text(&mut self.screen, 8, 16, &label, [206, 227, 225]);
         }
         if self.flight.demo && !self.menu {
@@ -270,7 +277,7 @@ impl Game {
                     "RUST FLY / WORLD 2/2".into(),
                     format!("MAP {}", self.world.kind.name()),
                     "M NEXT MAP   N NEW SEED".into(),
-                    format!("SEED {}", self.world.seed),
+                    format!("G WEATHER / {}", self.flight.weather.name()),
                     "J DEMO   V WINGS   B SLICES".into(),
                     "R RESET  7 T LIGHT  P PAUSE".into(),
                     "8 H ESC MENU  HOLD ESC EXIT".into(),

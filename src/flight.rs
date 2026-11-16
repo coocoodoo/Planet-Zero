@@ -30,6 +30,7 @@ pub struct Flight {
     pub wingmen: Vec<Flight>,
     pub wing_count: usize,
     pub demo: bool,
+    pub weather: crate::weather::Weather,
     pub demo_time: f32,
     pub position: Vec3,
     pub yaw: f32,
@@ -62,6 +63,7 @@ impl Flight {
             wingmen: Vec::new(),
             wing_count: 2,
             demo: false,
+            weather: crate::weather::Weather::Clear,
             demo_time: 0.0,
             position,
             yaw: 0.55,
@@ -93,6 +95,7 @@ impl Flight {
     }
 
     pub fn change_world(&mut self, world: &World) {
+        let weather = self.weather;
         let (view, weights, demo, wing_count) =
             (self.view, self.weights, self.demo, self.wing_count);
         *self = Self::new(world);
@@ -100,6 +103,7 @@ impl Flight {
         self.weights = weights;
         self.demo = demo;
         self.wing_count = wing_count;
+        self.weather = weather;
     }
 
     pub fn set_demo(&mut self, enabled: bool) {
@@ -255,6 +259,7 @@ impl Flight {
             wing.yaw += angle(self.yaw - wing.yaw) * ease(4.0, dt);
             wing.bank += (self.bank - side * split * 0.7 - wing.bank) * ease(3.2, dt);
             wing.pitch += (self.pitch - wing.pitch) * ease(3.0, dt);
+            wing.weather = self.weather;
             wing.time = self.time + i as f32 * 0.17;
             wing.boost = self.boost;
             wing.speed = self.speed;

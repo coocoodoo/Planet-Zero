@@ -2,6 +2,7 @@ use glam::{Vec2, vec2, vec3};
 
 use crate::flight::{Camera, Flight, MODEL_SCALE};
 use crate::palette::JET;
+use crate::weather::Weather;
 use crate::world::{CLOUD_ALT, MATERIAL_COUNT, MAX_HEIGHT, SIZE, World, hash, index};
 
 const MODEL: &[u8] = include_bytes!("../assets/jet.bin");
@@ -236,7 +237,7 @@ impl Renderer {
         let started = std::time::Instant::now();
         if self.workers.is_empty() {
             self.world(world, flight, &camera, theme);
-            self.sky(&camera, theme, height);
+            self.sky(&camera, flight, theme, height);
         } else {
             let strip = self.w.div_ceil(self.workers.len());
             let w = self.w;
@@ -263,7 +264,7 @@ impl Renderer {
                     view.center.x -= start as f32;
                     scope.spawn(move || {
                         worker.world(world, flight, &view, theme);
-                        worker.sky(&view, theme, height);
+                        worker.sky(&view, flight, theme, height);
                     });
                 }
             });
@@ -291,6 +292,7 @@ impl Renderer {
         for jet in jets {
             self.jet(jet, &camera, theme);
         }
+        self.precipitation(flight, &camera, theme);
         for i in 0..width * height {
             self.output[i] = if has_panel && self.cockpit.pixels[i] != 0 {
                 self.cockpit.pixels[i]
@@ -326,14 +328,19 @@ impl Renderer {
         let altitude = camera.position.z;
         let cx = camera.center.x;
         let cy = camera.center.y;
-        let top = TOP.map(|v| grade(rgb(v[0], v[1], v[2]), theme));
-        let sides = SIDE.map(|v| grade(rgb(v[0], v[1], v[2]), theme));
-        let shadow_color = rgb(13, 26, 56);
-        let haze = match theme {
-            1 => rgb(250, 182, 134),
-            2 => rgb(28, 44, 92),
-            _ => rgb(188, 224, 246),
+        let weather = flight.weather;
+        let flash = weather.flash(flight.time);
+        let lighting = |color| {
+            mix(
+                weather.shade(grade(color, theme)),
+                rgb(225, 234, 255),
+                flash,
+            )
         };
+        let top = TOP.map(|v| lighting(rgb(v[0], v[1], v[2])));
+        let sides = SIDE.map(|v| lighting(rgb(v[0], v[1], v[2])));
+        let shadow_color = rgb(13, 26, 56);
+        let haze = mix(weather.haze(theme), rgb(225, 234, 255), flash);
         let mut colors = [[[[0_u32; 2]; MATERIAL_COUNT + 2]; 2]; 11];
         let mut clouds = [[0_u32; 9]; 11];
         for fog in 0..=10 {
@@ -341,8 +348,8 @@ impl Renderer {
             for (shade, materials) in colors[fog].iter_mut().enumerate() {
                 for (material, faces) in materials.iter_mut().enumerate() {
                     let color = match material {
-                        MATERIAL_COUNT => grade(rgb(240, 252, 255), theme),
-                        m if m == MATERIAL_COUNT + 1 => grade(rgb(160, 211, 244), theme),
+                        MATERIAL_COUNT => lighting(rgb(240, 252, 255)),
+                        m if m == MATERIAL_COUNT + 1 => lighting(rgb(160, 211, 244)),
                         _ => top[material],
                     };
                     let side = if !(4..MATERIAL_COUNT).contains(&material) {
@@ -374,7 +381,7 @@ impl Renderer {
                         (222.0 + 18.0 * f) as u8,
                     ),
                 };
-                *cloud_color = mix(grade(base, theme), haze, amount);
+                *cloud_color = mix(lighting(base), haze, amount);
             }
         }
         let below = self.h as f32 - cy;
@@ -390,8 +397,7 @@ impl Renderer {
         } else {
             nearest
         };
-        let view_distance = 1500.0 + 3.0 * altitude;
-        let fog_start = 300.0 + 2.0 * altitude;
+        let (fog_start, view_distance) = weather.visibility(altitude);
         let above = cy + 2.0;
         let end = if scale * slope > q * above {
             view_distance.min((scale * altitude + above) / (scale * slope - q * above))
@@ -441,7 +447,7 @@ impl Renderer {
             } else {
                 0.0
             };
-            let fog_index = (fog * 10.0) as usize;
+            let fog_index = ((fog * 10.0) as usize).min(10);
             for x in 0..self.w {
                 if self.visible[x].0 >= self.visible[x].1 || self.column[x] <= self.visible[x].0 {
                     wx += ax;
@@ -520,7 +526,7 @@ impl Renderer {
         }
     }
 
-    fn sky(&mut self, camera: &Camera, theme: usize, height: usize) {
+    fn sky(&mut self, camera: &Camera, flight: &Flight, theme: usize, height: usize) {
         let horizon = if camera.q > 0.00001 {
             camera.center.y - camera.scale * camera.slope / camera.q
         } else {
@@ -531,9 +537,30 @@ impl Renderer {
             2 => (rgb(36, 56, 110), rgb(7, 10, 34)),
             _ => (rgb(198, 232, 250), rgb(62, 142, 222)),
         };
+        let weather = flight.weather;
+        let (low, high) = if weather == Weather::Clear {
+            (low, high)
+        } else {
+            let cover = match weather {
+                Weather::Fog => 0.92,
+                Weather::Sandstorm => 0.85,
+                Weather::Snow => 0.68,
+                Weather::Rain => 0.55,
+                _ => 0.4,
+            };
+            (
+                weather.haze(theme),
+                mix(weather.shade(high), weather.haze(theme), cover),
+            )
+        };
+        let flash = weather.flash(flight.time);
         for y in 0..self.h {
             let gradient = ((horizon - y as f32) / (height as f32 * 0.75)).clamp(0.0, 1.0);
-            let color = mix(low, high, (gradient * 12.0).floor() / 12.0);
+            let color = mix(
+                mix(low, high, (gradient * 12.0).floor() / 12.0),
+                rgb(225, 234, 255),
+                flash,
+            );
             for x in 0..self.w {
                 let at = x * self.h + y;
                 if (y as i32) >= self.visible[x].0
@@ -541,6 +568,7 @@ impl Renderer {
                     && self.pixels[at] == 0
                 {
                     self.pixels[at] = if theme == 2
+                        && weather == Weather::Clear
                         && gradient > 0.2
                         && hash(
                             ((x + self.x_origin) as u32)
@@ -555,6 +583,105 @@ impl Renderer {
                     };
                 }
             }
+        }
+    }
+
+    fn precipitation(&mut self, flight: &Flight, camera: &Camera, theme: usize) {
+        let weather = flight.weather;
+        let (count, fall, wind) = weather.particles();
+        let time = flight.time;
+        for i in 0..count {
+            let seed = i as u32 * 7919 + 31;
+            let rx = hash(seed) as f32 / 255.0;
+            let ry = hash(seed + 171) as f32 / 255.0;
+            let rz = hash(seed + 947) as f32 / 255.0;
+            let flutter = if weather == Weather::Snow {
+                (time * 1.7 + rx * 20.0).sin() * 4.0
+            } else {
+                0.0
+            };
+            let position = vec3(
+                (rx * 256.0 + time * wind + flutter - flight.position.x).rem_euclid(256.0)
+                    + flight.position.x
+                    - 128.0,
+                (ry * 256.0 + time * wind * 0.3 - flight.position.y).rem_euclid(256.0)
+                    + flight.position.y
+                    - 128.0,
+                (rz * 180.0 - time * fall - flight.position.z).rem_euclid(180.0)
+                    + flight.position.z
+                    - 80.0,
+            );
+            if let Some((a, depth, scale)) = camera.project(position) {
+                if a.x < -20.0
+                    || a.y < -20.0
+                    || a.x > self.w as f32 + 20.0
+                    || a.y > self.h as f32 + 20.0
+                {
+                    continue;
+                }
+                let base = match weather {
+                    Weather::Snow => rgb(239, 247, 250),
+                    Weather::Sandstorm => {
+                        if i % 3 == 0 {
+                            rgb(239, 194, 108)
+                        } else {
+                            rgb(132, 91, 48)
+                        }
+                    }
+                    _ => rgb(149, 187, 216),
+                };
+                let color = mix(
+                    grade(base, theme),
+                    weather.haze(theme),
+                    weather.fog(depth, flight.position.z) * 0.5,
+                );
+                if weather == Weather::Snow {
+                    self.point(a, depth, color, 0, 0);
+                    if scale > 1.4 && i % 9 == 0 {
+                        self.point(a + vec2(1.0, 0.0), depth, color, 0, 0);
+                        self.point(a + vec2(0.0, 1.0), depth, color, 0, 0);
+                    }
+                } else {
+                    let tail = position - vec3(wind, wind * 0.3, -fall) * 0.035;
+                    if let Some((b, _, _)) = camera.project(tail) {
+                        self.stroke(a, b, depth, color);
+                    }
+                }
+            }
+        }
+        if weather.flash(time) > 0.06 {
+            let (s, c) = camera.yaw.sin_cos();
+            let right = vec3(c, -s, 0.0);
+            let forward = vec3(-s, -c, 0.0);
+            let seed = (time / 11.0) as u32;
+            let base = flight.position
+                + forward * 420.0
+                + right * ((hash(seed + 451) as f32 / 255.0 - 0.5) * 180.0);
+            let mut previous = base + vec3(0.0, 0.0, 160.0);
+            for segment in 1..=9 {
+                let point = base
+                    + right * ((hash(seed + segment * 71) as f32 / 255.0 - 0.5) * 22.0)
+                    + vec3(0.0, 0.0, 160.0 - segment as f32 * 25.0);
+                if let (Some((a, depth, _)), Some((b, _, _))) =
+                    (camera.project(previous), camera.project(point))
+                {
+                    self.stroke(a, b, depth, rgb(241, 244, 255));
+                    if (segment == 3 || segment == 5)
+                        && let Some((branch, _, _)) =
+                            camera.project(point + right * 28.0 - vec3(0.0, 0.0, 30.0))
+                    {
+                        self.stroke(b, branch, depth, rgb(174, 195, 234));
+                    }
+                }
+                previous = point;
+            }
+        }
+    }
+
+    fn stroke(&mut self, a: Vec2, b: Vec2, depth: f32, color: u32) {
+        let steps = a.distance(b).ceil().clamp(1.0, 48.0) as usize;
+        for step in 0..=steps {
+            self.point(a.lerp(b, step as f32 / steps as f32), depth, color, 0, 0);
         }
     }
 
@@ -589,7 +716,14 @@ impl Renderer {
                     if age > 0.7 && i % 2 == 0 {
                         continue;
                     }
-                    let color = grade(mix(rgb(255, 255, 255), rgb(120, 180, 218), age), theme);
+                    let color = mix(
+                        flight.weather.shade(grade(
+                            mix(rgb(255, 255, 255), rgb(120, 180, 218), age),
+                            theme,
+                        )),
+                        flight.weather.haze(theme),
+                        flight.weather.fog((da + db) * 0.5, flight.position.z),
+                    );
                     for step in 0..=steps {
                         let t = step as f32 / steps as f32;
                         self.point(a.lerp(b, t), da + (db - da) * t, color, 0, 0);
@@ -620,7 +754,14 @@ impl Renderer {
         });
         let mut palette = [0_u32; 96];
         for &(i, r, g, b) in JET {
-            palette[i] = mix(rgb(r, g, b), grade(rgb(r, g, b), theme), 0.4);
+            palette[i] = flight
+                .weather
+                .shade(mix(rgb(r, g, b), grade(rgb(r, g, b), theme), 0.4));
+        }
+        let jet_depth = camera.project(flight.position).map_or(0.0, |p| p.1);
+        let fog = flight.weather.fog(jet_depth, flight.position.z);
+        for color in &mut palette {
+            *color = mix(*color, flight.weather.haze(theme), fog);
         }
         self.mask.fill(0);
         let center_scale = camera.project(flight.position).map_or(1.0, |p| p.2);
