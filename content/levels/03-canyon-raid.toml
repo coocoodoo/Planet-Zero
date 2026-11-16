@@ -1,0 +1,8 @@
+name = "CANYON RAID"
+map = "canyon"
+weather = "clear"
+phases = ["strike", "patrol", "boss"]
+durations = [66.0, 76.0, 0.0]
+patrol_quota = 18
+strike_quota = 3
+reinforcement_seconds = 10.0

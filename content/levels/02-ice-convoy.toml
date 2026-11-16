@@ -1,0 +1,8 @@
+name = "ICE CONVOY"
+map = "alpine"
+weather = "snow"
+phases = ["escort", "patrol", "boss"]
+durations = [63.0, 73.0, 0.0]
+patrol_quota = 16
+strike_quota = 3
+reinforcement_seconds = 10.0

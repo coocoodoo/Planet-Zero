@@ -1,6 +1,7 @@
 use crate::render::{mix, rgb};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Weather {
     #[default]
     Clear,

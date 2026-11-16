@@ -1,0 +1,8 @@
+name = "CALDERA"
+map = "volcanic"
+weather = "storm"
+phases = ["strike", "escort", "boss"]
+durations = [75.0, 85.0, 0.0]
+patrol_quota = 24
+strike_quota = 4
+reinforcement_seconds = 10.0

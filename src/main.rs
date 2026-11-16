@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 use rust_fly::app::{App, HEIGHT, Page, WIDTH};
-use rust_fly::arcade::Mode;
+use rust_fly::gameplay::Mode;
 use rust_fly::world::World;
 
 fn configuration() -> Conf {
@@ -63,7 +63,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
             app.home();
         }
         if name == "boss" {
-            app.mission.wave = 4;
+            app.mission.prepare_benchmark(true);
         }
         for _ in 0..frames {
             app.step(1.0 / 30.0, None);
@@ -75,7 +75,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
     app.selection = 0;
     app.draw();
     save_capture(app, &path.join("pause.png"));
-    for vehicle in rust_fly::vehicle::Vehicle::ALL {
+    for vehicle in rust_fly::content::vehicles::Vehicle::ALL {
         app.mode = Mode::Free;
         app.flight.vehicle = vehicle;
         app.start();
@@ -138,6 +138,8 @@ async fn main() {
         (KeyCode::L, 38),
         (KeyCode::O, 24),
         (KeyCode::E, 18),
+        (KeyCode::Y, 21),
+        (KeyCode::Key0, 94),
         (KeyCode::Key1, 26),
         (KeyCode::Key2, 27),
         (KeyCode::Key3, 39),
@@ -171,7 +173,10 @@ async fn main() {
         let mx = (pointer.0 - (screen_width() - WIDTH as f32 * scale) * 0.5) / scale;
         let my = (pointer.1 - (screen_height() - HEIGHT as f32 * scale) * 0.5) / scale;
         if is_mouse_button_pressed(MouseButton::Left) {
-            if app.page != Page::Playing || (mx >= 280.0 && my < 14.0) {
+            if app.page != Page::Playing
+                || ((app.mode == Mode::Combat && mx >= 291.0 && my >= 154.0)
+                    || (app.mode != Mode::Combat && mx >= 280.0 && my < 14.0))
+            {
                 app.click(mx.max(0.0) as usize, my.max(0.0) as usize);
             } else if app.mode == Mode::Free {
                 app.flight.roll();

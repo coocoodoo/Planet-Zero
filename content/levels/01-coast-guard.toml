@@ -1,0 +1,8 @@
+name = "COAST GUARD"
+map = "islands"
+weather = "clear"
+phases = ["patrol", "survival", "boss"]
+durations = [60.0, 70.0, 0.0]
+patrol_quota = 14
+strike_quota = 3
+reinforcement_seconds = 10.0

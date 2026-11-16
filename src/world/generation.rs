@@ -1,167 +1,12 @@
-use std::thread::JoinHandle;
-
-pub const SIZE: usize = 4096;
-pub const CLOUD_SIZE: usize = 2048;
-pub const CLOUD_ALT: usize = 80;
-pub const MAX_HEIGHT: usize = 96;
-pub const MATERIAL_COUNT: usize = 27;
-const NOISE_SIZE: usize = 1024;
-const CELL: usize = SIZE / NOISE_SIZE;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum MapKind {
-    #[default]
-    Islands,
-    Alpine,
-    Canyon,
-    Desert,
-    Wetlands,
-    Volcanic,
-}
-
-impl MapKind {
-    pub const ALL: [Self; 6] = [
-        Self::Islands,
-        Self::Alpine,
-        Self::Canyon,
-        Self::Desert,
-        Self::Wetlands,
-        Self::Volcanic,
-    ];
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Islands => "ISLANDS",
-            Self::Alpine => "ALPINE",
-            Self::Canyon => "CANYON",
-            Self::Desert => "DESERT",
-            Self::Wetlands => "WETLANDS",
-            Self::Volcanic => "VOLCANIC",
-        }
-    }
-    pub fn next(self) -> Self {
-        Self::ALL[(self as usize + 1) % Self::ALL.len()]
-    }
-    pub fn seed(self) -> u32 {
-        [7, 163, 97, 431, 991, 2027][self as usize]
-    }
-    pub fn parse(name: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|kind| kind.name().eq_ignore_ascii_case(name))
-    }
-}
-
-pub struct World {
-    pub heights: Vec<u8>,
-    pub materials: Vec<u8>,
-    pub clouds: Vec<u8>,
-    pub spawn: (f32, f32),
-    pub kind: MapKind,
-    pub seed: u32,
-}
-
-#[derive(Default)]
-pub struct WorldLoader {
-    job: Option<JoinHandle<World>>,
-    queued: Option<(MapKind, u32)>,
-    pub pending: Option<MapKind>,
-}
-
-impl WorldLoader {
-    pub fn start(&mut self, kind: MapKind, seed: u32) {
-        self.pending = Some(kind);
-        if self.job.is_none() {
-            self.job = Some(std::thread::spawn(move || World::generate(kind, seed)));
-        } else {
-            self.queued = Some((kind, seed));
-        }
-    }
-    pub fn poll(&mut self) -> Option<World> {
-        if !self.job.as_ref().is_some_and(JoinHandle::is_finished) {
-            return None;
-        }
-        let world = self.job.take().unwrap().join().expect("地图生成线程失败");
-        if let Some((kind, seed)) = self.queued.take()
-            && (world.kind != kind || world.seed != seed)
-        {
-            drop(world);
-            self.start(kind, seed);
-            return None;
-        }
-        self.pending = None;
-        Some(world)
-    }
-}
-
-struct Random(u32);
-impl Random {
-    fn next(&mut self) -> f32 {
-        self.0 = self.0.wrapping_add(0x6d2b79f5);
-        let mut t = (self.0 ^ (self.0 >> 15)).wrapping_mul(1 | self.0);
-        t ^= t.wrapping_add((t ^ (t >> 7)).wrapping_mul(61 | t));
-        ((t ^ (t >> 14)) as f64 / 4294967296.0) as f32
-    }
-}
-
-pub fn hash(n: u32) -> u8 {
-    let mut h = (n ^ (n >> 13)).wrapping_mul(0x5bd1e995);
-    h ^= h >> 15;
-    h = h.wrapping_mul(0x2c1b3c6d);
-    (h >> 24) as u8
-}
-
-pub fn index(x: i32, y: i32, size: usize) -> usize {
-    (y as usize & (size - 1)) * size + (x as usize & (size - 1))
-}
-
-fn octave(field: &mut [f32], cell: usize, amplitude: f32, random: &mut Random) {
-    let count = NOISE_SIZE / cell;
-    let lattice: Vec<f32> = (0..count * count).map(|_| random.next()).collect();
-    for y in 0..NOISE_SIZE {
-        let y0 = y / cell;
-        let y1 = (y0 + 1) % count;
-        let f = (y % cell) as f32 / cell as f32;
-        let ty = f * f * (3.0 - 2.0 * f);
-        for x in 0..NOISE_SIZE {
-            let x0 = x / cell;
-            let x1 = (x0 + 1) % count;
-            let f = (x % cell) as f32 / cell as f32;
-            let tx = f * f * (3.0 - 2.0 * f);
-            let a = lattice[y0 * count + x0];
-            let b = lattice[y0 * count + x1];
-            let c = lattice[y1 * count + x0];
-            let d = lattice[y1 * count + x1];
-            field[y * NOISE_SIZE + x] +=
-                (a + (b - a) * tx + (c - a + (d - c - b + a) * tx) * ty) * amplitude;
-        }
-    }
-}
-
-fn normalize(field: &mut [f32]) {
-    let low = field.iter().copied().fold(f32::INFINITY, f32::min);
-    let high = field.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    for v in field {
-        *v = (*v - low) / (high - low);
-    }
-}
+use super::*;
 
 impl World {
-    pub fn new(seed: u32) -> Self {
-        Self::generate(MapKind::Islands, seed)
-    }
-
     pub fn generate(kind: MapKind, seed: u32) -> Self {
+        let profile = crate::content::maps::definition(kind);
         let mut random = Random(seed.wrapping_mul(7919).wrapping_add(13));
         let mut elevation = vec![0.0_f32; NOISE_SIZE * NOISE_SIZE];
         let mut moisture = vec![0.0_f32; NOISE_SIZE * NOISE_SIZE];
-        for (cell, amp) in [
-            (128, 0.7),
-            (64, 1.0),
-            (32, 0.5),
-            (16, 0.24),
-            (8, 0.1),
-            (4, 0.04),
-        ] {
+        for &(cell, amp) in &profile.elevation_octaves {
             octave(&mut elevation, cell, amp, &mut random);
         }
         for (cell, amp) in [(128, 1.0), (32, 0.3), (8, 0.08)] {
@@ -173,7 +18,7 @@ impl World {
         for &e in &elevation {
             bins[(e * 1023.0) as usize] += 1;
         }
-        let coverage = if kind == MapKind::Wetlands { 0.4 } else { 0.59 };
+        let coverage = profile.water_coverage;
         let mut count = 0;
         let mut sea = 0.5;
         for (i, &n) in bins.iter().enumerate() {
@@ -230,7 +75,7 @@ impl World {
                             ((e - 0.38) * 55.0).max(cone)
                         }
                     }
-                };
+                } * profile.height_scale;
             }
         }
         let mut world = Self {
@@ -341,7 +186,7 @@ impl World {
                     if !(6..=8).contains(&material) && material != 24 {
                         continue;
                     }
-                    if n > if kind == MapKind::Wetlands { 170 } else { 115 } {
+                    if n > profile.tree_threshold {
                         continue;
                     }
                     let base = world.heights[at];
@@ -398,7 +243,7 @@ impl World {
         if kind == MapKind::Volcanic {
             world.spawn = (532.0 * CELL as f32 - 180.0, 508.0 * CELL as f32 + 630.0);
         }
-        for cluster in 0..800 {
+        for cluster in 0..profile.cloud_clusters {
             let rank = (cluster & 15) as u8;
             let cx = random.next() * CLOUD_SIZE as f32;
             let cy = random.next() * CLOUD_SIZE as f32;
@@ -429,60 +274,5 @@ impl World {
             }
         }
         world
-    }
-
-    pub fn height(&self, x: f32, y: f32) -> f32 {
-        self.heights[index(x.floor() as i32, y.floor() as i32, SIZE)] as f32
-    }
-    pub fn cloud(&self, x: f32, y: f32, time: f32) -> usize {
-        let cell = self.clouds[index(
-            (x - time * 7.0).floor() as i32,
-            (y - time * 3.0).floor() as i32,
-            CLOUD_SIZE,
-        )];
-        if cell >> 4 < 7 {
-            (cell & 15) as usize
-        } else {
-            0
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn maps_have_distinct_terrain_and_valid_periodic_samples() {
-        let mut signatures = std::collections::HashSet::new();
-        for kind in MapKind::ALL {
-            let world = World::generate(kind, kind.seed());
-            assert_eq!(world.heights.len(), SIZE * SIZE);
-            assert!(world.heights.iter().all(|&h| (h as usize) <= MAX_HEIGHT));
-            assert!(
-                world
-                    .materials
-                    .iter()
-                    .all(|&m| (m as usize) < MATERIAL_COUNT)
-            );
-            let signature = world
-                .heights
-                .iter()
-                .zip(&world.materials)
-                .step_by(997)
-                .fold(0_u64, |sum, (&h, &m)| {
-                    sum.wrapping_mul(31).wrapping_add(h as u64 * 32 + m as u64)
-                });
-            assert!(signatures.insert(signature));
-            assert_eq!(
-                world.height(-17.0, 85.0),
-                world.height(SIZE as f32 - 17.0, 85.0)
-            );
-            assert_eq!(
-                world.height(124.0, SIZE as f32 + 71.0),
-                world.height(124.0, 71.0)
-            );
-            assert!(world.height(world.spawn.0, world.spawn.1) < 80.0);
-        }
     }
 }

@@ -55,7 +55,7 @@ impl Game {
             if code == 37 {
                 self.calibrate_imu = true;
             }
-            if code == 15 && self.app.mode == crate::arcade::Mode::Free && !self.auto {
+            if code == 15 && self.app.mode == crate::gameplay::Mode::Free && !self.auto {
                 self.imu_enabled = false;
             }
         }

@@ -1,0 +1,94 @@
+use super::*;
+
+#[test]
+fn menu_enter_moves_to_start_without_changing_options() {
+    let mut app = App::new(World::new(7));
+    for row in 0..START_ROW {
+        app.selection = row;
+        app.key(28, 1);
+        app.key(28, 0);
+        assert_eq!(app.selection, START_ROW);
+        assert_eq!(app.page, Page::Menu);
+        assert_eq!(app.mode, Mode::Free);
+        assert_eq!(app.flight.vehicle, Vehicle::Falcon);
+        assert!(app.loader.pending.is_none());
+    }
+    app.key(28, 1);
+    assert_eq!(app.page, Page::Playing);
+}
+
+#[test]
+fn menus_pause_retry_and_hidden_ui_preserve_control() {
+    let mut app = App::new(World::new(7));
+    app.record_path = None;
+    assert_eq!(app.page, Page::Menu);
+    assert!(app.flight.demo);
+    app.mode = Mode::Combat;
+    app.start();
+    app.step(1.0, None);
+    app.key(25, 1);
+    app.key(25, 0);
+    assert_eq!(app.page, Page::Paused);
+    let before = (app.flight.position, app.mission.countdown);
+    app.step(0.1, None);
+    assert_eq!((app.flight.position, app.mission.countdown), before);
+    app.key(22, 1);
+    app.key(22, 0);
+    assert!(!app.flight.hud);
+    app.key(28, 1);
+    app.key(28, 0);
+    assert_eq!(app.page, Page::Playing);
+    app.mission.score = 3456;
+    app.mission.outcome = Some(true);
+    app.step(0.01, None);
+    assert_eq!(app.page, Page::Results);
+    assert_eq!(app.best_score, 3456);
+    app.key(19, 1);
+    app.key(19, 0);
+    assert_eq!(app.page, Page::Playing);
+    assert_eq!(app.mission.score, 0);
+    assert_eq!(app.mission.health, app.flight.vehicle.shield());
+    assert_eq!(app.best_score, 3456);
+    assert!(!app.flight.hud);
+    app.home();
+    app.key(35, 1);
+    app.key(35, 0);
+    assert_eq!(app.page, Page::Help);
+    app.key(28, 1);
+    app.key(28, 0);
+    assert_eq!(app.page, Page::Menu);
+}
+
+#[test]
+fn success_advances_with_reward_and_failure_retries_snapshot() {
+    let mut app = App::new(World::new(7));
+    app.record_path = None;
+    app.mode = Mode::Combat;
+    app.start();
+    app.mission.outcome = Some(true);
+    app.page = Page::Results;
+    app.mission.levels[2] = 3;
+    app.reward = 1;
+    app.result_action();
+    assert_eq!(app.level, 2);
+    assert_eq!(app.page, Page::Loading);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while app.page == Page::Loading && Instant::now() < deadline {
+        app.step(0.01, None);
+        std::thread::yield_now();
+    }
+    assert_eq!(app.page, Page::Playing);
+    assert_eq!(app.world.kind, crate::world::MapKind::Alpine);
+    assert_eq!(app.mission.levels[2], 3);
+    assert_eq!(app.mission.max_health, 120.0);
+    let entry = app.mission.loadout();
+    app.mission.levels[0] = 3;
+    app.mission.health = 0.0;
+    app.mission.outcome = Some(false);
+    app.page = Page::Results;
+    app.key(28, 1);
+    app.key(28, 0);
+    assert_eq!(app.level, 2);
+    assert_eq!(app.page, Page::Playing);
+    assert_eq!(app.mission.loadout(), entry);
+}

@@ -5,7 +5,7 @@ use crate::world::{SIZE, World, index};
 const GREEN: u32 = 0xff99f466;
 const AMBER: u32 = 0xff60b0ff;
 const INK: u32 = 0xff160f0e;
-const MODEL: &[u8] = include_bytes!("../assets/jet.bin");
+const MODEL: &[u8] = include_bytes!("../../assets/vehicles/falcon.bin");
 const GLYPHS: [[u8; 5]; 10] = [
     [7, 5, 5, 5, 7],
     [2, 6, 2, 2, 7],
@@ -34,10 +34,10 @@ pub struct Cockpit {
 impl Cockpit {
     pub fn new() -> Self {
         let sources: [&[u8]; 4] = [
-            include_bytes!("../assets/cockpit-canopy.bin"),
-            include_bytes!("../assets/cockpit-panel.bin"),
-            include_bytes!("../assets/cockpit-deck.bin"),
-            include_bytes!("../assets/cockpit-rear.bin"),
+            include_bytes!("../../assets/cockpit/canopy.bin"),
+            include_bytes!("../../assets/cockpit/panel.bin"),
+            include_bytes!("../../assets/cockpit/deck.bin"),
+            include_bytes!("../../assets/cockpit/rear.bin"),
         ];
         Self {
             layers: sources.map(|bytes| {
@@ -58,7 +58,7 @@ impl Cockpit {
                     colors[4][i] = mix(color, rgb(12, 24, 49), 0.45);
                     colors[5][i] = colors[4][i];
                 }
-                let colors = crate::weather::Weather::ALL
+                let colors = crate::content::weather::Weather::ALL
                     .into_iter()
                     .flat_map(|weather| {
                         colors.map(|palette| {
@@ -115,7 +115,7 @@ impl Cockpit {
                     let color_index =
                         self.layers[layer].pixels[sy as usize * 342 + sx as usize] as usize;
                     let lit = usize::from(
-                        flight.weather == crate::weather::Weather::Clear
+                        flight.weather == crate::content::weather::Weather::Clear
                             && (x - sunlight + (y - 95) / 2).abs() < 40,
                     );
                     let color = self.layers[layer].colors

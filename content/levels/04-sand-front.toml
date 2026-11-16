@@ -1,0 +1,8 @@
+name = "SAND FRONT"
+map = "desert"
+weather = "sandstorm"
+phases = ["survival", "strike", "boss"]
+durations = [69.0, 79.0, 0.0]
+patrol_quota = 20
+strike_quota = 4
+reinforcement_seconds = 10.0

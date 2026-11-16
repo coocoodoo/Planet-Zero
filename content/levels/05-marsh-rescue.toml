@@ -1,0 +1,8 @@
+name = "MARSH RESCUE"
+map = "wetlands"
+weather = "rain"
+phases = ["escort", "survival", "boss"]
+durations = [72.0, 82.0, 0.0]
+patrol_quota = 22
+strike_quota = 4
+reinforcement_seconds = 10.0

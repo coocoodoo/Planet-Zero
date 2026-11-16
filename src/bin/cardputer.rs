@@ -8,7 +8,8 @@ use std::time::Duration;
 use std::time::Instant;
 
 struct Options {
-    mode: Option<rust_fly::arcade::Mode>,
+    level: u32,
+    mode: Option<rust_fly::gameplay::Mode>,
     vehicle: usize,
     benchmark: Option<usize>,
     frames: Option<usize>,
@@ -21,12 +22,13 @@ struct Options {
     imu: bool,
     demo: bool,
     map: MapKind,
-    weather: rust_fly::weather::Weather,
+    weather: rust_fly::content::weather::Weather,
     seed: Option<u32>,
 }
 
 fn options() -> Result<Options, Box<dyn Error>> {
     let mut result = Options {
+        level: 1,
         mode: None,
         vehicle: 0,
         benchmark: None,
@@ -40,31 +42,36 @@ fn options() -> Result<Options, Box<dyn Error>> {
         imu: true,
         demo: false,
         map: MapKind::Islands,
-        weather: rust_fly::weather::Weather::Clear,
+        weather: rust_fly::content::weather::Weather::Clear,
         seed: None,
     };
+    let mut map_explicit = false;
+    let mut weather_explicit = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         if arg == "--help" {
             println!(
-                "rust-fly-cardputer [--mode free|race|coins|combat] [--vehicle 0..3] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
+                "rust-fly-cardputer [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..3] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
             );
             std::process::exit(0);
         }
         let value = args.next().ok_or_else(|| format!("{arg} 缺少参数值"))?;
         match arg.as_str() {
+            "--level" => result.level = value.parse()?,
             "--mode" => {
                 result.mode = Some(
-                    rust_fly::arcade::Mode::parse(&value)
+                    rust_fly::gameplay::Mode::parse(&value)
                         .ok_or("未知模式，请使用 free、race、coins 或 combat")?,
                 )
             }
             "--vehicle" => result.vehicle = value.parse()?,
             "--weather" => {
-                result.weather = rust_fly::weather::Weather::parse(&value)
+                weather_explicit = true;
+                result.weather = rust_fly::content::weather::Weather::parse(&value)
                     .ok_or("未知天气，请使用 --help 查看天气名称")?
             }
             "--map" => {
+                map_explicit = true;
                 result.map = MapKind::parse(&value).ok_or("未知地图，请使用 --help 查看地图名称")?
             }
             "--seed" => result.seed = Some(value.parse()?),
@@ -100,6 +107,16 @@ fn options() -> Result<Options, Box<dyn Error>> {
             _ => return Err(format!("未知参数 {arg}").into()),
         }
     }
+    if !(1..=999).contains(&result.level) {
+        return Err("关卡编号范围为 1–999".into());
+    }
+    let operation = rust_fly::content::levels::operation(result.level);
+    if !map_explicit {
+        result.map = operation.map;
+    }
+    if !weather_explicit {
+        result.weather = operation.weather;
+    }
     if result.vehicle > 3
         || result.scale != 1
         || !(1..=60).contains(&result.fps)
@@ -134,7 +151,7 @@ fn report(name: &str, scale: usize, samples: &mut [f64]) {
 }
 
 fn keep_benchmark_active(game: &mut Game) {
-    if game.mode == rust_fly::arcade::Mode::Combat {
+    if game.mode == rust_fly::gameplay::Mode::Combat {
         // 性能采样期间维持双方护盾和僚机，持续绘制战斗场景
         game.mission.health = game.mission.max_health;
         game.mission.support = 30.0;
@@ -145,7 +162,7 @@ fn keep_benchmark_active(game: &mut Game) {
 }
 
 fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Box<dyn Error>> {
-    let scenes = if game.mode == rust_fly::arcade::Mode::Combat {
+    let scenes = if game.mode == rust_fly::gameplay::Mode::Combat {
         6
     } else {
         3
@@ -160,8 +177,8 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
         };
         game.start();
         game.mission.shuffle_encounters(7109);
-        if game.mode == rust_fly::arcade::Mode::Combat {
-            game.mission.wave = if scene >= 3 { 4 } else { 3 };
+        if game.mode == rust_fly::gameplay::Mode::Combat {
+            game.mission.prepare_benchmark(scene >= 3);
             game.mission.support = 30.0;
         }
 
@@ -170,7 +187,7 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
         game.flight.view = view;
         game.flight.weights = [0.0; 3];
         game.flight.weights[view] = 1.0;
-        for _ in 0..if game.mode == rust_fly::arcade::Mode::Free {
+        for _ in 0..if game.mode == rust_fly::gameplay::Mode::Free {
             60
         } else {
             240
@@ -294,6 +311,16 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
                 .height(game.flight.position.x, game.flight.position.y)
     );
     println!(
+        "{{\"level\":{},\"phase\":\"{}\",\"phase_seconds\":{:.2},\"objective\":{},\"overdrive\":{:.1},\"graze\":{},\"convoy_health\":{:.1}}}",
+        game.level,
+        game.mission.phase().name(),
+        game.mission.phase_elapsed,
+        game.mission.objective,
+        game.mission.overdrive,
+        game.mission.grazes,
+        game.mission.convoy.as_ref().map_or(-1.0, |c| c.health)
+    );
+    println!(
         "{{\"mode\":\"{}\",\"page\":\"{:?}\",\"score\":{},\"wave\":{},\"kills\":{},\"enemies\":{},\"shots\":{},\"health\":{:.1},\"gate\":{},\"coins\":{},\"ui\":{}}}",
         game.mode.name(),
         game.page,
@@ -325,13 +352,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         options.seed.unwrap_or(options.map.seed()),
     ));
     eprintln!("地形生成：{:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
-    game.flight.vehicle = rust_fly::vehicle::Vehicle::ALL[options.vehicle];
+    game.level = options.level;
+    game.flight.vehicle = rust_fly::content::vehicles::Vehicle::ALL[options.vehicle];
     if options.mode.is_some()
         || options.benchmark.is_some()
         || options.frames.is_some()
         || options.demo
     {
-        game.mode = options.mode.unwrap_or(rust_fly::arcade::Mode::Free);
+        game.mode = options.mode.unwrap_or(rust_fly::gameplay::Mode::Free);
         game.start();
         game.flight.set_demo(options.demo);
     }
