@@ -37,8 +37,10 @@ pub fn draw(app: &mut App) {
             WHITE,
         );
     }
-    if m.mode == Mode::Free && !f.demo && !f.space {
-        let label = if f.can_loop() {
+    if m.mode == Mode::Free && !f.demo {
+        let label = if f.loop_charge() > 0.0 {
+            format!("LOOP {:.1}/3", f.loop_charge() * 3.0)
+        } else if f.can_loop() {
             "LOOP READY".to_owned()
         } else {
             format!("LOOP {:03.0}", f.loop_altitude().ceil())

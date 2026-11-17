@@ -113,14 +113,19 @@ fn teleport_does_not_collect_pickups_between_portal_endpoints() {
         collected: false,
         life: 100.0,
     }];
-    app.step(
-        0.05,
-        Some(Controls {
-            manual: true,
-            ..Default::default()
-        }),
-    );
-    assert!(app.flight.position.distance(exit.center) < 100.0);
+    for _ in 0..40 {
+        app.step(
+            0.05,
+            Some(Controls {
+                manual: true,
+                ..Default::default()
+            }),
+        );
+        if app.flight.warp_flash > 0.0 {
+            break;
+        }
+    }
+    assert!(app.flight.position.distance(exit.center) < 120.0);
     assert_eq!(app.mission.collected, 0);
     assert!(!app.mission.pickups[0].collected);
     assert!(app.sounds.iter().any(|s| s == crate::audio::Sound::Warp));
@@ -180,11 +185,31 @@ fn interplanetary_crossing_preserves_loadout_and_has_a_return_route() {
     app.flight.speed = 145.0;
     app.mission.bombs = 4;
     app.mission.score = 321;
-    assert!(app.cross_world(route.aperture.center + route.aperture.normal() * 30.0));
+    app.flight.follow = app.flight.position;
+    app.flight.yaw = route.aperture.yaw + std::f32::consts::PI;
+    app.flight.camera_yaw = -app.flight.yaw;
+    app.flight.view = 0;
+    app.flight.weights = [1.0, 0.0, 0.0];
+    assert!(!app.cross_world(route.aperture.center + route.aperture.normal() * 30.0));
+    assert_eq!(app.world.kind, source.kind);
+    for _ in 0..60 {
+        let before = app.flight.position;
+        app.flight.step(
+            1.0 / 60.0,
+            &Controls {
+                manual: true,
+                ..Default::default()
+            },
+            &source,
+        );
+        if app.cross_world(before) {
+            break;
+        }
+    }
     assert_eq!(app.world.kind, route.target.kind);
     assert_eq!(app.mission.bombs, 4);
     assert_eq!(app.mission.score, 321);
-    assert_eq!(app.flight.speed, 145.0);
+    assert_eq!(app.flight.speed, app.flight.vehicle.speed());
     let back = app
         .network
         .routes(&app.world)

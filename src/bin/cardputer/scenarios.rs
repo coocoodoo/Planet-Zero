@@ -125,7 +125,7 @@ pub(super) fn maneuvers(
             game.mode = rust_fly::gameplay::Mode::Free;
             game.start();
             game.auto = false;
-            game.flight.position.z = game.flight.loop_altitude() + 25.0;
+            game.flight.position.z = game.flight.loop_altitude() + 160.0;
             game.flight.follow = game.flight.position;
             game.flight.view = view;
             game.flight.weights = [0.0; 3];

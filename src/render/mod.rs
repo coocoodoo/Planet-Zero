@@ -298,7 +298,7 @@ impl Renderer {
         }
         self.stages[0] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
-        self.portal_mask(world, &camera, network);
+        self.portal_mask(world, flight, &camera, network);
         self.background(world, flight, &camera, theme, height);
         self.portals(world, flight, &camera, mission, theme, network);
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;

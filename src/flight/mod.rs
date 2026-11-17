@@ -1,6 +1,8 @@
 use glam::{Vec3, vec3};
 mod camera;
+mod portals;
 mod safety;
+pub use portals::PortalTransit;
 #[cfg(test)]
 mod tests;
 pub use camera::Camera;
@@ -14,6 +16,7 @@ pub const MODEL_SCALE: f32 = 0.5;
 pub const VIEW_SCALE: f32 = 0.82;
 pub const MIN_CLEARANCE: f32 = 28.0;
 const LOOP_RATE: f32 = 1.25;
+const LOOP_HOLD: f32 = 3.0;
 const NORMAL_PITCH: f32 = 0.55;
 
 pub fn angle(value: f32) -> f32 {
@@ -39,7 +42,9 @@ pub struct Flight {
     pub wingmen: Vec<Flight>,
     pub space: bool,
     pub warp_flash: f32,
+    pub portal_transit: Option<PortalTransit>,
     portal_cooldown: f32,
+    portal_exit: Option<Vec3>,
     pub wing_count: usize,
     pub portal_wait: f32,
     rejoining: bool,
@@ -71,6 +76,8 @@ pub struct Flight {
     vertical_speed: f32,
     loop_remaining: f32,
     loop_direction: f32,
+    loop_hold: f32,
+    loop_hold_direction: f32,
     aerobatic_ground: f32,
     trail_time: f32,
 }
@@ -86,7 +93,9 @@ impl Flight {
             wingmen: Vec::new(),
             space: world.kind == crate::world::MapKind::Space,
             warp_flash: 0.0,
+            portal_transit: None,
             portal_cooldown: 0.0,
+            portal_exit: None,
             wing_count: 2,
             portal_wait: 0.0,
             rejoining: false,
@@ -118,6 +127,8 @@ impl Flight {
             vertical_speed: 0.0,
             loop_remaining: 0.0,
             loop_direction: 1.0,
+            loop_hold: 0.0,
+            loop_hold_direction: 0.0,
             aerobatic_ground: world
                 .ceiling
                 .max(world.obstacles.iter().copied().max().unwrap_or(0))
@@ -150,22 +161,6 @@ impl Flight {
         self.vehicle = vehicle;
     }
 
-    pub fn traverse_portal(&mut self, world: &World, previous: Vec3) -> bool {
-        if world.portals.len() != 2 || self.portal_cooldown > 0.0 {
-            return false;
-        }
-        let camera = Camera::new(self, 320, 170);
-        for (i, entry) in world.portals.iter().enumerate() {
-            if camera.enters_portal(*entry, previous, self.position) {
-                let entry = camera.portal_frame(*entry);
-                let exit = world.portals[1 - i];
-                self.warp(entry, exit);
-                return true;
-            }
-        }
-        false
-    }
-
     pub fn enter_region(&mut self, world: &World) {
         self.space = world.kind == crate::world::MapKind::Space;
         self.aerobatic_ground = world
@@ -179,51 +174,12 @@ impl Flight {
     pub fn can_loop(&self) -> bool {
         self.space || self.position.z >= self.loop_altitude()
     }
+    pub fn loop_charge(&self) -> f32 {
+        self.loop_hold / LOOP_HOLD
+    }
     pub fn can_warp(&self) -> bool {
         self.portal_cooldown <= 0.0
     }
-    pub fn warp(
-        &mut self,
-        entry: crate::world::portal::Portal,
-        exit: crate::world::portal::Portal,
-    ) {
-        let camera = Camera::new(self, 320, 170);
-        let rotation = entry.rotation_to(exit);
-        self.position = entry.transform(exit, self.position);
-        let distance = (self.position - exit.center).dot(exit.normal());
-        let offset = exit.normal() * (exit.radius * 0.8 + 8.0 - distance).max(0.0);
-        self.position += offset;
-        self.follow = entry.transform(exit, self.follow) + offset;
-        self.yaw += rotation;
-        self.camera_yaw -= rotation;
-        self.camera_offset -= rotation * 0.4;
-        self.trails.clear();
-        for (i, wing) in self.wingmen.iter_mut().enumerate() {
-            let entered = camera
-                .project(entry.center)
-                .zip(camera.project(wing.position))
-                .is_some_and(|((center, _, scale), (point, _, _))| {
-                    point.distance(center) < entry.radius * scale * 0.82
-                        && wing.position.distance(entry.center) < entry.radius * 1.6
-                });
-            if entered {
-                wing.position = entry.transform(exit, wing.position) + offset;
-                wing.follow = entry.transform(exit, wing.follow) + offset;
-            } else {
-                wing.portal_wait = 0.45 + i as f32 * 0.3;
-                wing.rejoining = true;
-                wing.position =
-                    exit.center + exit.right() * (i as f32 * 2.0 - 1.0) * exit.radius * 0.25;
-                wing.follow = wing.position;
-            }
-            wing.yaw += rotation;
-            wing.camera_yaw -= rotation;
-            wing.trails.clear();
-        }
-        self.portal_cooldown = 0.8;
-        self.warp_flash = 0.45;
-    }
-
     pub fn set_demo(&mut self, enabled: bool) {
         self.demo = enabled;
         self.demo_time = 0.0;
@@ -318,6 +274,14 @@ impl Flight {
         let controls = scripted.as_ref().unwrap_or(controls);
         self.time += dt;
         self.portal_cooldown = (self.portal_cooldown - dt).max(0.0);
+        if let Some(transit) = &mut self.portal_transit {
+            transit.elapsed += dt;
+            if transit.elapsed > 2.0
+                && self.position.distance(transit.entry.center) > transit.entry.radius * 4.0
+            {
+                self.portal_transit = None;
+            }
+        }
         self.warp_flash = (self.warp_flash - dt).max(0.0);
         if world.kind.vacuum() {
             self.weather = crate::content::weather::Weather::Clear;
@@ -341,8 +305,18 @@ impl Flight {
         if manual_attitude {
             let input = controls.climb.clamp(-1.0, 1.0);
             if self.loop_remaining <= 0.0 && input.abs() > 0.65 && self.can_loop() {
-                self.loop_remaining = TAU;
-                self.loop_direction = input.signum();
+                if input.signum() != self.loop_hold_direction {
+                    self.loop_hold = 0.0;
+                }
+                self.loop_hold_direction = input.signum();
+                self.loop_hold += dt;
+                if self.loop_hold + 0.00001 >= LOOP_HOLD {
+                    self.loop_remaining = TAU;
+                    self.loop_direction = input.signum();
+                    self.loop_hold = 0.0;
+                }
+            } else {
+                self.loop_hold = 0.0;
             }
             let target_rate = if self.loop_remaining > 0.0 {
                 self.loop_direction * LOOP_RATE
@@ -362,6 +336,7 @@ impl Flight {
             self.pitch = angle(self.pitch + rotation);
         } else {
             self.loop_remaining = 0.0;
+            self.loop_hold = 0.0;
         }
         let forward = self.axes()[1];
         let horizontal = if manual_attitude {

@@ -201,6 +201,7 @@ impl App {
     pub fn home(&mut self) {
         self.page = Page::Menu;
         self.travel = None;
+        self.flight.portal_transit = None;
         self.selection = START_ROW;
         self.pending_start = false;
         self.flight.wing_count = 2;

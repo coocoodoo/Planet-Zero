@@ -6,10 +6,9 @@ impl App {
         if !self.network.active || !self.flight.can_warp() {
             return false;
         }
-        let camera = crate::flight::Camera::new(&self.flight, WIDTH, HEIGHT);
         for mut route in self.network.routes(&self.world) {
-            if camera.enters_portal(route.aperture, previous, self.flight.position) {
-                route.aperture = camera.portal_frame(route.aperture);
+            if let Some(entry) = self.flight.approach_portal(route.aperture, previous) {
+                route.aperture = entry;
                 if !self.arrive(route) {
                     self.travel = Some(route);
                     self.network.request(route.target);

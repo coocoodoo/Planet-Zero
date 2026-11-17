@@ -135,7 +135,7 @@ pub fn draw(app: &mut App) {
             ],
             [
                 "AEROBATICS / 5 OF 5",
-                "LOOP READY : HOLD PITCH TO LOOP",
+                "LOOP READY : HOLD PITCH FOR 3S",
                 "IMU HOLD LEFT/RIGHT 0.8S : ROLL",
                 "LOW FLIGHT : LIMITED PITCH / ROLL",
                 "GROUND GUARD : REGIONAL BASELINE",

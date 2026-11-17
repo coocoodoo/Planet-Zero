@@ -123,6 +123,7 @@ impl App {
             35 => {
                 self.network
                     .summon(&self.world, self.flight.position, self.flight.axes()[1]);
+                self.flight.portal_transit = None;
                 self.sounds.push(crate::audio::Sound::Warp);
             }
             52 | 9 | 25 => {

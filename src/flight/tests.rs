@@ -33,9 +33,9 @@ fn warp_preserves_speed_camera_formation_and_cooldown() {
     let old_follow = f.follow;
     let old_wing = f.wingmen[0].position;
     let yaw = f.yaw;
-    assert!(f.traverse_portal(&world, entry.center + entry.normal() * 4.0));
+    f.warp(source, exit);
     let offset = f.position - source.transform(exit, entry.center - entry.normal() * 3.0);
-    assert!((f.position - exit.center).dot(exit.normal()) > exit.radius * 0.7);
+    assert!(offset.length() < 0.001);
     assert!(
         f.follow
             .distance(source.transform(exit, old_follow) + offset)
@@ -151,10 +151,10 @@ fn held_pitch_completes_upward_and_downward_loops() {
     let world = terrain();
     for direction in [-1.0, 1.0] {
         let mut f = Flight::new(&world);
-        f.position.z = f.loop_altitude() + 25.0;
+        f.position.z = f.loop_altitude() + 240.0;
         f.follow = f.position;
         let mut rotation = 0.0;
-        for _ in 0..420 {
+        for _ in 0..660 {
             let before = f.pitch;
             f.step(
                 1.0 / 60.0,
@@ -279,16 +279,16 @@ fn low_altitude_controls_limit_pitch_without_forced_lift() {
         }
     }
     let mut f = Flight::new(&world);
-    f.position.z = f.loop_altitude() + 25.0;
+    f.position.z = f.loop_altitude() + 240.0;
     assert!(f.roll());
     let mut rotation = 0.0;
-    for frame in 0..420 {
+    for frame in 0..660 {
         let before = f.pitch;
         let altitude = f.position.z;
         f.step(
             1.0 / 60.0,
             &Controls {
-                climb: if frame < 60 { -1.0 } else { 0.0 },
+                climb: if frame < 190 { -1.0 } else { 0.0 },
                 manual: true,
                 aerobatic: true,
                 boost: true,
@@ -400,4 +400,110 @@ fn wingmen_outside_the_aperture_rejoin_from_the_exit() {
         }
     }
     assert!(appeared && !f.wingmen[0].rejoining);
+}
+
+#[test]
+fn loops_require_three_seconds_of_continuous_ready_input() {
+    let world = terrain();
+    let mut f = Flight::new(&world);
+    f.position.z = 700.0;
+    let mut controls = Controls {
+        manual: true,
+        aerobatic: true,
+        climb: 1.0,
+        ..Default::default()
+    };
+    for _ in 0..179 {
+        f.step(1.0 / 60.0, &controls, &world);
+        assert_eq!(f.loop_remaining, 0.0);
+        assert!(f.pitch.abs() <= NORMAL_PITCH + 0.02);
+    }
+    controls.climb = 0.0;
+    f.step(1.0 / 60.0, &controls, &world);
+    assert_eq!(f.loop_charge(), 0.0);
+    controls.climb = 1.0;
+    for _ in 0..120 {
+        f.step(1.0 / 60.0, &controls, &world);
+    }
+    controls.climb = -1.0;
+    f.step(1.0 / 60.0, &controls, &world);
+    assert!(f.loop_charge() < 0.01);
+    f.position.z = MIN_CLEARANCE + 50.0;
+    f.step(1.0 / 60.0, &controls, &world);
+    assert_eq!(f.loop_charge(), 0.0);
+    f.position.z = 700.0;
+    for _ in 0..179 {
+        f.step(1.0 / 60.0, &controls, &world);
+        assert_eq!(f.loop_remaining, 0.0);
+    }
+    f.step(1.0 / 60.0, &controls, &world);
+    assert!(f.loop_remaining > 6.0);
+    assert_eq!(f.loop_charge(), 0.0);
+}
+
+#[test]
+fn chase_waits_for_the_camera_and_warps_without_an_exit_push() {
+    use crate::world::portal::Portal;
+    let world = World::generate(crate::world::MapKind::Space, 1999);
+    let mut f = Flight::new(&world);
+    f.position = vec3(0.0, 30.0, 300.0);
+    f.follow = f.position + Vec3::Y * 18.0;
+    f.yaw = 0.0;
+    f.camera_yaw = 0.0;
+    f.view = 1;
+    f.weights = [0.0, 1.0, 0.0];
+    let entry = Portal {
+        center: vec3(0.0, 0.0, 300.0),
+        yaw: std::f32::consts::PI,
+        radius: 50.0,
+    };
+    let exit = Portal {
+        center: vec3(1700.0, 500.0, 500.0),
+        yaw: 1.1,
+        ..entry
+    };
+    assert!(
+        f.approach_portal(entry, f.position + Vec3::Y * 5.0)
+            .is_none()
+    );
+    let mut finished = false;
+    for frame in 0..120 {
+        let previous = f.position;
+        f.step(
+            1.0 / 60.0,
+            &Controls {
+                manual: true,
+                ..Default::default()
+            },
+            &world,
+        );
+        let before = f.clone();
+        let camera = Camera::new(&f, 320, 170);
+        if let Some(source) = f.approach_portal(entry, previous) {
+            assert!(frame > 45);
+            let marker = f.position + f.axes()[1] * 200.0;
+            let projected = camera.project(marker).unwrap().0;
+            let plane = camera.project(f.position).unwrap().0;
+            let trail = f.trails[0];
+            f.warp(source, exit);
+            assert!(f.trails[0][0].distance(source.transform(exit, trail[0])) < 0.001);
+            assert!(f.trails[0][1].distance(source.transform(exit, trail[1])) < 0.001);
+            let actual = Camera::new(&f, 320, 170);
+            assert!(f.position.distance(source.transform(exit, before.position)) < 0.001);
+            assert!(f.follow.distance(source.transform(exit, before.follow)) < 0.001);
+            assert!(actual.project(f.position).unwrap().0.distance(plane) < 0.002);
+            assert!(
+                actual
+                    .project(source.transform(exit, marker))
+                    .unwrap()
+                    .0
+                    .distance(projected)
+                    < 0.002
+            );
+            finished = true;
+            break;
+        }
+        assert!(f.position.distance(before.position) < 0.001);
+    }
+    assert!(finished);
 }
