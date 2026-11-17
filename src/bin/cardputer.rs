@@ -350,6 +350,7 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
     if game.imu_enabled {
         game.auto = false;
     }
+    let telemetry = rust_fly::cardputer::telemetry::Sensor::start();
     let mut keyboard = Keyboard::open()?;
     let mut display = Display::open()?;
     let audio = if options.audio {
@@ -372,6 +373,7 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
     while !stopped() && !game.quit && options.frames.is_none_or(|limit| count < limit) {
         let start = Instant::now();
         keyboard.poll(game)?;
+        game.telemetry = telemetry.snapshot();
         if let Some(sensor) = &sensor {
             if game.calibrate_imu {
                 sensor.calibrate();

@@ -202,8 +202,7 @@ async fn main() {
         let my = (pointer.1 - (screen_height() - HEIGHT as f32 * scale) * 0.5) / scale;
         if is_mouse_button_pressed(MouseButton::Left) {
             if app.page != Page::Playing
-                || ((app.mode == Mode::Combat && mx >= 291.0 && my >= 154.0)
-                    || (app.mode != Mode::Combat && mx >= 280.0 && my < 14.0))
+                || app.hud_button_contains(mx.max(0.0) as usize, my.max(0.0) as usize)
             {
                 app.click(mx.max(0.0) as usize, my.max(0.0) as usize);
             } else if app.mode == Mode::Free && app.flight.roll() {

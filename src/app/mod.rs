@@ -4,6 +4,7 @@ mod director;
 mod input;
 mod records;
 mod settings;
+pub mod telemetry;
 #[cfg(test)]
 mod tests;
 mod travel;
@@ -35,6 +36,8 @@ pub enum Page {
 }
 
 pub struct App {
+    pub telemetry: telemetry::Telemetry,
+    pub(crate) minimap: chart::Chart,
     pub device_controls: bool,
     pub(crate) chart: chart::Chart,
     chart_return: Page,
@@ -115,6 +118,8 @@ impl App {
         let settings = settings::Settings::load(settings_path.as_deref());
         flight.faceted = settings.faceted;
         Self {
+            telemetry: telemetry::Telemetry::default(),
+            minimap: chart::Chart::default(),
             device_controls: false,
             chart: chart::Chart::default(),
             chart_return: Page::Playing,

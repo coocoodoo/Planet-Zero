@@ -1,6 +1,7 @@
 mod canvas;
 mod chart;
 mod combat;
+mod fpv;
 mod hud;
 mod menus;
 use crate::app::{App, Page};
@@ -32,6 +33,7 @@ fn portal_labels(app: &mut App) {
     let pivot = glam::vec2(160.0, 170.0 * 0.43);
     let (s, c) = (-(app.flight.bank + app.flight.spin) * app.flight.weights[2]).sin_cos();
     let routes = app.network.routes(&app.world);
+    let fpv = app.uses_fpv_hud();
     let mut canvas = Canvas {
         pixels: &mut app.screen,
     };
@@ -49,20 +51,23 @@ fn portal_labels(app: &mut App) {
         let p = glam::vec2(c * delta.x - s * delta.y, s * delta.x + c * delta.y) + pivot;
         let y = p.y + route.aperture.radius * scale + 5.0;
         let label = route.target.kind.name();
-        let x = p.x - label.len() as f32 * 3.0;
-        if x < 3.0 || x + label.len() as f32 * 6.0 > 317.0 || !(18.0..148.0).contains(&y) {
+        let glyph = if fpv { 4.0 } else { 8.0 };
+        let x = p.x - label.len() as f32 * glyph * 0.5;
+        if x < 3.0 || x + label.len() as f32 * glyph > 317.0 || !(18.0..148.0).contains(&y) {
             continue;
         }
-        canvas.text(
-            x as i32,
-            y as i32,
-            label,
-            if app.network.get(route.target).is_some() {
-                CYAN
-            } else {
-                MUTED
-            },
-        );
+        let color = if app.network.get(route.target).is_some() {
+            CYAN
+        } else {
+            MUTED
+        };
+        if fpv {
+            if x >= 48.0 && x + label.len() as f32 * glyph <= 268.0 && (30.0..110.0).contains(&y) {
+                canvas.osd(x as i32, y as i32, label, color);
+            }
+        } else {
+            canvas.text(x as i32, y as i32, label, color);
+        }
     }
 }
 

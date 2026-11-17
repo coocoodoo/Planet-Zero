@@ -276,6 +276,16 @@ impl App {
             _ => {}
         }
     }
+    pub fn uses_fpv_hud(&self) -> bool {
+        self.flight.weights[1] >= 0.5 && self.flight.fixed_weight < 0.5
+    }
+    pub fn hud_button_contains(&self, x: usize, y: usize) -> bool {
+        if self.mode == Mode::Combat && !self.uses_fpv_hud() {
+            x >= 291 && y >= 154
+        } else {
+            x >= 302 && y < 14
+        }
+    }
     pub fn click(&mut self, x: usize, y: usize) {
         if self.page == Page::Menu && (36..148).contains(&y) {
             self.selection = ((y - 36) / 12).min(MENU_ROWS - 1);
@@ -292,10 +302,7 @@ impl App {
         } else if self.page == Page::Settings && (45..141).contains(&y) {
             self.selection = ((y - 45) / 16).min(5);
             self.adjust_setting(if x < 160 { -1 } else { 1 });
-        } else if self.page == Page::Playing
-            && ((self.mode == Mode::Combat && x >= 291 && y >= 154)
-                || (self.mode != Mode::Combat && x >= 280 && y < 14))
-        {
+        } else if self.page == Page::Playing && self.hud_button_contains(x, y) {
             self.flight.hud = !self.flight.hud;
         } else if self.page == Page::Results && (134..153).contains(&y) {
             self.result_action();

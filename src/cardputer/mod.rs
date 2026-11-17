@@ -6,6 +6,7 @@ mod gestures;
 pub mod imu;
 #[cfg(target_os = "linux")]
 pub mod linux;
+pub mod telemetry;
 
 pub struct Game {
     pub app: App,

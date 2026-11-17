@@ -1,5 +1,9 @@
 use super::*;
 pub fn draw(app: &mut App) {
+    if app.flight.hud && app.uses_fpv_hud() {
+        super::fpv::draw(app);
+        return;
+    }
     let mut c = Canvas {
         pixels: &mut app.screen,
     };
