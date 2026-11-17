@@ -194,6 +194,9 @@ impl App {
                 if transition.ascent {
                     self.finish_ascent(transition.destination);
                 }
+                self.flight.orbital_scenery = None;
+                self.flight.boost = 0.0;
+                self.flight.orbital_thrust = 0.0;
                 self.orbit.cooldown = 4.0;
                 self.orbit.boost = false;
                 self.flight.orbit_quiet = self.world.kind == MapKind::Space;
@@ -234,6 +237,7 @@ impl App {
                 seed: MapKind::Space.seed(),
             };
             if self.network.get(target).is_some() {
+                self.flight.orbital_scenery = self.network.get(target).cloned();
                 let body = Body::of(self.world.kind);
                 self.flight.surface = Some(SurfaceWarp::new(
                     body,
@@ -322,6 +326,7 @@ impl App {
         self.flight.weather = environment.weather;
         self.theme = environment.theme;
         let previous = std::mem::replace(&mut self.world, destination);
+        self.flight.orbital_scenery = Some(previous.clone());
         self.network.remember(previous);
         let end = self.flight.position
             + vec3(
@@ -348,6 +353,7 @@ impl App {
             wing.space = true;
         }
         self.flight.surface = None;
+        self.flight.orbital_scenery = None;
         self.flight.sky_rotation = Quat::IDENTITY;
         self.flight.weather = crate::content::weather::Weather::Clear;
         self.theme = 0;

@@ -396,8 +396,17 @@ impl Renderer {
         self.draw_clouds(world, flight, camera, theme);
         self.detail[1] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
-        self.scenery(world, camera, flight.time);
+        self.scenery(world, camera, flight.time, 1.0);
         self.warp = None;
+        if let (Some(space), Some(surface)) = (&flight.orbital_scenery, flight.surface) {
+            let mut view = *camera;
+            view.position = surface.space_origin()
+                + surface.basis * (camera.position - surface.anchor.extend(0.0));
+            view.right = surface.basis * camera.right;
+            view.up = surface.basis * camera.up;
+            view.forward = surface.basis * camera.forward;
+            self.scenery(space, &view, flight.time, surface.bend);
+        }
         self.detail[2] = started.elapsed().as_secs_f64() * 1000.0;
     }
 

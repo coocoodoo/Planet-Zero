@@ -43,6 +43,7 @@ pub struct Controls {
 #[derive(Clone)]
 pub struct Flight {
     pub orbit_quiet: bool,
+    pub orbital_scenery: Option<std::sync::Arc<World>>,
     pub surface: Option<crate::world::orbit::SurfaceWarp>,
     pub planet_maps: [Option<std::sync::Arc<crate::world::orbit::SurfaceMap>>; 2],
     pub sky_rotation: glam::Quat,
@@ -104,6 +105,7 @@ impl Flight {
         );
         let mut flight = Self {
             orbit_quiet: false,
+            orbital_scenery: None,
             surface: None,
             planet_maps: [None, None],
             sky_rotation: glam::Quat::IDENTITY,
@@ -188,6 +190,7 @@ impl Flight {
 
     pub fn enter_region(&mut self, world: &World) {
         self.orbit_quiet = false;
+        self.orbital_scenery = None;
         self.surface = None;
         self.sky_rotation = glam::Quat::IDENTITY;
         self.camera_adjustment = None;

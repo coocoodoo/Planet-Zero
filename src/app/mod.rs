@@ -251,6 +251,7 @@ impl App {
         self.flight.sky_rotation = glam::Quat::IDENTITY;
         self.flight.camera_adjustment = None;
         self.flight.orbit_quiet = false;
+        self.flight.orbital_scenery = None;
         self.page = Page::Menu;
         self.travel = None;
         self.flight.portal_transit = None;

@@ -151,9 +151,13 @@ impl Renderer {
         }
     }
 
-    pub(super) fn scenery(&mut self, world: &World, camera: &Camera, time: f32) {
+    pub(super) fn scenery(&mut self, world: &World, camera: &Camera, time: f32, scale: f32) {
+        if scale < 0.001 {
+            return;
+        }
         for object in &world.scenery {
             let mut object = *object;
+            object.scale *= scale;
             for axis in 0..2 {
                 object.position[axis] +=
                     ((camera.position[axis] - object.position[axis]) / SIZE as f32).round()
