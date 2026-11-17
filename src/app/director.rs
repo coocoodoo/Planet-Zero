@@ -32,11 +32,12 @@ impl App {
         if let Some(route) = self.director.route {
             self.network.request(route.target);
             if phase >= cue && self.network.get(route.target).is_some() {
+                let camera = crate::flight::Camera::new(&self.flight, WIDTH, HEIGHT);
                 let portal = self.network.stage_portal(
                     &self.world,
                     route.id,
-                    self.flight.position,
-                    self.flight.axes()[1],
+                    camera.position,
+                    -camera.forward,
                 );
                 self.flight.demo_target = Some(portal);
                 self.director.last_link = Some(route.id);

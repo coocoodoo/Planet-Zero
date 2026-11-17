@@ -338,7 +338,7 @@ impl App {
             (WIDTH, HEIGHT),
             self.theme,
             if menu { None } else { Some(&self.mission) },
-            if menu { None } else { Some(&self.network) },
+            Some(&self.network),
         );
         self.screen.copy_from_slice(&self.renderer.rgba);
         crate::ui::draw(self);
