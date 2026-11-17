@@ -2,7 +2,7 @@ use crate::flight::Flight;
 use crate::render::{mix, rgb};
 use crate::world::{SIZE, World, index};
 
-const GREEN: u32 = 0xff99f466;
+const HUD: u32 = 0xffdaed6f;
 const AMBER: u32 = 0xff60b0ff;
 const INK: u32 = 0xff160f0e;
 const MODEL: &[u8] = include_bytes!("../../assets/vehicles/falcon.bin");
@@ -274,20 +274,10 @@ impl Cockpit {
             dy: 0,
         };
         for side in [-1, 1] {
-            p.line(160 + side * 5, 70, 160 + side * 3, 70, GREEN);
-            p.line(160 + side * 5, 76, 160 + side * 3, 76, GREEN);
-            p.line(160 + side * 5, 70, 160 + side * 5, 72, GREEN);
-            p.line(160 + side * 5, 76, 160 + side * 5, 74, GREEN);
-            p.line(160 + side * 35, 56, 160 + side * 35, 90, GREEN);
-            let value = if side < 0 {
-                flight.speed * 0.6
-            } else {
-                flight.position.z * 0.8
-            };
-            for tick in 0..12 {
-                let y = 56 + ((tick * 3 + (value as i32) % 3) % 35);
-                p.line(160 + side * 35, y, 160 + side * 32, y, GREEN);
-            }
+            p.line(160 + side * 5, 70, 160 + side * 3, 70, HUD);
+            p.line(160 + side * 5, 76, 160 + side * 3, 76, HUD);
+            p.line(160 + side * 5, 70, 160 + side * 5, 72, HUD);
+            p.line(160 + side * 5, 76, 160 + side * 5, 74, HUD);
         }
         for deg in [-20.0_f32, -10.0, 0.0, 10.0, 20.0] {
             let dy = (crate::flight::angle(flight.pitch - deg.to_radians()))
@@ -300,25 +290,28 @@ impl Cockpit {
                     (73.0 - s * side * a + c * dy) as i32,
                     (160.0 + c * side * b + s * dy) as i32,
                     (73.0 - s * side * b + c * dy) as i32,
-                    GREEN,
+                    HUD,
                 );
             }
         }
-        p.number(119, 47, (flight.speed * 4.2) as i32, 3, GREEN);
-        p.number(185, 47, (flight.position.z * 120.0) as i32, 5, GREEN);
-        p.number(
-            154,
-            86,
-            flight.yaw.to_degrees().rem_euclid(360.0) as i32,
-            3,
-            GREEN,
-        );
         for y in 42..94 {
             for x in 114..207 {
                 let color = self.hud[y * 320 + x];
-                if color == 0 {
+                let color = if color != 0 {
+                    color
+                } else if [
+                    y * 320 + x - 1,
+                    y * 320 + x + 1,
+                    (y - 1) * 320 + x,
+                    (y + 1) * 320 + x,
+                ]
+                .iter()
+                .any(|&at| self.hud[at] != 0)
+                {
+                    rgb(3, 8, 13)
+                } else {
                     continue;
-                }
+                };
                 if w == 320 && h == 170 {
                     let i = y * 320 + x;
                     if self.pixels[i] == 0 {

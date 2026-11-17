@@ -4,6 +4,7 @@ mod combat;
 mod fpv;
 mod hud;
 mod menus;
+mod osd;
 use crate::app::{App, Page};
 use crate::flight::angle;
 use crate::gameplay::Mode;
@@ -34,6 +35,7 @@ fn portal_labels(app: &mut App) {
     let (s, c) = (-(app.flight.bank + app.flight.spin) * app.flight.weights[2]).sin_cos();
     let routes = app.network.routes(&app.world);
     let fpv = app.uses_fpv_hud();
+    let cockpit = app.flight.weights[2] >= 0.5;
     let mut canvas = Canvas {
         pixels: &mut app.screen,
     };
@@ -51,7 +53,7 @@ fn portal_labels(app: &mut App) {
         let p = glam::vec2(c * delta.x - s * delta.y, s * delta.x + c * delta.y) + pivot;
         let y = p.y + route.aperture.radius * scale + 5.0;
         let label = route.target.kind.name();
-        let glyph = if fpv { 4.0 } else { 8.0 };
+        let glyph = if fpv { 6.0 } else { 8.0 };
         let x = p.x - label.len() as f32 * glyph * 0.5;
         if x < 3.0 || x + label.len() as f32 * glyph > 317.0 || !(18.0..148.0).contains(&y) {
             continue;
@@ -62,7 +64,12 @@ fn portal_labels(app: &mut App) {
             MUTED
         };
         if fpv {
-            if x >= 48.0 && x + label.len() as f32 * glyph <= 268.0 && (30.0..110.0).contains(&y) {
+            let (left, right, bottom) = if cockpit {
+                (108.0, 212.0, 92.0)
+            } else {
+                (48.0, 268.0, 110.0)
+            };
+            if x >= left && x + label.len() as f32 * glyph <= right && (33.0..bottom).contains(&y) {
                 canvas.osd(x as i32, y as i32, label, color);
             }
         } else {
@@ -80,15 +87,22 @@ mod tests {
         app.mode = Mode::Combat;
         app.start();
         app.mission.countdown = 0.0;
-        app.mission.announce("WEAPON UPGRADE");
-        app.mission.announce("WARNING / BOSS APPROACH");
-        app.mission.announce("SHIELD HIT / ROLL TO EVADE");
-        app.screen.fill(88);
-        super::draw(&mut app);
-        for y in 0..crate::app::HEIGHT {
-            for x in 30..290 {
-                let at = (y * crate::app::WIDTH + x) * 4;
-                assert_eq!(&app.screen[at..at + 3], &[88; 3]);
+        for view in 0..4 {
+            app.flight.weights = [0.0; 3];
+            app.flight.weights[view.min(2)] = 1.0;
+            app.flight.fixed_weight = if view == 3 { 1.0 } else { 0.0 };
+            app.mission.notices.fill(None);
+            app.draw_overlay();
+            let baseline = app.screen.clone();
+            app.mission.announce("WEAPON UPGRADE");
+            app.mission.announce("WARNING / BOSS APPROACH");
+            app.mission.announce("SHIELD HIT / ROLL TO EVADE");
+            app.draw_overlay();
+            for y in 45..110 {
+                for x in 60..260 {
+                    let at = (y * crate::app::WIDTH + x) * 4;
+                    assert_eq!(&app.screen[at..at + 4], &baseline[at..at + 4]);
+                }
             }
         }
     }

@@ -277,7 +277,7 @@ impl App {
         }
     }
     pub fn uses_fpv_hud(&self) -> bool {
-        self.flight.weights[1] >= 0.5 && self.flight.fixed_weight < 0.5
+        self.flight.fixed_weight < 0.5
     }
     pub fn hud_button_contains(&self, x: usize, y: usize) -> bool {
         if self.mode == Mode::Combat && !self.uses_fpv_hud() {
