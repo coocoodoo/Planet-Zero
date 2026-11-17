@@ -366,12 +366,12 @@ bash scripts/build-cardputer.sh
 python3 scripts/package-cardputer.py
 ```
 
-构建生成 `dist/rust-fly-cardputer` 静态 AArch64 可执行文件和 `dist/rust-fly_0.12.1_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
+构建生成 `dist/rust-fly-cardputer` 静态 AArch64 可执行文件和 `dist/rust-fly_0.13.0_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
 
 将安装包复制到设备后执行：
 
 ```sh
-sudo apt install ./rust-fly_0.12.1_arm64.deb
+sudo apt install ./rust-fly_0.13.0_arm64.deb
 ```
 
 APPLaunch 中会出现带战机图标的 Rust Fly，选择即可进入主菜单。菜单操作与上方表格一致，操作说明分别提供桌面版与设备版内容，每页七项，每行对应一项操作
