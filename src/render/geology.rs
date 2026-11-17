@@ -54,7 +54,7 @@ impl Renderer {
                     let a = i as f32 * std::f32::consts::PI / 12.0;
                     let b = (i + 1) as f32 * std::f32::consts::PI / 12.0;
                     let inner = |angle: f32, y: f32| {
-                        let irregular = (angle * 3.0 + y * 0.027).sin() * 3.0;
+                        let irregular = (angle * 3.0 + y * 0.027).sin() * angle.sin() * 3.0;
                         vec3(
                             angle.cos() * (width + irregular),
                             y,
