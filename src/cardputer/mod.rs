@@ -2,7 +2,6 @@ use crate::app::{App, Page};
 pub use crate::app::{HEIGHT, WIDTH};
 use crate::world::World;
 use std::ops::{Deref, DerefMut};
-mod gestures;
 pub mod imu;
 #[cfg(target_os = "linux")]
 pub mod linux;
@@ -10,7 +9,6 @@ pub mod telemetry;
 
 pub struct Game {
     pub app: App,
-    gestures: gestures::Gestures,
     pub motion: imu::Motion,
     pub imu_enabled: bool,
     pub calibrate_imu: bool,
@@ -40,7 +38,6 @@ impl Game {
         app.device_controls = true;
         Self {
             app,
-            gestures: gestures::Gestures::default(),
             motion: imu::Motion::default(),
             imu_enabled: false,
             calibrate_imu: false,
@@ -93,7 +90,12 @@ impl Game {
         } else {
             "KEY"
         };
-        if !self.flight.demo && self.imu_enabled && self.motion.available && self.motion.ready {
+        if !self.navigation.active
+            && !self.flight.demo
+            && self.imu_enabled
+            && self.motion.available
+            && self.motion.ready
+        {
             let roll = imu::axis(self.motion.roll, 35.0_f32.to_radians());
             let pitch = imu::axis(self.motion.pitch, 30.0_f32.to_radians());
             if controls.turn == 0.0 {
@@ -104,19 +106,6 @@ impl Game {
                 controls.climb = pitch;
             }
             controls.manual = true;
-            if self.page == Page::Playing && self.mission.countdown <= 0.0 {
-                if let Some(direction) = self.gestures.update(dt, roll)
-                    && self.flight.roll_toward(direction)
-                {
-                    self.mission.dodge();
-                    self.sounds.push(crate::audio::Sound::Roll);
-                }
-            } else {
-                self.gestures.reset();
-            }
-        }
-        if self.flight.demo || !self.imu_enabled || !self.motion.available || !self.motion.ready {
-            self.gestures.reset();
         }
         self.app.step(dt, Some(controls));
     }

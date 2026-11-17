@@ -2,6 +2,7 @@ mod audio;
 pub(crate) mod chart;
 mod director;
 mod input;
+pub mod navigation;
 mod records;
 mod settings;
 pub mod telemetry;
@@ -36,6 +37,8 @@ pub enum Page {
 }
 
 pub struct App {
+    pub navigation: navigation::Navigation,
+    pub(super) direction_tap: Option<(u16, Instant)>,
     pub telemetry: telemetry::Telemetry,
     pub(crate) minimap: chart::Chart,
     pub device_controls: bool,
@@ -118,6 +121,8 @@ impl App {
         let settings = settings::Settings::load(settings_path.as_deref());
         flight.faceted = settings.faceted;
         Self {
+            navigation: navigation::Navigation::default(),
+            direction_tap: None,
             telemetry: telemetry::Telemetry::default(),
             minimap: chart::Chart::default(),
             device_controls: false,
@@ -167,6 +172,8 @@ impl App {
         }
     }
     pub fn start(&mut self) {
+        self.navigation = navigation::Navigation::default();
+        self.direction_tap = None;
         self.director = director::Director::default();
         if self.page == Page::Menu {
             self.loadout = Loadout::default();
@@ -258,6 +265,7 @@ impl App {
             }
         }
         if let Some(world) = self.loader.poll() {
+            self.navigation = navigation::Navigation::default();
             self.flight.change_world(&world);
             self.world = std::sync::Arc::new(world);
             if self.pending_start {
@@ -271,6 +279,15 @@ impl App {
             self.quit = true;
         }
         if self.page == Page::Chart {
+            let held = |key| f32::from(self.keys.contains(&key));
+            let movement = glam::vec2(
+                held(crate::keys::RIGHT) - held(crate::keys::LEFT),
+                held(crate::keys::DOWN) - held(crate::keys::UP),
+            );
+            if movement.length_squared() > 0.0 {
+                self.chart
+                    .pan(&self.world, self.flight.position, movement * dt * 0.65);
+            }
             self.network.ensure(&self.world);
             let routes = self.network.routes(&self.world);
             if let Some(route) = routes.get(self.chart.selected % routes.len().max(1)) {
@@ -293,7 +310,9 @@ impl App {
         if self.page != Page::Playing {
             return;
         }
-        let controls = external.unwrap_or_else(|| self.controls());
+        let controls = self
+            .navigation_controls()
+            .unwrap_or_else(|| external.unwrap_or_else(|| self.controls()));
         let mut previous = self.flight.position;
         if self.mission.countdown <= 0.0 {
             self.flight.step(dt, &controls, &self.world);

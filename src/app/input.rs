@@ -4,6 +4,7 @@ use crate::keys::*;
 impl App {
     pub fn release_keys(&mut self) {
         self.keys.clear();
+        self.direction_tap = None;
         self.escape_since = None;
     }
     pub fn controls(&self) -> Controls {
@@ -77,10 +78,19 @@ impl App {
         match self.page {
             Page::Chart => {
                 match code {
-                    UP => self.chart.zoom = (self.chart.zoom + 1).min(2),
-                    DOWN => self.chart.zoom = self.chart.zoom.saturating_sub(1),
-                    LEFT | RIGHT => self.chart.selected ^= 1,
-                    ENTER => self.toggle_chart(),
+                    WEATHER => self.chart.zoom_by(1, &self.world, self.flight.position),
+                    TIME => self.chart.zoom_by(-1, &self.world, self.flight.position),
+                    PORTAL => {
+                        let routes = self.network.routes(&self.world);
+                        if !routes.is_empty() {
+                            let route = routes[self.chart.selected % routes.len()];
+                            self.chart.focus = Some(route.aperture.center.truncate());
+                            self.chart.selected = (self.chart.selected + 1) % routes.len();
+                        }
+                    }
+                    VEHICLE => self.chart.focus = Some(self.flight.position.truncate()),
+                    VIEW => self.mark_chart(),
+                    ENTER => self.navigate_chart(),
                     _ => {}
                 }
                 return;
@@ -167,8 +177,27 @@ impl App {
             BOMB if self.mode == Mode::Combat => self.mission.bomb(),
             AUTOFIRE if self.mode == Mode::Combat => self.mission.autofire = !self.mission.autofire,
             UP | LEFT | DOWN | RIGHT => {
+                self.navigation.active = false;
                 self.auto = false;
                 self.flight.set_demo(false);
+                let now = Instant::now();
+                let double = self.direction_tap.is_some_and(|(key, time)| {
+                    key == code && now.duration_since(time) <= Duration::from_millis(320)
+                });
+                self.direction_tap = if double { None } else { Some((code, now)) };
+                if double && self.mission.countdown <= 0.0 {
+                    let started = match code {
+                        UP => self.flight.loop_toward(1.0),
+                        DOWN => self.flight.loop_toward(-1.0),
+                        LEFT => self.flight.roll_toward(-1.0),
+                        RIGHT => self.flight.roll_toward(1.0),
+                        _ => false,
+                    };
+                    if started {
+                        self.sounds.push(crate::audio::Sound::Roll);
+                        self.mission.dodge();
+                    }
+                }
             }
             _ => {}
         }
@@ -192,10 +221,14 @@ impl App {
             WINGMEN => self.flight.wing_count = (self.flight.wing_count + 1) % 3,
             MODEL => self.flight.exploded = !self.flight.exploded,
             AUTOPILOT => {
+                self.navigation.active = false;
                 self.flight.set_demo(false);
                 self.auto = !self.auto;
             }
-            DEMO => self.flight.set_demo(!self.flight.demo),
+            DEMO => {
+                self.navigation.active = false;
+                self.flight.set_demo(!self.flight.demo);
+            }
             MAP => {
                 let kind = self.world.kind.next();
                 self.loader.start(kind, kind.seed());

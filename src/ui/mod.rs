@@ -4,6 +4,7 @@ mod combat;
 mod fpv;
 mod hud;
 mod menus;
+mod navigation;
 mod osd;
 use crate::app::{App, Page};
 use crate::flight::angle;
@@ -18,6 +19,9 @@ pub fn draw(app: &mut App) {
         chart::draw(app);
     } else if app.page == Page::Playing {
         hud::draw(app);
+        if app.flight.hud {
+            navigation::draw(app);
+        }
         if app.flight.hud && app.portal_labels {
             portal_labels(app);
         }

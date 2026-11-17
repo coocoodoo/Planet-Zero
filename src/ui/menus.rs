@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) const HELP_PAGES: [[&str; 8]; 10] = [
+pub(super) const HELP_PAGES: [[&str; 8]; 11] = [
     [
         "FLIGHT",
         "UP PITCH UP",
@@ -73,29 +73,39 @@ pub(super) const HELP_PAGES: [[&str; 8]; 10] = [
     ],
     [
         "NAVIGATION CHART",
-        "M OPEN / CLOSE CHART",
-        "UP ZOOM IN",
-        "DOWN ZOOM OUT",
-        "LEFT PREVIOUS PORTAL",
-        "RIGHT NEXT PORTAL",
-        "WHITE AIRCRAFT / CYAN PORTAL",
-        "GOLD OBJECTIVE / RED HOSTILE",
+        "UP PAN NORTH",
+        "DOWN PAN SOUTH",
+        "LEFT PAN WEST",
+        "RIGHT PAN EAST",
+        "1 ZOOM IN / MAX 512X",
+        "2 ZOOM OUT",
+        "SPACE MARK CROSSHAIR",
     ],
     [
-        "AEROBATICS / IMU",
-        "HIGH ALTITUDE : HOLD PITCH 1.8S",
-        "IMU HOLD ONE SIDE 0.8S : ROLL",
-        "LOW FLIGHT : LIMITED PITCH / ROLL",
-        "RELEASE PITCH RESETS LOOP TIMER",
-        "LOOPS FINISH AFTER INPUT RELEASE",
-        "I IMU ON/OFF ON CARDPUTER",
-        "K CALIBRATE IMU ON CARDPUTER",
+        "WAYPOINT NAVIGATION",
+        "3 FIND NEXT PORTAL",
+        "4 CENTER ON AIRCRAFT",
+        "ENTER AUTO NAV TO MARKER",
+        "M RETURN TO FLIGHT",
+        "DIRECTION KEY TAKES CONTROL",
+        "RING ARROW : FULL BEARING",
+        "CENTER ARROW : HEIGHT OFFSET",
     ],
     [
-        "SOUND / DESKTOP / EXIT",
+        "AEROBATICS / DESKTOP",
+        "UP DOUBLE TAP : INSIDE LOOP",
+        "DOWN DOUBLE TAP : OUTSIDE LOOP",
+        "LEFT DOUBLE TAP : LEFT ROLL",
+        "RIGHT DOUBLE TAP : RIGHT ROLL",
+        "TAP TWICE WITHIN 0.32 SECONDS",
+        "HIGH ALTITUDE REQUIRED",
+        "HOLD DIRECTION : NORMAL FLIGHT",
+    ],
+    [
+        "DESKTOP / DISPLAY / SOUND",
         "F10 CHANGE SOUND MODE",
-        "F11 FULLSCREEN ON DESKTOP",
-        "F12 HD SCALE ON DESKTOP",
+        "F11 FULLSCREEN",
+        "F12 NEXT HD SCALE",
         "SHIFT+F12 PREVIOUS HD SCALE",
         "HD SCALE : 1X / 2X / 4X / 8X",
         "ESC BACK / PAUSE / RESUME",
@@ -103,20 +113,53 @@ pub(super) const HELP_PAGES: [[&str; 8]; 10] = [
     ],
 ];
 
-fn control_label(line: &str, device: bool) -> String {
-    if device {
-        for (direction, key) in [
-            ("UP ", "F "),
-            ("DOWN ", "X "),
-            ("LEFT ", "Z "),
-            ("RIGHT ", "C "),
-        ] {
-            if let Some(action) = line.strip_prefix(direction) {
-                return format!("{key}{action}");
-            }
+fn control_label(line: &str) -> String {
+    for (direction, key) in [
+        ("UP ", "▲ "),
+        ("DOWN ", "▼ "),
+        ("LEFT ", "◀ "),
+        ("RIGHT ", "▶ "),
+    ] {
+        if let Some(action) = line.strip_prefix(direction) {
+            return format!("{key}{action}");
         }
     }
     line.to_owned()
+}
+fn help_page(index: usize, device: bool) -> [&'static str; 8] {
+    if device && index == 9 {
+        [
+            "AEROBATICS / CARDPUTER",
+            "UP DOUBLE TAP : INSIDE LOOP",
+            "DOWN DOUBLE TAP : OUTSIDE LOOP",
+            "LEFT DOUBLE TAP : LEFT ROLL",
+            "RIGHT DOUBLE TAP : RIGHT ROLL",
+            "HIGH ALTITUDE REQUIRED",
+            "IMU TILT : NORMAL FLIGHT",
+            "HOLD DIRECTION : NORMAL FLIGHT",
+        ]
+    } else if device && index == 10 {
+        [
+            "CARDPUTER / MOTION / SOUND",
+            "I IMU ON/OFF",
+            "K RECENTER IMU",
+            "HOLD STILL WHILE CALIBRATING",
+            "F10 CHANGE SOUND MODE",
+            "DISPLAY : NATIVE 320 X 170",
+            "ESC BACK / PAUSE / RESUME",
+            "ESC HOLD 2S TO LAUNCHER",
+        ]
+    } else {
+        let mut page = HELP_PAGES[index];
+        if index == 0 {
+            page[0] = if device {
+                "FLIGHT / CARDPUTER"
+            } else {
+                "FLIGHT / DESKTOP"
+            };
+        }
+        page
+    }
 }
 
 pub fn draw(app: &mut App) {
@@ -184,7 +227,14 @@ pub fn draw(app: &mut App) {
                 },
             ),
             ("", "SETTINGS"),
-            ("", "EXIT TO LAUNCHER"),
+            (
+                "",
+                if app.device_controls {
+                    "EXIT TO LAUNCHER"
+                } else {
+                    "EXIT TO DESKTOP"
+                },
+            ),
         ];
         for (i, (label, value)) in rows.iter().enumerate() {
             let y = 37 + i as i32 * 12;
@@ -212,7 +262,7 @@ pub fn draw(app: &mut App) {
     if app.page == Page::Help {
         c.shade(6, 6, 308, 158);
         c.rect(6, 6, 2, 158, CYAN);
-        let page = &HELP_PAGES[app.help_page];
+        let page = help_page(app.help_page, app.device_controls);
         c.text(14, 16, page[0], GOLD);
         c.text(
             266,
@@ -221,26 +271,11 @@ pub fn draw(app: &mut App) {
             GOLD,
         );
         for (i, line) in page[1..].iter().enumerate() {
-            c.text(
-                14,
-                33 + i as i32 * 13,
-                &control_label(line, app.device_controls),
-                WHITE,
-            );
+            c.text(14, 33 + i as i32 * 13, &control_label(line), WHITE);
         }
         c.rect(14, 123, 292, 1, MUTED);
-        c.text(
-            14,
-            130,
-            &control_label("LEFT PREVIOUS PAGE", app.device_controls),
-            CYAN,
-        );
-        c.text(
-            14,
-            141,
-            &control_label("RIGHT NEXT PAGE", app.device_controls),
-            CYAN,
-        );
+        c.text(14, 130, &control_label("LEFT PREVIOUS PAGE"), CYAN);
+        c.text(14, 141, &control_label("RIGHT NEXT PAGE"), CYAN);
         c.text(14, 152, "ENTER RETURN", CYAN);
         return;
     }
@@ -278,7 +313,11 @@ pub fn draw(app: &mut App) {
             if f.hud { "HIDE UI / U" } else { "SHOW UI / U" },
             "SETTINGS / F2",
             "MAIN MENU",
-            "EXIT TO LAUNCHER",
+            if app.device_controls {
+                "EXIT TO LAUNCHER"
+            } else {
+                "EXIT TO DESKTOP"
+            },
         ];
         for (i, line) in rows.iter().enumerate() {
             let y = 48 + i as i32 * 16;

@@ -51,6 +51,7 @@ impl World {
             obstacles: vec![],
             ceiling: 0,
             cloud_levels: vec![],
+            cloud_slopes: vec![],
             airspace: Default::default(),
             spawn: if kind == MapKind::City {
                 (2304.0, 3264.0)

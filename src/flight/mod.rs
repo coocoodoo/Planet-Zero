@@ -17,7 +17,6 @@ pub const MODEL_SCALE: f32 = 0.5;
 pub const VIEW_SCALE: f32 = 0.82;
 pub const MIN_CLEARANCE: f32 = 28.0;
 const LOOP_RATE: f32 = 1.25;
-const LOOP_HOLD: f32 = 1.8;
 const NORMAL_PITCH: f32 = 0.55;
 
 pub fn angle(value: f32) -> f32 {
@@ -83,8 +82,6 @@ pub struct Flight {
     vertical_speed: f32,
     loop_remaining: f32,
     loop_direction: f32,
-    loop_hold: f32,
-    loop_hold_direction: f32,
     aerobatic_ground: f32,
     trail_time: f32,
 }
@@ -140,8 +137,6 @@ impl Flight {
             vertical_speed: 0.0,
             loop_remaining: 0.0,
             loop_direction: 1.0,
-            loop_hold: 0.0,
-            loop_hold_direction: 0.0,
             aerobatic_ground: world
                 .ceiling
                 .max(world.obstacles.iter().copied().max().unwrap_or(0))
@@ -189,8 +184,13 @@ impl Flight {
     pub fn can_loop(&self) -> bool {
         self.space || self.position.z >= self.loop_altitude()
     }
-    pub fn loop_charge(&self) -> f32 {
-        self.loop_hold / LOOP_HOLD
+    pub fn loop_toward(&mut self, direction: f32) -> bool {
+        if !self.can_loop() || self.loop_remaining > 0.0 || direction == 0.0 {
+            return false;
+        }
+        self.loop_direction = direction.signum();
+        self.loop_remaining = TAU;
+        true
     }
     pub fn can_warp(&self) -> bool {
         self.portal_cooldown <= 0.0
@@ -341,20 +341,6 @@ impl Flight {
         let manual_attitude = controls.manual && controls.aerobatic;
         if manual_attitude {
             let input = controls.climb.clamp(-1.0, 1.0);
-            if self.loop_remaining <= 0.0 && input.abs() > 0.65 && self.can_loop() {
-                if input.signum() != self.loop_hold_direction {
-                    self.loop_hold = 0.0;
-                }
-                self.loop_hold_direction = input.signum();
-                self.loop_hold += dt;
-                if self.loop_hold + 0.00001 >= LOOP_HOLD {
-                    self.loop_remaining = TAU;
-                    self.loop_direction = input.signum();
-                    self.loop_hold = 0.0;
-                }
-            } else {
-                self.loop_hold = 0.0;
-            }
             let target_rate = if self.loop_remaining > 0.0 {
                 self.loop_direction * LOOP_RATE
             } else {
@@ -373,7 +359,6 @@ impl Flight {
             self.pitch = angle(self.pitch + rotation);
         } else {
             self.loop_remaining = 0.0;
-            self.loop_hold = 0.0;
         }
         let forward = self.axes()[1];
         let horizontal = if manual_attitude {
@@ -382,7 +367,7 @@ impl Flight {
             vec3(self.yaw.sin(), -self.yaw.cos(), 0.0)
         };
         let proposed = self.position + horizontal * self.speed * dt;
-        let (floor, ahead_climb) =
+        let (_, ahead_climb) =
             flight_floor(world, self.position, horizontal, self.speed, self.rate);
         let mut climb = if manual_attitude {
             forward.z * self.speed
@@ -402,15 +387,15 @@ impl Flight {
         };
         self.vertical_speed +=
             (climb - self.vertical_speed).clamp(-acceleration * dt, acceleration * dt);
-        let ceiling = world.flight_ceiling(self.position);
         let old_altitude = self.position.z;
-        self.position.x = proposed.x;
-        self.position.y = proposed.y;
-        self.position.z = (old_altitude + self.vertical_speed * dt).clamp(
-            floor
-                .max(clearance_floor(world, self.position))
-                .min(ceiling),
-            ceiling,
+        self.position = safety::advance(
+            world,
+            self.position,
+            vec3(
+                proposed.x,
+                proposed.y,
+                old_altitude + self.vertical_speed * dt,
+            ),
         );
         let actual_climb = (self.position.z - old_altitude) / dt.max(0.001);
         if (actual_climb - self.vertical_speed).abs() > 0.01 {

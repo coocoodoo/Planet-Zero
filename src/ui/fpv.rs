@@ -122,7 +122,7 @@ fn hardware(c: &mut Canvas<'_>, t: crate::app::telemetry::Telemetry, full: bool)
         Some(_) => WHITE,
         None => MUTED,
     };
-    let (sx, bottom) = if full { (267, 26) } else { (286, 11) };
+    let (sx, bottom) = if full { (262, 26) } else { (286, 11) };
     for i in 0..4 {
         let h = 2 + i * 2;
         c.rect(sx + i * 3 - 1, bottom - h - 1, 3, h + 2, INK);
@@ -142,8 +142,12 @@ fn hardware(c: &mut Canvas<'_>, t: crate::app::telemetry::Telemetry, full: bool)
                 .map_or_else(|| "-.--V".to_owned(), |v| format!("{v:.2}V")),
             WHITE,
         );
+        for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            c.small(301 + dx, 21 + dy, "dBm", INK);
+        }
+        c.small(301, 21, "dBm", signal_color);
         c.osd_right(
-            299,
+            298,
             19,
             &t.wifi_dbm
                 .map_or_else(|| "--".to_owned(), |v| v.to_string()),
@@ -373,7 +377,7 @@ fn combat(c: &mut Canvas<'_>, m: &Mission, full: bool) {
 pub fn draw(app: &mut App) {
     let cockpit = app.flight.weights[2] >= 0.5;
     let chase = app.flight.weights[1] >= 0.5;
-    if chase {
+    if !cockpit {
         minimap(app);
     }
     let f = &app.flight;
@@ -436,9 +440,9 @@ pub fn draw(app: &mut App) {
             GOLD,
         );
         if m.mode == Mode::Combat {
-            combat(&mut c, m, chase);
+            combat(&mut c, m, !cockpit);
         } else {
-            let (x, y) = if chase { (64, 119) } else { (5, 145) };
+            let (x, y) = if !cockpit { (64, 119) } else { (5, 145) };
             let label = if m.mode == Mode::Race {
                 format!("GATE {}/{}", m.gate_index + 1, m.gates.len())
             } else {
@@ -462,7 +466,7 @@ pub fn draw(app: &mut App) {
             let bearing = d.x.atan2(-d.y).to_degrees().rem_euclid(360.0);
             c.osd_right(
                 315,
-                if chase { 119 } else { 145 },
+                if !cockpit { 119 } else { 145 },
                 &format!("BRG {:03} {:.0}U", bearing as u32, d.length()),
                 CYAN,
             );
@@ -471,7 +475,7 @@ pub fn draw(app: &mut App) {
             c.osd_value(157, 48, &format!("{}", m.countdown.ceil() as u32), GOLD);
         }
     } else if chase {
-        c.osd(64, 144, "GPS SIM", MUTED);
+        c.osd(64, 144, "LOC", MUTED);
         c.osd_right(315, 159, f.vehicle.name(), MUTED);
     }
     if chase {

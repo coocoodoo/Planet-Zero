@@ -51,7 +51,13 @@ impl Canvas<'_> {
     }
     pub(super) fn text_scale(&mut self, x: i32, y: i32, value: &str, c: [u8; 3], scale: i32) {
         for (i, ch) in value.chars().enumerate() {
-            if let Some(glyph) = font8x8::BASIC_FONTS.get(ch) {
+            if let Some(glyph) = font8x8::BASIC_FONTS.get(ch).or(match ch {
+                '▲' => Some([0, 8, 28, 62, 127, 0, 0, 0]),
+                '▼' => Some([0, 127, 62, 28, 8, 0, 0, 0]),
+                '◀' => Some([0, 16, 24, 28, 30, 28, 24, 16]),
+                '▶' => Some([0, 4, 12, 28, 60, 28, 12, 4]),
+                _ => None,
+            }) {
                 for (gy, row) in glyph.iter().enumerate() {
                     for gx in 0..8 {
                         if row & (1 << gx) != 0 {
@@ -98,6 +104,9 @@ impl Canvas<'_> {
             let glyph = match ch {
                 '0'..='9' => DIGITS[ch as usize - '0' as usize],
                 '/' => [1, 1, 2, 4, 4],
+                'd' => [1, 1, 7, 5, 7],
+                'B' => [6, 5, 6, 5, 6],
+                'm' => [0, 5, 7, 5, 5],
                 '+' => [0, 2, 7, 2, 0],
                 '-' => [0, 0, 7, 0, 0],
                 _ => [0; 5],

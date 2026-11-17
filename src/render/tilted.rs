@@ -16,9 +16,13 @@ impl Renderer {
         let (fog_start, far) = if world.kind.vacuum() {
             (2200.0, 2600.0)
         } else {
-            weather.visibility(camera.position.z)
+            {
+                let (start, end) = weather.visibility(camera.position.z);
+                (start.min(3900.0), end.min(4200.0))
+            }
         };
         let colors = TOP.map(|c| weather.shade(grade(rgb(c[0], c[1], c[2]), theme)));
+        self.terrain_cache.colors(colors);
         let haze = if world.kind.vacuum() {
             rgb(8, 10, 18)
         } else {
@@ -99,7 +103,11 @@ impl Renderer {
             }
             leaves.push((x, y, size));
         }
-        let lookup: std::collections::HashSet<_> = leaves.iter().copied().collect();
+        self.terrain_cache.topology(
+            &leaves,
+            ((cx - reach) * 64, (cy - reach) * 64),
+            (reach * 2 + 1) * 64,
+        );
         let mut boundary = Vec::with_capacity(16);
         for (x, y, size) in leaves {
             let sample = |x, y| vec3(x as f32, y as f32, world.heights[index(x, y, SIZE)] as f32);
@@ -127,12 +135,7 @@ impl Renderer {
                         ),
                     };
                     boundary.push(sample(px, py));
-                    let neighbor = [8, 16, 32, 64, 128, 256, 512]
-                        .into_iter()
-                        .find(|&n| {
-                            lookup.contains(&(nx.div_euclid(n) * n, ny.div_euclid(n) * n, n))
-                        })
-                        .unwrap_or(size);
+                    let neighbor = self.terrain_cache.neighbor(nx, ny, size);
                     offset += (neighbor - coordinate.rem_euclid(neighbor)).min(size - offset);
                 }
             }
@@ -143,7 +146,6 @@ impl Renderer {
                         world,
                         indices.map(|i| boundary[i]),
                         flight.faceted,
-                        &colors,
                         (fog_start, far, haze),
                     );
                 }
@@ -155,7 +157,6 @@ impl Renderer {
                     world,
                     [center, boundary[i], boundary[(i + 1) % boundary.len()]],
                     flight.faceted,
-                    &colors,
                     (fog_start, far, haze),
                 );
             }
@@ -167,7 +168,6 @@ impl Renderer {
         world: &World,
         vertices: [Vec3; 3],
         faceted: bool,
-        colors: &[u32; MATERIAL_COUNT],
         fog: (f32, f32, u32),
     ) {
         if vertices
@@ -194,7 +194,6 @@ impl Renderer {
                     world,
                     [clipped[0], clipped[i], clipped[i + 1]],
                     faceted,
-                    colors,
                     fog,
                 );
             }
@@ -324,7 +323,7 @@ impl Renderer {
                         + vertex_shade[2] * inverse[2] * w)
                         * reciprocal
                 };
-                let color = mix(rgb(17, 23, 35), colors[material], (shade * detail).min(1.0));
+                let color = self.terrain_cache.shade(material, shade * detail);
                 let amount = ((depth - fog.0) * inverse_fog).clamp(0.0, 1.0);
                 self.pixels[at] = mix(color, fog.2, amount);
                 self.depth[at] = depth;

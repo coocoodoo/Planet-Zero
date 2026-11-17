@@ -116,7 +116,10 @@ impl Renderer {
                             p + vec2(a.cos(), a.sin()) * r,
                             p + vec2(b.cos(), b.sin()) * r,
                             d,
-                            rgb(109, 161, 194),
+                            portal_color(
+                                route.target.kind,
+                                network.environment(route.target).theme,
+                            ),
                         );
                     }
                 }
@@ -143,7 +146,7 @@ impl Renderer {
         remote.depth.resize(self.w * self.h, f32::INFINITY);
         remote.mask.resize(self.w * self.h, 0);
         remote.visible.resize(self.w, (0, 0));
-        for (original, exit, destination, i) in scenes {
+        for (original, exit, destination, _) in scenes {
             let Some(window) = self.aperture(original, flight, camera) else {
                 continue;
             };
@@ -236,11 +239,7 @@ impl Renderer {
                 remote.mission(mission, flight, &view);
             }
             let base = self.pixels.clone();
-            let rim = if i == 0 {
-                rgb(90, 201, 255)
-            } else {
-                rgb(255, 155, 70)
-            };
+            let rim = portal_color(destination.kind, remote_theme);
             let phase = flight.time * 1.5;
             let (s, c) = phase.sin_cos();
             let photon_color = mix(rim, rgb(255, 245, 216), 0.72);
@@ -337,6 +336,28 @@ fn portal_scenes<'a>(
     }
     scenes.retain(|(entry, _, _, _)| !flight.hides_portal(*entry));
     scenes
+}
+
+fn portal_color(kind: crate::world::MapKind, theme: usize) -> u32 {
+    use crate::world::MapKind::*;
+    let color = match kind {
+        Desert => rgb(255, 217, 92),
+        Alpine | Icebergs => rgb(230, 247, 255),
+        Islands => rgb(90, 239, 221),
+        Highlands => rgb(126, 224, 115),
+        Wetlands => rgb(115, 211, 166),
+        Canyon => rgb(243, 157, 107),
+        Fjords => rgb(138, 213, 239),
+        Volcanic => rgb(255, 105, 99),
+        City => rgb(189, 156, 255),
+        Moon => rgb(214, 214, 235),
+        Space => rgb(196, 119, 255),
+    };
+    match theme {
+        1 => mix(color, rgb(255, 193, 146), 0.12),
+        2 => mix(color, rgb(155, 174, 255), 0.12),
+        _ => color,
+    }
 }
 
 fn portal_waves() -> &'static [f32; 256] {

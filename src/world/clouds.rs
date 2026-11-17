@@ -51,6 +51,14 @@ impl World {
                 self.cloud_levels[(y * 32 + x) as usize] = heights[8].min(100) as u16 + 110;
             }
         }
+        self.cloud_slopes = (0..32 * 32)
+            .map(|at| {
+                let (x, y) = (at % 32, at / 32);
+                let h = |dx, dy| self.cloud_levels[index(x + dx, y + dy, 32)] as f32;
+                let (a, b, c, d) = (h(0, 0), h(1, 0), h(0, 1), h(1, 1));
+                [a, b - a, c - a, d - c - b + a]
+            })
+            .collect();
     }
     pub fn cloud_height(&self, x: f32, y: f32) -> f32 {
         if self.cloud_levels.is_empty() {
@@ -60,8 +68,7 @@ impl World {
         let (fx, fy) = (x.floor(), y.floor());
         let (gx, gy) = (fx as i32, fy as i32);
         let (tx, ty) = (x - fx, y - fy);
-        let h = |dx, dy| self.cloud_levels[index(gx + dx, gy + dy, 32)] as f32;
-        let (a, b, c, d) = (h(0, 0), h(1, 0), h(0, 1), h(1, 1));
-        a + (b - a) * tx + (c - a + (d - c - b + a) * tx) * ty
+        let [a, b, c, d] = self.cloud_slopes[index(gx, gy, 32)];
+        a + b * tx + (c + d * tx) * ty
     }
 }

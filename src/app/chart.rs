@@ -7,6 +7,7 @@ pub(crate) const CHART_SIZE: usize = 136;
 #[derive(Default)]
 pub(crate) struct Chart {
     pub zoom: usize,
+    pub focus: Option<Vec2>,
     pub selected: usize,
     pub pixels: Vec<[u8; 3]>,
     pub center: Vec2,
@@ -22,7 +23,9 @@ pub(crate) fn offset(position: Vec2, center: Vec2) -> Vec2 {
 
 impl Chart {
     pub fn prepare(&mut self, world: &World, position: Vec3) {
-        let center = if self.zoom == 0 {
+        let center = if let Some(center) = self.focus {
+            center
+        } else if self.zoom == 0 {
             Vec2::splat(SIZE as f32 * 0.5)
         } else {
             position.truncate()
@@ -53,14 +56,20 @@ impl Chart {
                     crate::render::TOP[world.materials[i] as usize]
                         .map(|v| (v as f32 * light).min(255.0) as u8)
                 };
-                self.pixels[y * CHART_SIZE + x] = if x % 34 == 0 || y % 34 == 0 {
-                    color.map(|v| v.saturating_add(13))
-                } else {
-                    color
-                };
+                self.pixels[y * CHART_SIZE + x] = color;
             }
         }
         self.cached = Some(key);
+    }
+    pub fn pan(&mut self, world: &World, position: Vec3, movement: Vec2) {
+        self.prepare(world, position);
+        self.focus =
+            Some((self.center + movement * self.span).rem_euclid(Vec2::splat(SIZE as f32)));
+    }
+    pub fn zoom_by(&mut self, direction: i32, world: &World, position: Vec3) {
+        self.prepare(world, position);
+        self.focus = Some(self.center);
+        self.zoom = (self.zoom as i32 + direction).clamp(0, 9) as usize;
     }
     pub fn point(&self, position: Vec3) -> Vec2 {
         Vec2::splat(CHART_SIZE as f32 * 0.5)
@@ -75,6 +84,14 @@ impl App {
         } else {
             self.chart_return = self.page;
             self.network.ensure(&self.world);
+            if self
+                .chart
+                .cached
+                .is_some_and(|(key, _, _)| key != MapKey::of(&self.world))
+            {
+                self.chart.focus = None;
+                self.chart.zoom = 0;
+            }
             self.chart.selected = 0;
             self.page = Page::Chart;
         }

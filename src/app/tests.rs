@@ -232,3 +232,86 @@ fn interplanetary_crossing_preserves_loadout_and_has_a_return_route() {
     assert_eq!(app.world.kind, source.kind);
     assert!(std::sync::Arc::ptr_eq(&app.world, &source));
 }
+
+#[test]
+fn direction_double_taps_require_release_and_ignore_hold_repeat() {
+    use crate::keys::*;
+    let mut app = App::new(World::generate(crate::world::MapKind::Space, 1999));
+    app.start();
+    app.auto = false;
+    app.flight.position.z = 700.0;
+    app.key(UP, 1);
+    for _ in 0..180 {
+        app.key(UP, 2);
+        app.step(1.0 / 60.0, None);
+    }
+    assert!(app.flight.pitch.abs() < 0.6);
+    app.key(UP, 0);
+    app.direction_tap = Some((UP, Instant::now() - Duration::from_secs(1)));
+    app.key(UP, 1);
+    app.key(UP, 0);
+    app.key(UP, 1);
+    app.key(UP, 0);
+    let mut rotation = 0.0;
+    for _ in 0..360 {
+        let before = app.flight.pitch;
+        app.step(1.0 / 60.0, None);
+        rotation += crate::flight::angle(app.flight.pitch - before);
+    }
+    assert!(rotation > 5.5);
+    app.key(LEFT, 1);
+    app.key(LEFT, 0);
+    app.key(RIGHT, 1);
+    app.key(RIGHT, 0);
+    app.step(0.1, None);
+    assert_eq!(app.flight.spin, 0.0);
+    app.key(RIGHT, 1);
+    app.key(RIGHT, 0);
+    app.step(0.1, None);
+    assert!(app.flight.spin > 0.0);
+}
+
+#[test]
+fn chart_zooms_pans_marks_and_navigates_without_changing_the_view() {
+    use crate::keys::*;
+    let mut app = App::new(World::generate(crate::world::MapKind::Space, 1999));
+    app.start();
+    app.auto = false;
+    let press = |app: &mut App, key| {
+        app.key(key, 1);
+        app.key(key, 0);
+    };
+    press(&mut app, CHART);
+    let before = app.flight.position;
+    let view = app.flight.view;
+    for _ in 0..12 {
+        press(&mut app, WEATHER);
+    }
+    app.chart.prepare(&app.world, app.flight.position);
+    assert_eq!(app.chart.zoom, 9);
+    assert_eq!(app.chart.span, 8.0);
+    let center = app.chart.center;
+    app.key(RIGHT, 1);
+    app.step(0.1, None);
+    app.key(RIGHT, 0);
+    app.chart.prepare(&app.world, app.flight.position);
+    assert!(app.chart.center.x > center.x);
+    assert_eq!(app.flight.position, before);
+    app.chart.focus = Some(app.flight.position.truncate() + glam::vec2(0.0, -600.0));
+    press(&mut app, VIEW);
+    assert_eq!(app.flight.view, view);
+    let target = app.navigation.target.unwrap();
+    assert!(target.position.y < app.flight.position.y);
+    press(&mut app, ENTER);
+    assert_eq!(app.page, Page::Playing);
+    assert!(app.navigation.active);
+    app.flight.yaw = 0.0;
+    let distance = app.flight.position.distance(target.position);
+    for _ in 0..120 {
+        app.step(1.0 / 60.0, None);
+    }
+    assert!(app.flight.position.distance(target.position) < distance);
+    press(&mut app, LEFT);
+    assert!(!app.navigation.active);
+    assert!(app.navigation.target.is_some());
+}

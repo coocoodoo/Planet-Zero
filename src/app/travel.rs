@@ -46,6 +46,7 @@ impl App {
             self.flight.position - route.aperture.transform(exit, before),
             &destination,
         );
+        self.navigation = navigation::Navigation::default();
         let previous = std::mem::replace(&mut self.world, destination);
         self.network.remember(previous);
         self.sounds.push(crate::audio::Sound::Warp);

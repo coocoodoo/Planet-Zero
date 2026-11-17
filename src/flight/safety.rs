@@ -62,3 +62,24 @@ pub(super) fn flight_floor(
     let guard = ((target - position.z) * 0.8).max(stopping);
     (floor, guard)
 }
+
+pub(super) fn advance(world: &World, from: Vec3, to: Vec3) -> Vec3 {
+    let collision = |p| clearance_floor(world, p) - MIN_CLEARANCE + 8.0;
+    let z = to.z.clamp(collision(from), world.flight_ceiling(from));
+    let candidate = vec3(to.x, to.y, z);
+    let safe = |p: Vec3| p.z >= collision(p) && p.z <= world.flight_ceiling(p);
+    if safe(candidate) {
+        return candidate;
+    }
+    let origin = vec3(from.x, from.y, z);
+    let (mut lo, mut hi) = (0.0, 1.0);
+    for _ in 0..10 {
+        let middle = (lo + hi) * 0.5;
+        if safe(origin.lerp(candidate, middle)) {
+            lo = middle;
+        } else {
+            hi = middle;
+        }
+    }
+    origin.lerp(candidate, lo)
+}

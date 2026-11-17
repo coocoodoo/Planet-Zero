@@ -99,6 +99,7 @@ impl World {
             obstacles: vec![],
             ceiling: 0,
             cloud_levels: vec![],
+            cloud_slopes: vec![],
             airspace: Default::default(),
             clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
             spawn: (2048.0, 2048.0),

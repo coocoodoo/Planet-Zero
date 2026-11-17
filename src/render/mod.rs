@@ -10,6 +10,7 @@ mod portals;
 mod primitives;
 mod settlements;
 mod terrain;
+mod terrain_cache;
 mod tilted;
 mod weather;
 use crate::gameplay::{Mission, Mode, PickupKind, Weapon};
@@ -89,6 +90,7 @@ fn grade(c: u32, theme: usize) -> u32 {
 }
 
 pub struct Renderer {
+    terrain_cache: terrain_cache::TerrainCache,
     workers: Vec<Renderer>,
     portal_view: Option<Box<Renderer>>,
     clip_plane: Option<(Vec3, Vec3)>,
@@ -157,6 +159,7 @@ impl Renderer {
             }
         }
         Self {
+            terrain_cache: terrain_cache::TerrainCache::default(),
             workers: vec![],
             portal_view: None,
             clip_plane: None,

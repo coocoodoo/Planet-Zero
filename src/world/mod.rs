@@ -85,6 +85,7 @@ pub struct World {
     pub materials: Vec<u8>,
     pub clouds: Vec<u8>,
     pub cloud_levels: Vec<u16>,
+    pub cloud_slopes: Vec<[f32; 4]>,
     pub spawn: (f32, f32),
     pub kind: MapKind,
     pub seed: u32,

@@ -6,6 +6,7 @@ fn terrain() -> World {
         obstacles: vec![],
         ceiling: 40,
         cloud_levels: vec![],
+        cloud_slopes: vec![],
         airspace: Default::default(),
         heights: vec![0; SIZE * SIZE],
         materials: vec![0; SIZE * SIZE],
@@ -147,12 +148,13 @@ fn automatic_descent_levels_out_at_ground_protection() {
 }
 
 #[test]
-fn held_pitch_completes_upward_and_downward_loops() {
+fn requested_loops_complete_in_both_directions() {
     let world = terrain();
     for direction in [-1.0, 1.0] {
         let mut f = Flight::new(&world);
         f.position.z = f.loop_altitude() + 240.0;
         f.follow = f.position;
+        assert!(f.loop_toward(direction));
         let mut rotation = 0.0;
         for _ in 0..660 {
             let before = f.pitch;
@@ -281,6 +283,7 @@ fn low_altitude_controls_limit_pitch_without_forced_lift() {
     let mut f = Flight::new(&world);
     f.position.z = f.loop_altitude() + 240.0;
     assert!(f.roll());
+    assert!(f.loop_toward(-1.0));
     let mut rotation = 0.0;
     for frame in 0..660 {
         let before = f.pitch;
@@ -405,42 +408,29 @@ fn wingmen_outside_the_aperture_rejoin_from_the_exit() {
 }
 
 #[test]
-fn loops_require_one_point_eight_seconds_of_continuous_ready_input() {
+fn held_pitch_never_starts_a_loop() {
     let world = terrain();
     let mut f = Flight::new(&world);
-    f.position.z = 700.0;
-    let mut controls = Controls {
-        manual: true,
-        aerobatic: true,
-        climb: 1.0,
-        ..Default::default()
-    };
-    for _ in 0..107 {
-        f.step(1.0 / 60.0, &controls, &world);
-        assert_eq!(f.loop_remaining, 0.0);
-        assert!(f.pitch.abs() <= NORMAL_PITCH + 0.02);
+    for direction in [-1.0, 1.0] {
+        f.position.z = 2000.0;
+        f.pitch = 0.0;
+        for _ in 0..600 {
+            f.step(
+                1.0 / 60.0,
+                &Controls {
+                    manual: true,
+                    aerobatic: true,
+                    climb: direction,
+                    ..Default::default()
+                },
+                &world,
+            );
+            assert_eq!(f.loop_remaining, 0.0);
+            assert!(f.pitch.abs() <= NORMAL_PITCH + 0.02);
+        }
     }
-    controls.climb = 0.0;
-    f.step(1.0 / 60.0, &controls, &world);
-    assert_eq!(f.loop_charge(), 0.0);
-    controls.climb = 1.0;
-    for _ in 0..70 {
-        f.step(1.0 / 60.0, &controls, &world);
-    }
-    controls.climb = -1.0;
-    f.step(1.0 / 60.0, &controls, &world);
-    assert!(f.loop_charge() < 0.01);
-    f.position.z = MIN_CLEARANCE + 50.0;
-    f.step(1.0 / 60.0, &controls, &world);
-    assert_eq!(f.loop_charge(), 0.0);
-    f.position.z = 700.0;
-    for _ in 0..107 {
-        f.step(1.0 / 60.0, &controls, &world);
-        assert_eq!(f.loop_remaining, 0.0);
-    }
-    f.step(1.0 / 60.0, &controls, &world);
-    assert!(f.loop_remaining > 6.0);
-    assert_eq!(f.loop_charge(), 0.0);
+    f.position.z = MIN_CLEARANCE + 20.0;
+    assert!(!f.loop_toward(1.0));
 }
 
 #[test]
