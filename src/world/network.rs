@@ -28,11 +28,18 @@ pub struct Route {
     pub aperture: Portal,
     pub target: MapKey,
 }
+#[derive(Clone, Copy)]
+pub struct Environment {
+    pub weather: crate::content::weather::Weather,
+    pub theme: usize,
+}
 pub struct Network {
     links: Vec<Link>,
     cache: Vec<Arc<World>>,
     job: Option<(MapKey, std::thread::JoinHandle<World>)>,
     random: Random,
+    environment_seed: u32,
+    summoned: std::collections::HashMap<MapKey, u32>,
     pub active: bool,
 }
 impl Network {
@@ -47,6 +54,8 @@ impl Network {
             cache: vec![],
             job: None,
             random,
+            environment_seed: seed,
+            summoned: Default::default(),
             active: false,
         };
         for i in 0..kinds.len() {
@@ -60,6 +69,8 @@ impl Network {
             cache: self.cache.clone(),
             job: None,
             random: Random(self.random.0),
+            environment_seed: self.environment_seed,
+            summoned: self.summoned.clone(),
             active: self.active,
         }
     }
@@ -135,40 +146,113 @@ impl Network {
     pub fn summon(&mut self, world: &World, position: Vec3, forward: Vec3) {
         self.ensure(world);
         let key = MapKey::of(world);
-        let neighbors: Vec<_> = self
+        let old = self.summoned.get(&key).copied();
+        let at = self
             .links
             .iter()
-            .filter_map(|link| {
-                let side = link.ends.iter().position(|k| *k == key)?;
-                Some((link.ends[1 - side], link.entrances[1 - side]))
-            })
-            .collect();
-        self.links.retain(|link| !link.ends.contains(&key));
+            .position(|link| link.ends.contains(&key) && Some(link.id) == old)
+            .unwrap_or_else(|| {
+                self.links
+                    .iter()
+                    .position(|link| link.ends.contains(&key))
+                    .unwrap()
+            });
+        let removed = self.links.remove(at);
+        let side = usize::from(removed.ends[1] == key);
+        let neighbor = removed.ends[1 - side];
+        let at = self
+            .links
+            .iter()
+            .enumerate()
+            .filter(|(_, link)| !link.ends.contains(&key) && !link.ends.contains(&neighbor))
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>();
+        let at = at[(self.random.next() * at.len() as f32) as usize];
+        let remote = self.links.remove(at);
+        let mut reached = std::collections::HashSet::new();
+        let mut pending = vec![key];
+        while let Some(k) = pending.pop() {
+            if reached.insert(k) {
+                for link in self.links.iter().filter(|link| link.ends.contains(&k)) {
+                    pending.extend(link.ends);
+                }
+            }
+        }
+        let target_side = usize::from(reached.contains(&remote.ends[0]));
         self.add_link(
-            [neighbors[0].0, neighbors[1].0],
-            [neighbors[0].1, neighbors[1].1],
+            [neighbor, remote.ends[1 - target_side]],
+            [
+                removed.entrances[1 - side],
+                remote.entrances[1 - target_side],
+            ],
         );
-        let at = self.random_link(world.kind);
-        let link = self.links.remove(at);
         let yaw = forward.x.atan2(-forward.y);
         let direction = vec3(yaw.sin(), -yaw.cos(), 0.0);
-        let right = vec3(yaw.cos(), yaw.sin(), 0.0);
-        for side in 0..2 {
-            let mut aperture = Portal {
-                center: position
-                    + direction * (260.0 + side as f32 * 65.0)
-                    + right * side as f32 * 155.0
-                    + Vec3::Z * (self.random.next() * 180.0 - 70.0),
-                yaw: yaw + std::f32::consts::PI,
-                radius: 42.0 + self.random.next() * 15.0,
-            };
-            safe_aperture(world, &mut aperture);
-            self.add_link(
-                [key, link.ends[side]],
-                [Some(aperture), link.entrances[side]],
-            );
-        }
+        let mut aperture = Portal {
+            center: position + direction * (680.0 + self.random.next() * 120.0),
+            yaw: yaw + std::f32::consts::PI,
+            radius: 48.0 + self.random.next() * 8.0,
+        };
+        safe_aperture(world, &mut aperture);
+        self.add_link(
+            [key, remote.ends[target_side]],
+            [Some(aperture), remote.entrances[target_side]],
+        );
+        self.summoned.insert(key, self.links.last().unwrap().id);
+        self.request(remote.ends[target_side]);
         self.active = true;
+    }
+    pub fn environment(&self, key: MapKey) -> Environment {
+        let value = super::hash(key.seed ^ self.environment_seed ^ key.kind as u32) as u32;
+        let mut random = Random(key.seed ^ self.environment_seed ^ value.wrapping_mul(7919));
+        let weather = (random.next() * 100.0) as usize;
+        let time = (random.next() * 100.0) as usize;
+        use crate::content::weather::Weather;
+        Environment {
+            weather: if key.kind.vacuum() {
+                Weather::Clear
+            } else {
+                match weather {
+                    0..48 => Weather::Clear,
+                    48..78 => Weather::Cloudy,
+                    78..86 => Weather::Rainbow,
+                    86..91 => Weather::Rain,
+                    91..94 => Weather::Snow,
+                    94..96 => Weather::Storm,
+                    96..99 => Weather::Fog,
+                    _ => Weather::Sandstorm,
+                }
+            },
+            theme: match time {
+                0..85 => 0,
+                85..95 => 1,
+                _ => 2,
+            },
+        }
+    }
+    pub fn take(&mut self, key: MapKey) -> Option<Arc<World>> {
+        let at = self.cache.iter().position(|w| MapKey::of(w) == key)?;
+        Some(self.cache.remove(at))
+    }
+    pub fn stage_portal(
+        &mut self,
+        world: &World,
+        id: u32,
+        position: Vec3,
+        forward: Vec3,
+    ) -> Portal {
+        let yaw = forward.x.atan2(-forward.y);
+        let mut portal = Portal {
+            center: position + vec3(yaw.sin(), -yaw.cos(), 0.0) * 650.0,
+            yaw: yaw + std::f32::consts::PI,
+            radius: 62.0,
+        };
+        safe_aperture(world, &mut portal);
+        if let Some(link) = self.links.iter_mut().find(|link| link.id == id) {
+            let side = usize::from(link.ends[1] == MapKey::of(world));
+            link.entrances[side] = Some(portal);
+        }
+        portal
     }
     pub fn get(&self, key: MapKey) -> Option<&Arc<World>> {
         self.cache.iter().find(|w| MapKey::of(w) == key)
@@ -208,6 +292,8 @@ impl Network {
             };
             rank(a).total_cmp(&rank(b))
         });
+        self.cache
+            .retain(|world| routes.iter().any(|r| r.target == MapKey::of(world)));
         for route in routes.iter().take(2) {
             if self.get(route.target).is_none() {
                 self.request(route.target);

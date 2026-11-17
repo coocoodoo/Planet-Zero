@@ -405,7 +405,7 @@ fn wingmen_outside_the_aperture_rejoin_from_the_exit() {
 }
 
 #[test]
-fn loops_require_three_seconds_of_continuous_ready_input() {
+fn loops_require_one_point_eight_seconds_of_continuous_ready_input() {
     let world = terrain();
     let mut f = Flight::new(&world);
     f.position.z = 700.0;
@@ -415,7 +415,7 @@ fn loops_require_three_seconds_of_continuous_ready_input() {
         climb: 1.0,
         ..Default::default()
     };
-    for _ in 0..179 {
+    for _ in 0..107 {
         f.step(1.0 / 60.0, &controls, &world);
         assert_eq!(f.loop_remaining, 0.0);
         assert!(f.pitch.abs() <= NORMAL_PITCH + 0.02);
@@ -424,7 +424,7 @@ fn loops_require_three_seconds_of_continuous_ready_input() {
     f.step(1.0 / 60.0, &controls, &world);
     assert_eq!(f.loop_charge(), 0.0);
     controls.climb = 1.0;
-    for _ in 0..120 {
+    for _ in 0..70 {
         f.step(1.0 / 60.0, &controls, &world);
     }
     controls.climb = -1.0;
@@ -434,7 +434,7 @@ fn loops_require_three_seconds_of_continuous_ready_input() {
     f.step(1.0 / 60.0, &controls, &world);
     assert_eq!(f.loop_charge(), 0.0);
     f.position.z = 700.0;
-    for _ in 0..179 {
+    for _ in 0..107 {
         f.step(1.0 / 60.0, &controls, &world);
         assert_eq!(f.loop_remaining, 0.0);
     }

@@ -11,6 +11,12 @@ impl Renderer {
         if world.kind.vacuum() || crate::content::maps::definition(world.kind).cloud_clusters == 0 {
             return;
         }
+        let coverage = match flight.weather {
+            Weather::Cloudy | Weather::Storm => 14,
+            Weather::Rain | Weather::Snow => 11,
+            Weather::Rainbow => 9,
+            _ => 7,
+        };
         let far = flight.weather.visibility(camera.position.z).1;
         let base = world.cloud_height(camera.position.x, camera.position.y);
         let low = world.cloud_levels.iter().copied().min().unwrap_or(110) as f32 + 4.0;
@@ -68,8 +74,9 @@ impl Renderer {
                 {
                     continue;
                 }
-                let cloud = world.cloud(p.x, p.y, flight.time);
-                if cloud == 0 || (cloud == 1 && (x + y as usize).is_multiple_of(2)) {
+                let cloud = world.cloud_cover(p.x, p.y, flight.time, coverage);
+                if cloud == 0 || (cloud == 1 && (x + self.x_origin + y as usize).is_multiple_of(2))
+                {
                     continue;
                 }
                 let ceiling = world.height(p.x, p.y);

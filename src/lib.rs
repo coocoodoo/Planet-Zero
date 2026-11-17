@@ -8,3 +8,5 @@ pub mod gameplay;
 pub mod render;
 mod ui;
 pub mod world;
+
+pub mod keys;

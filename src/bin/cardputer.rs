@@ -225,6 +225,7 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
         }
         let mut samples = Vec::with_capacity(frames);
         let mut stages = [0.0; 3];
+        let mut detail = [0.0; 4];
         let mut peak_projectiles = 0;
         for _ in 0..frames {
             let start = Instant::now();
@@ -235,8 +236,15 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
             for (total, value) in stages.iter_mut().zip(game.renderer.stages) {
                 *total += value;
             }
+            for (total, value) in detail.iter_mut().zip(game.renderer.detail) {
+                *total += value;
+            }
             samples.push(start.elapsed().as_secs_f64() * 1000.0);
         }
+        eprintln!(
+            "{name} detail [terrain, clouds, scenery, portals] {:?}",
+            detail.map(|v| v / frames as f64)
+        );
         report(&name, options.scale, &mut samples);
         println!(
             "{{\"scene\":\"{name}\",\"mode\":\"{}\",\"wave\":{},\"enemies\":{},\"projectiles\":{},\"peak_projectiles\":{peak_projectiles},\"page\":\"{:?}\"}}",

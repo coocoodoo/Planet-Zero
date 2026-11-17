@@ -76,7 +76,7 @@ impl Drawing {
             world: app.world.clone(),
             flight: app.flight.clone(),
             mission: (!menu).then(|| app.mission.clone()),
-            network: (!menu).then(|| app.network.snapshot()),
+            network: Some(app.network.snapshot()),
             theme: app.theme,
             scale,
         };

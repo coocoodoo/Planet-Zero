@@ -1,6 +1,8 @@
 mod audio;
+mod director;
 mod input;
 mod records;
+mod settings;
 #[cfg(test)]
 mod tests;
 mod travel;
@@ -24,12 +26,17 @@ pub enum Page {
     Menu,
     Playing,
     Paused,
+    Settings,
     Results,
     Help,
     Loading,
 }
 
 pub struct App {
+    director: director::Director,
+    pub portal_labels: bool,
+    settings_path: Option<PathBuf>,
+    settings_return: (Page, usize),
     pub audio_settings: crate::audio::Settings,
     pub sounds: crate::audio::Events,
     pub level: u32,
@@ -41,6 +48,7 @@ pub struct App {
     pub world: std::sync::Arc<World>,
     pub network: crate::world::network::Network,
     pub travel: Option<crate::world::network::Route>,
+    travel_return: Page,
     pub loader: WorldLoader,
     pub flight: Flight,
     pub renderer: Renderer,
@@ -92,7 +100,20 @@ impl App {
                     .collect()
             })
             .unwrap_or_default();
+        let settings_path = std::env::var_os("RUST_FLY_SETTINGS")
+            .map(PathBuf::from)
+            .or_else(|| {
+                record_path
+                    .as_ref()
+                    .map(|p| p.with_file_name("settings-v1.toml"))
+            });
+        let settings = settings::Settings::load(settings_path.as_deref());
+        flight.faceted = settings.faceted;
         Self {
+            portal_labels: settings.portal_labels,
+            settings_path,
+            settings_return: (Page::Menu, 0),
+            director: director::Director::default(),
             audio_settings: crate::audio::Settings::default(),
             sounds: crate::audio::Events::default(),
             level: 1,
@@ -107,6 +128,7 @@ impl App {
             ),
             world: std::sync::Arc::new(world),
             travel: None,
+            travel_return: Page::Playing,
             loader: WorldLoader::default(),
             flight,
             renderer: Renderer::new(),
@@ -132,6 +154,7 @@ impl App {
         }
     }
     pub fn start(&mut self) {
+        self.director = director::Director::default();
         if self.page == Page::Menu {
             self.loadout = Loadout::default();
             if self.flight.vehicle == Vehicle::Atlas {
@@ -215,7 +238,7 @@ impl App {
         if let Some(route) = self.travel {
             if self.arrive(route) {
                 self.travel = None;
-                self.page = Page::Playing;
+                self.page = self.travel_return;
             } else {
                 self.network.request(route.target);
                 return;
@@ -234,13 +257,16 @@ impl App {
         {
             self.quit = true;
         }
+        self.direct_demo();
         if self.page == Page::Loading
             || self.page == Page::Menu
             || (self.page == Page::Help && self.help_return == Page::Menu)
         {
             let previous = self.flight.position;
             self.flight.step(dt, &Controls::default(), &self.world);
-            self.flight.traverse_portal(&self.world, previous);
+            if !self.cross_world(previous) && !self.network.active {
+                self.flight.traverse_portal(&self.world, previous);
+            }
             return;
         }
         if self.page != Page::Playing {
@@ -258,7 +284,7 @@ impl App {
             previous = self.flight.position;
             self.sounds.push(crate::audio::Sound::Warp);
         }
-        let fire = self.keys.contains(&38) || self.keys.contains(&39) || self.keys.contains(&4);
+        let fire = self.keys.contains(&crate::keys::FIRE);
         self.mission
             .step(dt, &mut self.flight, &self.world, previous, fire);
         if self.mission.outcome.is_some() {
@@ -268,7 +294,7 @@ impl App {
         }
     }
     pub fn prepare_scene(&mut self) {
-        if self.page == Page::Playing && !self.flight.demo {
+        if (self.page == Page::Playing || self.flight.demo) && self.loader.pending.is_none() {
             self.network.active = true;
             self.network
                 .preload(&self.world, self.flight.position, self.flight.axes()[1]);

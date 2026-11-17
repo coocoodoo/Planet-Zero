@@ -1,5 +1,6 @@
 use glam::{Vec3, vec3};
 mod camera;
+mod director;
 mod portals;
 mod safety;
 pub use portals::PortalTransit;
@@ -16,7 +17,7 @@ pub const MODEL_SCALE: f32 = 0.5;
 pub const VIEW_SCALE: f32 = 0.82;
 pub const MIN_CLEARANCE: f32 = 28.0;
 const LOOP_RATE: f32 = 1.25;
-const LOOP_HOLD: f32 = 3.0;
+const LOOP_HOLD: f32 = 1.8;
 const NORMAL_PITCH: f32 = 0.55;
 
 pub fn angle(value: f32) -> f32 {
@@ -52,9 +53,14 @@ pub struct Flight {
     camera_offset: f32,
     pub demo: bool,
     pub hud: bool,
+    pub faceted: bool,
     pub vehicle: crate::content::vehicles::Vehicle,
     pub weather: crate::content::weather::Weather,
     pub demo_time: f32,
+    pub demo_target: Option<crate::world::portal::Portal>,
+    pub fixed_weight: f32,
+    pub director_anchor: Vec3,
+    pub director_shot: usize,
     pub position: Vec3,
     pub yaw: f32,
     pub bank: f32,
@@ -104,9 +110,14 @@ impl Flight {
             camera_offset: 0.0,
             demo: false,
             hud: true,
+            faceted: true,
             vehicle: crate::content::vehicles::Vehicle::Falcon,
             weather: crate::content::weather::Weather::Clear,
             demo_time: 0.0,
+            demo_target: None,
+            fixed_weight: 0.0,
+            director_anchor: position,
+            director_shot: 1,
             position,
             yaw: 0.55,
             bank: 0.0,
@@ -150,6 +161,7 @@ impl Flight {
     pub fn change_world(&mut self, world: &World) {
         let weather = self.weather;
         let hud = self.hud;
+        let faceted = self.faceted;
         let vehicle = self.vehicle;
         let (view, weights, demo, wing_count) =
             (self.view, self.weights, self.demo, self.wing_count);
@@ -160,6 +172,7 @@ impl Flight {
         self.wing_count = wing_count;
         self.weather = weather;
         self.hud = hud;
+        self.faceted = faceted;
         self.vehicle = vehicle;
     }
 
@@ -185,6 +198,10 @@ impl Flight {
     pub fn set_demo(&mut self, enabled: bool) {
         self.demo = enabled;
         self.demo_time = 0.0;
+        self.demo_target = None;
+        if !enabled {
+            self.fixed_weight = 0.0;
+        }
         if enabled {
             self.view = 1;
         }
@@ -204,6 +221,24 @@ impl Flight {
 
     fn demo_controls(&mut self, dt: f32) -> Controls {
         self.demo_time += dt;
+        if let Some(portal) = self.demo_target {
+            let forward = -portal.normal();
+            let along = (portal.center - self.position).dot(forward);
+            let target = if along < 120.0 {
+                portal.center + forward * 250.0
+            } else {
+                portal.center
+            };
+            let delta = target - self.position;
+            return Controls {
+                turn: (angle(delta.x.atan2(-delta.y) - self.yaw) * 1.5 / self.vehicle.turn())
+                    .clamp(-0.65, 0.65),
+                climb: ((portal.center.z - self.position.z) * 1.5 / (self.speed * 0.55))
+                    .clamp(-1.0, 1.0),
+                manual: true,
+                ..Controls::default()
+            };
+        }
         let stage = (self.demo_time / 8.0) as usize % 7;
         let phase = self.demo_time % 8.0;
         if phase < dt || self.demo_time <= dt {
@@ -397,19 +432,10 @@ impl Flight {
         self.follow += (self.position - self.follow) * ease(4.5, dt);
         self.camera_yaw +=
             angle(-self.yaw * 0.6 + self.camera_offset - self.camera_yaw) * ease(1.5, dt);
-        let camera_top = if self.demo && matches!((self.demo_time / 8.0) as usize % 7, 2 | 4) {
-            (std::f32::consts::PI * (self.demo_time % 8.0) / 8.0)
-                .sin()
-                .powi(2)
-                * 0.9
-        } else {
-            0.0
-        };
-        let target_weights = if self.demo {
-            [camera_top, 1.0 - camera_top, 0.0]
-        } else {
-            std::array::from_fn(|i| f32::from(i == self.view))
-        };
+        if self.demo {
+            self.director_camera(dt);
+        }
+        let target_weights = std::array::from_fn::<_, 3, _>(|i| f32::from(i == self.view));
         for (weight, target) in self.weights.iter_mut().zip(target_weights) {
             *weight += (target - *weight) * ease(if self.demo { 2.0 } else { 3.2 }, dt);
         }

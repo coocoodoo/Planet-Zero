@@ -1,4 +1,5 @@
 use super::*;
+use crate::keys::*;
 
 impl App {
     pub fn release_keys(&mut self) {
@@ -6,20 +7,20 @@ impl App {
         self.escape_since = None;
     }
     pub fn controls(&self) -> Controls {
-        let held = |codes: &[u16]| codes.iter().any(|code| self.keys.contains(code));
+        let held = |key| f32::from(self.keys.contains(&key));
         Controls {
             bank: None,
             aerobatic: true,
-            turn: f32::from(held(&[46, 106, 32])) - f32::from(held(&[44, 105, 30])),
-            climb: f32::from(held(&[33, 103, 17])) - f32::from(held(&[45, 108, 31])),
-            boost: held(&[43, 7, 42, 54]),
+            turn: held(D) - held(A),
+            climb: held(W) - held(S),
+            boost: self.keys.contains(&BOOST),
             manual: !self.auto,
         }
     }
     pub fn key(&mut self, code: u16, value: i32) {
         if value == 0 {
             self.keys.remove(&code);
-            if code == 1
+            if code == ESC
                 && self
                     .escape_since
                     .take()
@@ -32,126 +33,140 @@ impl App {
         if value != 1 || !self.keys.insert(code) {
             return;
         }
-        if code == 1 {
+        if code == ESC {
             self.escape_since = Some(Instant::now());
             return;
         }
-        if matches!(code, 10 | 12 | 13) {
-            match code {
-                10 => self.audio_settings.profile = (self.audio_settings.profile + 1) % 4,
-                12 => self.audio_settings.volume = self.audio_settings.volume.saturating_sub(1),
-                _ => self.audio_settings.volume = (self.audio_settings.volume + 1).min(10),
+        match code {
+            HUD => {
+                self.flight.hud = !self.flight.hud;
+                return;
             }
-            self.sounds.push(crate::audio::Sound::Navigate);
-            return;
+            HELP if self.page != Page::Help => {
+                self.help();
+                return;
+            }
+            SETTINGS if self.page != Page::Settings => {
+                if self.page == Page::Help && self.help_return == Page::Settings {
+                    self.page = Page::Settings;
+                    return;
+                }
+                self.open_settings();
+                return;
+            }
+            SOUND => {
+                self.audio_settings.profile = (self.audio_settings.profile + 1) % 4;
+                return;
+            }
+            _ => {}
         }
         if matches!(
             self.page,
-            Page::Menu | Page::Paused | Page::Help | Page::Results
+            Page::Menu | Page::Paused | Page::Settings | Page::Help | Page::Results
         ) {
-            if matches!(code, 28 | 57) {
+            if code == ENTER {
                 self.sounds.push(crate::audio::Sound::Confirm);
-            } else if matches!(
-                code,
-                17 | 33 | 103 | 31 | 45 | 108 | 30 | 44 | 105 | 32 | 46 | 106
-            ) {
+            } else if matches!(code, W | A | S | D | UP | LEFT | DOWN | RIGHT) {
                 self.sounds.push(crate::audio::Sound::Navigate);
             }
         }
-        if code == 22 {
-            self.flight.hud = !self.flight.hud;
-            return;
-        }
-        if self.page == Page::Help {
-            match code {
-                44 | 46 | 105 | 106 => self.help_page = (self.help_page + 1) % 5,
-                28 | 35 | 52 | 9 => self.page = self.help_return,
-                _ => {}
-            }
-            return;
-        }
-        if self.page == Page::Menu {
-            match code {
-                17 | 33 | 103 => self.selection = (self.selection + MENU_ROWS - 1) % MENU_ROWS,
-                31 | 45 | 108 => self.selection = (self.selection + 1) % MENU_ROWS,
-                30 | 44 | 105 => self.adjust(-1),
-                32 | 46 | 106 => self.adjust(1),
-                28 | 57 => self.activate(),
-                35 | 52 | 9 => self.help(),
-                _ => {}
-            }
-            return;
-        }
-        if self.page == Page::Paused {
-            match code {
-                44 | 105 => {
-                    self.audio_settings.volume = self.audio_settings.volume.saturating_sub(1)
+        match self.page {
+            Page::Settings => {
+                match code {
+                    UP | W => self.selection = (self.selection + 5) % 6,
+                    DOWN | S => self.selection = (self.selection + 1) % 6,
+                    LEFT | A => self.adjust_setting(-1),
+                    RIGHT | D | ENTER => self.adjust_setting(1),
+                    SETTINGS => self.close_settings(),
+                    _ => {}
                 }
-                46 | 106 => self.audio_settings.volume = (self.audio_settings.volume + 1).min(10),
-                17 | 33 | 103 => self.selection = (self.selection + 5) % 6,
-                31 | 45 | 108 => self.selection = (self.selection + 1) % 6,
-                28 | 57 => self.activate(),
-                25 | 35 | 52 | 9 => self.page = Page::Playing,
-                _ => {}
+                return;
             }
-            return;
-        }
-        if self.page == Page::Results {
-            match code {
-                19 => self.start(),
-                28 | 57 => self.result_action(),
-                44 | 105 => self.reward = (self.reward + 2) % 3,
-                46 | 106 => self.reward = (self.reward + 1) % 3,
-                35 | 52 | 9 => self.home(),
-                _ => {}
+            Page::Help => {
+                match code {
+                    LEFT | A => self.help_page = (self.help_page + 4) % 5,
+                    RIGHT | D => self.help_page = (self.help_page + 1) % 5,
+                    ENTER | HELP => self.page = self.help_return,
+                    _ => {}
+                }
+                return;
             }
-            return;
-        }
-        if self.page == Page::Loading {
-            return;
+            Page::Menu => {
+                match code {
+                    W | UP => self.selection = (self.selection + MENU_ROWS - 1) % MENU_ROWS,
+                    S | DOWN => self.selection = (self.selection + 1) % MENU_ROWS,
+                    A | LEFT => self.adjust(-1),
+                    D | RIGHT => self.adjust(1),
+                    ENTER => self.activate(),
+                    _ => {}
+                }
+                return;
+            }
+            Page::Paused => {
+                match code {
+                    W | UP => self.selection = (self.selection + 5) % 6,
+                    S | DOWN => self.selection = (self.selection + 1) % 6,
+                    ENTER => self.activate(),
+                    PAUSE => self.page = Page::Playing,
+                    _ => {}
+                }
+                return;
+            }
+            Page::Results => {
+                match code {
+                    RETRY => self.start(),
+                    ENTER => self.result_action(),
+                    A | LEFT => self.reward = (self.reward + 2) % 3,
+                    D | RIGHT => self.reward = (self.reward + 1) % 3,
+                    _ => {}
+                }
+                return;
+            }
+            Page::Loading => return,
+            Page::Playing => {}
         }
         match code {
-            21 | 94 | 11 => self.mission.activate_overdrive(),
-            40 | 5 | 57 => self.flight.view = (self.flight.view + 1) % 3,
-            41 | 6 | 16 => {
+            OVERDRIVE => self.mission.activate_overdrive(),
+            VIEW => self.flight.view = (self.flight.view + 1) % 3,
+            ROLL => {
                 if self.flight.roll() {
                     self.sounds.push(crate::audio::Sound::Roll);
                     self.mission.dodge();
                 }
             }
-            51 | 8 | 20 => self.theme = (self.theme + 1) % 3,
-            35 => {
+            PORTAL => {
                 self.network
                     .summon(&self.world, self.flight.position, self.flight.axes()[1]);
                 self.flight.portal_transit = None;
                 self.sounds.push(crate::audio::Sound::Warp);
             }
-            52 | 9 | 25 => {
+            PAUSE => {
                 self.page = Page::Paused;
                 self.selection = 0;
             }
-            19 => self.start(),
-            24 => self.mission.cycle_weapon(),
-            18 | 26 | 2 => self.mission.bomb(),
-            27 | 3 => self.mission.autofire = !self.mission.autofire,
-            48 if self.mode == Mode::Free => self.flight.exploded = !self.flight.exploded,
-            47 if self.mode == Mode::Free => {
+            RETRY => self.start(),
+            WEAPON => self.mission.cycle_weapon(),
+            BOMB => self.mission.bomb(),
+            AUTOFIRE => self.mission.autofire = !self.mission.autofire,
+            MODEL if self.mode == Mode::Free => self.flight.exploded = !self.flight.exploded,
+            WINGMEN if self.mode == Mode::Free => {
                 self.flight.wing_count = (self.flight.wing_count + 1) % 3
             }
-            34 if self.mode == Mode::Free => self.flight.weather = self.flight.weather.next(),
-            50 if self.mode == Mode::Free => {
+            WEATHER if self.mode == Mode::Free => self.flight.weather = self.flight.weather.next(),
+            TIME if self.mode == Mode::Free => self.theme = (self.theme + 1) % 3,
+            MAP if self.mode == Mode::Free => {
                 let kind = self.world.kind.next();
                 self.loader.start(kind, kind.seed());
             }
-            49 if self.mode == Mode::Free => self
+            SEED if self.mode == Mode::Free => self
                 .loader
                 .start(self.world.kind, self.world.seed.wrapping_add(7919)),
-            36 if self.mode == Mode::Free => self.flight.set_demo(!self.flight.demo),
-            15 if self.mode == Mode::Free => {
+            DEMO if self.mode == Mode::Free => self.flight.set_demo(!self.flight.demo),
+            AUTOPILOT if self.mode == Mode::Free => {
                 self.flight.set_demo(false);
                 self.auto = !self.auto;
             }
-            44 | 45 | 46 | 33 | 103 | 108 | 105 | 106 | 30 | 31 | 32 | 17 => {
+            W | A | S | D => {
                 self.auto = false;
                 self.flight.set_demo(false);
             }
@@ -166,6 +181,7 @@ impl App {
                 self.selection = 0;
             }
             Page::Paused => self.page = Page::Playing,
+            Page::Settings => self.close_settings(),
             Page::Help => self.page = self.help_return,
             Page::Results | Page::Loading => self.home(),
         }
@@ -180,7 +196,7 @@ impl App {
             Page::Menu => match self.selection {
                 0..=5 => self.selection = START_ROW,
                 START_ROW => self.start(),
-                7 => self.help(),
+                7 => self.open_settings(),
                 8 => self.quit = true,
                 _ => {}
             },
@@ -188,11 +204,12 @@ impl App {
                 0 => self.page = Page::Playing,
                 1 => self.start(),
                 2 => self.flight.hud = !self.flight.hud,
-                3 => self.help(),
+                3 => self.open_settings(),
                 4 => self.home(),
                 5 => self.quit = true,
                 _ => {}
             },
+            Page::Settings => self.adjust_setting(1),
             Page::Results => self.result_action(),
             _ => {}
         }
@@ -212,8 +229,10 @@ impl App {
                 self.loader.start(kind, kind.seed());
             }
             3 => {
-                self.flight.weather =
-                    crate::content::weather::Weather::ALL[next(self.flight.weather as usize, 6)]
+                self.flight.weather = crate::content::weather::Weather::ALL[next(
+                    self.flight.weather as usize,
+                    crate::content::weather::Weather::ALL.len(),
+                )]
             }
             4 => self.difficulty = Difficulty::ALL[next(self.difficulty as usize, 3)],
             5 => {
@@ -236,6 +255,9 @@ impl App {
         } else if self.page == Page::Paused && (45..141).contains(&y) {
             self.selection = ((y - 45) / 16).min(5);
             self.activate();
+        } else if self.page == Page::Settings && (45..141).contains(&y) {
+            self.selection = ((y - 45) / 16).min(5);
+            self.adjust_setting(if x < 160 { -1 } else { 1 });
         } else if self.page == Page::Playing
             && ((self.mode == Mode::Combat && x >= 291 && y >= 154)
                 || (self.mode != Mode::Combat && x >= 280 && y < 14))

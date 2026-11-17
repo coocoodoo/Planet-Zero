@@ -12,23 +12,41 @@ pub fn draw(app: &mut App) {
         combat_hud(&mut c, m, f, app.input_label);
         return;
     }
-    c.shade(0, 0, 320, 13);
+    c.shade(302, 1, 17, 12);
+    c.icon(307, 3, 'u', WHITE);
     if m.mode == Mode::Free {
+        c.shade(2, 1, 112, 12);
+        c.weather(5, 3, f.weather, app.world.kind.vacuum());
+        c.text(17, 3, app.world.kind.name(), MUTED);
+        c.shade(124, 1, 174, 12);
         c.text(
-            4,
+            128,
             3,
-            &format!(
-                "{} {:03.0} ALT {:03.0}",
-                ["TOP", "CHASE", "PIT"][f.view],
-                f.speed,
-                f.position.z
-            ),
+            &format!("{:03.0}  ALT {:03.0}", f.speed, f.position.z),
             WHITE,
         );
-        c.text(200, 3, if f.demo { "DEMO" } else { app.input_label }, CYAN);
+        if f.demo || app.auto || app.input_label == "IMU" || app.loader.pending.is_some() {
+            c.shade(2, 16, 13, 12);
+            c.icon(
+                5,
+                18,
+                if app.loader.pending.is_some() {
+                    'O'
+                } else if f.demo {
+                    'd'
+                } else if app.input_label == "IMU" {
+                    'i'
+                } else {
+                    'a'
+                },
+                CYAN,
+            );
+        }
     } else {
+        c.shade(2, 1, 278, 12);
+        c.weather(5, 3, f.weather, app.world.kind.vacuum());
         c.text(
-            4,
+            17,
             3,
             &format!(
                 "{:07} {:03.0}S STAGE {:02}",
@@ -36,44 +54,6 @@ pub fn draw(app: &mut App) {
             ),
             WHITE,
         );
-    }
-    if m.mode == Mode::Free && !f.demo {
-        let label = if f.loop_charge() > 0.0 {
-            format!("LOOP {:.1}/3", f.loop_charge() * 3.0)
-        } else if f.can_loop() {
-            "LOOP READY".to_owned()
-        } else {
-            format!("LOOP {:03.0}", f.loop_altitude().ceil())
-        };
-        c.shade(232, 15, 87, 11);
-        c.text(233, 17, &label, if f.can_loop() { CYAN } else { MUTED });
-    }
-    c.rect(279, 1, 40, 11, [36, 73, 86]);
-    c.text(280, 3, "U UI", WHITE);
-    if m.mode == Mode::Free {
-        let label = app.loader.pending.map_or_else(
-            || {
-                format!(
-                    "{} / {}",
-                    app.world.kind.name(),
-                    if app.world.kind.vacuum() {
-                        "VACUUM"
-                    } else {
-                        f.weather.name()
-                    }
-                )
-            },
-            |map| format!("LOADING {}", map.name()),
-        );
-        c.shade(4, 16, (label.len() * 8 + 8).min(312), 12);
-        c.text(8, 18, &label, MUTED);
-        if f.demo {
-            c.shade(4, 29, 192, 12);
-            c.text(8, 31, f.demonstration(), GOLD);
-        }
-        c.shade(0, 158, 320, 12);
-        c.text(4, 161, "4 VIEW 5 ROLL 6 BOOST 8 MENU", WHITE);
-    } else {
         if let Some(target) = m.target(f) {
             let delta = target - f.position;
             let heading = angle(delta.x.atan2(-delta.y) - f.yaw);
@@ -117,8 +97,6 @@ pub fn draw(app: &mut App) {
                 GOLD,
             );
         }
-        c.shade(0, 158, 320, 12);
-        c.text(4, 161, "4 VIEW 6 BOOST R RETRY 8 PAUSE", WHITE);
         if m.message_time > 0.0 && m.countdown <= 0.0 {
             let width = (m.message.len() * 8 + 8).min(312);
             let x = (320 - width) / 2;

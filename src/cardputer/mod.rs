@@ -45,7 +45,7 @@ impl Game {
     }
     pub fn key(&mut self, code: u16, value: i32) {
         if value == 1 && !self.app.keys.contains(&code) {
-            if code == 23 {
+            if code == crate::keys::IMU {
                 self.imu_enabled = !self.imu_enabled;
                 self.auto = false;
                 if self.page == Page::Playing {
@@ -55,10 +55,13 @@ impl Game {
                     self.calibrate_imu = true;
                 }
             }
-            if code == 37 {
+            if code == crate::keys::CALIBRATE {
                 self.calibrate_imu = true;
             }
-            if code == 15 && self.app.mode == crate::gameplay::Mode::Free && !self.auto {
+            if code == crate::keys::AUTOPILOT
+                && self.app.mode == crate::gameplay::Mode::Free
+                && !self.auto
+            {
                 self.imu_enabled = false;
             }
         }

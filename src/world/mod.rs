@@ -119,6 +119,9 @@ impl World {
             .fold(ground.max(obstacle) as f32, f32::max)
     }
     pub fn cloud(&self, x: f32, y: f32, time: f32) -> usize {
+        self.cloud_cover(x, y, time, 7)
+    }
+    pub fn cloud_cover(&self, x: f32, y: f32, time: f32, coverage: u8) -> usize {
         if self.kind.vacuum() {
             return 0;
         }
@@ -127,10 +130,7 @@ impl World {
             (y - time * 3.0).floor() as i32,
             CLOUD_SIZE,
         )];
-        if cell & 15 == 0 || cell >> 4 >= 7 {
-            return 0;
-        }
-        if self.height(x, y) + 12.0 >= self.cloud_height(x, y) {
+        if cell & 15 == 0 || cell >> 4 >= coverage {
             return 0;
         }
         (cell & 15) as usize

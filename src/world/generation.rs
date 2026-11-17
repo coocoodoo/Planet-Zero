@@ -165,7 +165,11 @@ impl World {
                         }
                         MapKind::Alpine => {
                             if h > 44.0 {
-                                if n < 40 { 26 } else { 15 + u8::from(n < 90) }
+                                if moisture[gy * NOISE_SIZE + gx] > 0.69 && h < 105.0 {
+                                    26
+                                } else {
+                                    15 + u8::from(n < 55)
+                                }
                             } else if h > 25.0 {
                                 12 + n % 3
                             } else {

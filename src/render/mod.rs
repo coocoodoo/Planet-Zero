@@ -18,7 +18,7 @@ use glam::{Vec2, Vec3, vec2, vec3};
 use crate::content::weather::Weather;
 use crate::flight::{Camera, Flight, MODEL_SCALE};
 use crate::render::palette::JET;
-use crate::world::{MATERIAL_COUNT, MAX_HEIGHT, SIZE, World, hash, index};
+use crate::world::{MATERIAL_COUNT, SIZE, World, hash, index};
 
 const MODEL: &[u8] = include_bytes!("../../assets/vehicles/falcon.bin");
 const TOP: [[u8; 3]; MATERIAL_COUNT] = [
@@ -57,43 +57,6 @@ const TOP: [[u8; 3]; MATERIAL_COUNT] = [
     [111, 125, 142],
     [61, 82, 104],
     [111, 147, 171],
-];
-const SIDE: [[u8; 3]; MATERIAL_COUNT] = [
-    [36, 104, 180],
-    [44, 124, 198],
-    [66, 160, 216],
-    [104, 204, 214],
-    [204, 180, 122],
-    [204, 180, 122],
-    [56, 120, 44],
-    [50, 108, 42],
-    [60, 128, 46],
-    [24, 78, 42],
-    [22, 72, 40],
-    [20, 64, 38],
-    [96, 90, 92],
-    [86, 82, 86],
-    [104, 98, 98],
-    [186, 202, 228],
-    [176, 192, 220],
-    [166, 116, 58],
-    [198, 149, 80],
-    [116, 64, 41],
-    [159, 96, 53],
-    [28, 30, 39],
-    [53, 48, 57],
-    [181, 41, 13],
-    [39, 83, 59],
-    [74, 67, 45],
-    [76, 133, 163],
-    [66, 67, 76],
-    [99, 100, 108],
-    [49, 52, 63],
-    [26, 31, 40],
-    [149, 137, 86],
-    [73, 81, 96],
-    [38, 51, 69],
-    [67, 95, 116],
 ];
 
 pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
@@ -146,7 +109,7 @@ pub struct Renderer {
     pub rgba: Vec<u8>,
     output: Vec<u32>,
     voxels: Vec<Vec<(f32, f32, usize)>>,
-    silhouette: Vec<bool>,
+    pub detail: [f64; 4],
 }
 
 impl Default for Renderer {
@@ -165,14 +128,12 @@ impl Renderer {
     }
     fn single() -> Self {
         let mut voxels = vec![Vec::new(); 13];
-        let mut silhouette = vec![false; 34 * 46];
         for z in 0..13 {
             for y in 0..46 {
                 for x in 0..34 {
                     let color = MODEL[(z * 46 + y) * 34 + x] as usize;
                     if color != 0 {
                         voxels[z].push((x as f32 - 16.5, 25.3 - y as f32, color));
-                        silhouette[y * 34 + x] = true;
                     }
                 }
             }
@@ -198,7 +159,7 @@ impl Renderer {
             rgba: vec![],
             output: vec![],
             voxels,
-            silhouette,
+            detail: [0.0; 4],
         }
     }
     pub fn render(
@@ -300,7 +261,9 @@ impl Renderer {
         let started = std::time::Instant::now();
         self.portal_mask(world, flight, &camera, network);
         self.background(world, flight, &camera, theme, height);
+        let portals_started = std::time::Instant::now();
         self.portals(world, flight, &camera, mission, theme, network);
+        self.detail[3] = portals_started.elapsed().as_secs_f64() * 1000.0;
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
         let mut jets: Vec<&Flight> = flight
@@ -358,6 +321,7 @@ impl Renderer {
         theme: usize,
         height: usize,
     ) {
+        self.detail = [0.0; 4];
         if world.kind != crate::world::MapKind::Space {
             self.world(world, flight, camera, theme);
         }
@@ -366,7 +330,9 @@ impl Renderer {
         } else {
             self.sky(camera, flight, theme, height);
         }
+        let started = std::time::Instant::now();
         self.scenery(world, camera, flight.time);
+        self.detail[2] = started.elapsed().as_secs_f64() * 1000.0;
     }
 
     fn background(
@@ -420,6 +386,9 @@ impl Renderer {
                         worker.scene(world, flight, &view, theme, height);
                     });
                 }
+            });
+            self.detail = std::array::from_fn(|i| {
+                self.workers.iter().map(|w| w.detail[i]).fold(0.0, f64::max)
             });
             for (i, worker) in self.workers.iter().enumerate() {
                 let start = i * strip * h;

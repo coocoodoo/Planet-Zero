@@ -139,57 +139,46 @@ async fn main() {
     let mut fullscreen = false;
     let mut pointer = mouse_position();
     let mut pointer_idle = 10.0_f32;
+    use rust_fly::keys as k;
     let mapping = [
-        (KeyCode::Escape, 1),
-        (KeyCode::Enter, 28),
-        (KeyCode::Space, 57),
-        (KeyCode::Up, 103),
-        (KeyCode::Down, 108),
-        (KeyCode::Left, 105),
-        (KeyCode::Right, 106),
-        (KeyCode::W, 17),
-        (KeyCode::A, 30),
-        (KeyCode::S, 31),
-        (KeyCode::D, 32),
-        (KeyCode::Z, 44),
-        (KeyCode::X, 45),
-        (KeyCode::C, 46),
-        (KeyCode::Q, 16),
-        (KeyCode::LeftShift, 42),
-        (KeyCode::RightShift, 54),
-        (KeyCode::U, 22),
-        (KeyCode::H, 35),
-        (KeyCode::P, 25),
-        (KeyCode::R, 19),
-        (KeyCode::T, 20),
-        (KeyCode::J, 36),
-        (KeyCode::V, 47),
-        (KeyCode::B, 48),
-        (KeyCode::G, 34),
-        (KeyCode::M, 50),
-        (KeyCode::N, 49),
-        (KeyCode::Tab, 15),
-        (KeyCode::L, 38),
-        (KeyCode::O, 24),
-        (KeyCode::E, 18),
-        (KeyCode::Y, 21),
-        (KeyCode::Key0, 94),
-        (KeyCode::Key1, 26),
-        (KeyCode::Key2, 27),
-        (KeyCode::Key3, 39),
-        (KeyCode::Key4, 40),
-        (KeyCode::Key5, 41),
-        (KeyCode::Key6, 43),
-        (KeyCode::Key7, 51),
-        (KeyCode::Key8, 52),
-        (KeyCode::Key9, 10),
-        (KeyCode::Minus, 12),
-        (KeyCode::Equal, 13),
+        (KeyCode::Escape, k::ESC),
+        (KeyCode::Enter, k::ENTER),
+        (KeyCode::Up, k::UP),
+        (KeyCode::Down, k::DOWN),
+        (KeyCode::Left, k::LEFT),
+        (KeyCode::Right, k::RIGHT),
+        (KeyCode::W, k::W),
+        (KeyCode::A, k::A),
+        (KeyCode::S, k::S),
+        (KeyCode::D, k::D),
+        (KeyCode::Q, k::ROLL),
+        (KeyCode::B, k::BOOST),
+        (KeyCode::V, k::VIEW),
+        (KeyCode::U, k::HUD),
+        (KeyCode::H, k::PORTAL),
+        (KeyCode::P, k::PAUSE),
+        (KeyCode::R, k::RETRY),
+        (KeyCode::J, k::DEMO),
+        (KeyCode::Key1, k::FIRE),
+        (KeyCode::Key2, k::WEAPON),
+        (KeyCode::Key3, k::BOMB),
+        (KeyCode::Key4, k::OVERDRIVE),
+        (KeyCode::Key5, k::AUTOFIRE),
+        (KeyCode::F1, k::HELP),
+        (KeyCode::F2, k::SETTINGS),
+        (KeyCode::F3, k::MAP),
+        (KeyCode::F4, k::WEATHER),
+        (KeyCode::F5, k::TIME),
+        (KeyCode::F6, k::WINGMEN),
+        (KeyCode::F7, k::SEED),
+        (KeyCode::F8, k::AUTOPILOT),
+        (KeyCode::F9, k::MODEL),
+        (KeyCode::F10, k::SOUND),
     ];
     loop {
         let dt = get_frame_time().min(0.1);
         quality_notice = (quality_notice - dt).max(0.0);
-        if is_key_pressed(KeyCode::F2) {
+        if is_key_pressed(KeyCode::F12) {
             let count = desktop::SCALES.len();
             let reverse = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
             quality = (quality + if reverse { count - 1 } else { 1 }) % count;
@@ -203,7 +192,7 @@ async fn main() {
                 app.key(code, 0);
             }
         }
-        if is_key_pressed(KeyCode::F) {
+        if is_key_pressed(KeyCode::F11) {
             fullscreen = !fullscreen;
             set_fullscreen(fullscreen);
         }
@@ -227,11 +216,11 @@ async fn main() {
             }
         }
         if is_mouse_button_down(MouseButton::Left) && app.mode == Mode::Combat {
-            app.keys.insert(38);
+            app.keys.insert(k::FIRE);
         } else {
-            app.keys.remove(&38);
-            if is_key_down(KeyCode::L) {
-                app.keys.insert(38);
+            app.keys.remove(&k::FIRE);
+            if is_key_down(KeyCode::Key1) {
+                app.keys.insert(k::FIRE);
             }
         }
         let mut controls = app.controls();
@@ -283,7 +272,7 @@ async fn main() {
                 "RENDERING".into()
             };
             let text = format!(
-                "F2  {scale}x  {} x {}  {status}",
+                "F12 {scale}x  {} x {}  {status}",
                 WIDTH * scale,
                 HEIGHT * scale
             );

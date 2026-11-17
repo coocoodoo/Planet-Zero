@@ -39,6 +39,23 @@ impl Camera {
         );
         let target = flight.position + camera.forward * 64.0 + camera.up * 1.8;
         camera.position = flight.follow.lerp(target, cockpit);
+        if flight.fixed_weight > 0.0001 {
+            let delta = flight.position - flight.director_anchor;
+            let yaw = (-delta.x).atan2(-delta.y);
+            let pitch = delta.z.atan2(delta.truncate().length());
+            let t = flight.fixed_weight;
+            let forward = delta.normalize_or_zero();
+            let position = flight.director_anchor + forward * 180.0;
+            camera.position = camera.position.lerp(position, t);
+            camera.orient(
+                camera.yaw + angle(yaw - camera.yaw) * t,
+                camera.pitch + angle(pitch - camera.pitch) * t,
+            );
+            camera.q += (1.0 / 180.0 - camera.q) * t;
+            camera.slope *= 1.0 - t;
+            camera.scale += (2.6 * w / 320.0 - camera.scale) * t;
+            camera.center = camera.center.lerp(vec2(w * 0.5, h * 0.5), t);
+        }
         camera
     }
     pub fn orient(&mut self, yaw: f32, pitch: f32) {

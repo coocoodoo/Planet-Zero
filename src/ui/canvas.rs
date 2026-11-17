@@ -113,6 +113,17 @@ impl Canvas<'_> {
     }
     pub(super) fn icon(&mut self, x: i32, y: i32, kind: char, color: [u8; 3]) {
         let rows = match kind {
+            'u' => [0, 28, 34, 73, 34, 28, 0],
+            'd' => [127, 65, 91, 85, 91, 65, 127],
+            'i' => [28, 34, 73, 85, 73, 34, 28],
+            'a' => [8, 28, 42, 73, 8, 8, 28],
+            's' => [8, 42, 28, 127, 28, 42, 8],
+            'c' => [0, 12, 18, 49, 65, 127, 0],
+            'r' => [12, 18, 49, 127, 0, 42, 21],
+            'n' => [8, 42, 28, 127, 28, 42, 8],
+            'f' => [0, 119, 0, 62, 0, 119, 0],
+            'b' => [28, 34, 93, 99, 65, 65, 0],
+            'v' => [8, 0, 34, 8, 0, 65, 4],
             'S' => [62, 65, 65, 65, 34, 20, 8],
             'A' | 'Y' => [6, 12, 24, 62, 12, 24, 16],
             'B' => [12, 16, 28, 62, 62, 62, 28],
@@ -135,5 +146,32 @@ impl Canvas<'_> {
                 }
             }
         }
+    }
+}
+
+impl Canvas<'_> {
+    pub(super) fn weather(
+        &mut self,
+        x: i32,
+        y: i32,
+        weather: crate::content::weather::Weather,
+        vacuum: bool,
+    ) {
+        use crate::content::weather::Weather;
+        let (kind, color) = if vacuum {
+            ('v', CYAN)
+        } else {
+            match weather {
+                Weather::Clear => ('s', GOLD),
+                Weather::Cloudy => ('c', WHITE),
+                Weather::Rainbow => ('b', GOLD),
+                Weather::Rain => ('r', CYAN),
+                Weather::Snow => ('n', WHITE),
+                Weather::Storm => ('A', GOLD),
+                Weather::Fog => ('f', MUTED),
+                Weather::Sandstorm => ('f', GOLD),
+            }
+        };
+        self.icon(x, y, kind, color);
     }
 }

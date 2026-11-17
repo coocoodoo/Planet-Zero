@@ -47,7 +47,7 @@ impl App {
         };
         Frame {
             cue,
-            paused: matches!(self.page, Page::Paused | Page::Help),
+            paused: matches!(self.page, Page::Paused | Page::Help | Page::Settings),
             engine: f32::from(flying)
                 * if self.flight.vehicle == crate::content::vehicles::Vehicle::Paper {
                     0.18

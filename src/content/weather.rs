@@ -10,20 +10,26 @@ pub enum Weather {
     Storm,
     Fog,
     Sandstorm,
+    Cloudy,
+    Rainbow,
 }
 
 impl Weather {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 8] = [
         Self::Clear,
         Self::Rain,
         Self::Snow,
         Self::Storm,
         Self::Fog,
         Self::Sandstorm,
+        Self::Cloudy,
+        Self::Rainbow,
     ];
     pub fn name(self) -> &'static str {
         match self {
             Self::Clear => "CLEAR",
+            Self::Cloudy => "CLOUDY",
+            Self::Rainbow => "RAINBOW",
             Self::Rain => "RAIN",
             Self::Snow => "SNOW",
             Self::Storm => "STORM",
@@ -41,6 +47,8 @@ impl Weather {
     }
     pub fn visibility(self, altitude: f32) -> (f32, f32) {
         match self {
+            Self::Cloudy => (250.0 + altitude, 1400.0 + 2.0 * altitude),
+            Self::Rainbow => (280.0 + altitude, 1600.0 + 2.0 * altitude),
             Self::Clear => (300.0 + 2.0 * altitude, 1500.0 + 3.0 * altitude),
             Self::Rain => (100.0, 900.0),
             Self::Snow => (65.0, 700.0),
@@ -51,10 +59,15 @@ impl Weather {
     }
     pub fn haze(self, theme: usize) -> u32 {
         let color = match self {
-            Self::Clear => match theme {
+            Self::Clear | Self::Rainbow => match theme {
                 1 => rgb(250, 182, 134),
                 2 => rgb(28, 44, 92),
                 _ => rgb(188, 224, 246),
+            },
+            Self::Cloudy => match theme {
+                1 => rgb(220, 178, 160),
+                2 => rgb(28, 40, 65),
+                _ => rgb(180, 208, 227),
             },
             Self::Rain => rgb(116, 141, 158),
             Self::Snow => rgb(191, 205, 215),
@@ -70,7 +83,8 @@ impl Weather {
     }
     pub fn shade(self, color: u32) -> u32 {
         match self {
-            Self::Clear => color,
+            Self::Clear | Self::Rainbow => color,
+            Self::Cloudy => mix(color, rgb(93, 116, 139), 0.12),
             Self::Rain => mix(color, rgb(44, 60, 80), 0.28),
             Self::Snow => mix(color, rgb(153, 171, 184), 0.18),
             Self::Storm => mix(color, rgb(20, 30, 49), 0.5),

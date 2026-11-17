@@ -216,7 +216,19 @@ impl Renderer {
             {
                 remote.workers = (0..3).map(|_| Self::single()).collect();
             }
-            remote.background(destination, flight, &view, theme, 170);
+            let mut remote_flight = flight.clone();
+            let remote_theme = if let Some(network) = network.filter(|n| n.active) {
+                let environment =
+                    network.environment(crate::world::network::MapKey::of(destination));
+                remote_flight.weather = environment.weather;
+                environment.theme
+            } else {
+                theme
+            };
+            remote.background(destination, &remote_flight, &view, remote_theme, 170);
+            if !destination.kind.vacuum() {
+                remote.precipitation(&remote_flight, &view, remote_theme);
+            }
             if let Some(mission) = mission.filter(|_| std::ptr::eq(world, destination)) {
                 remote.mission(mission, flight, &view);
             }

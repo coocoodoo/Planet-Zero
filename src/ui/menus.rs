@@ -33,7 +33,7 @@ pub fn draw(app: &mut App) {
         c.shade(0, 0, 320, 32);
         c.text_scale(10, 7, "RUST / FLY", WHITE, 2);
         c.text(224, 8, "FLIGHT CLUB", CYAN);
-        c.text(224, 20, "ARCADE 0.9.4", MUTED);
+        c.text(224, 20, "ARCADE 0.10", MUTED);
         c.shade(8, 34, 304, 115);
         c.rect(8, 34, 2, 115, CYAN);
         let stage = format!(
@@ -63,7 +63,7 @@ pub fn draw(app: &mut App) {
                     "START FLIGHT"
                 },
             ),
-            ("", "FLIGHT MANUAL"),
+            ("", "SETTINGS"),
             ("", "EXIT TO LAUNCHER"),
         ];
         for (i, (label, value)) in rows.iter().enumerate() {
@@ -86,7 +86,7 @@ pub fn draw(app: &mut App) {
         };
         c.shade(0, 151, 320, 19);
         c.text(8, 152, description, CYAN);
-        c.text(8, 162, "Z/C CHANGE  ENTER START  9 SOUND", MUTED);
+        c.text(8, 162, "A/D CHANGE ENTER START F1 HELP", MUTED);
         return;
     }
     if app.page == Page::Help {
@@ -94,14 +94,14 @@ pub fn draw(app: &mut App) {
         c.rect(6, 6, 2, 158, CYAN);
         let pages = [
             [
-                "FLIGHT MANUAL / 1 OF 5",
-                "Z X C F / WASD : STEER / CLIMB",
-                "4 VIEW  5 Q ROLL  6 SHIFT BOOST",
-                "I IMU ON/OFF   K RECALIBRATE",
-                "PAUSE Z/C VOLUME  U UI  9 SOUND",
-                "HOLD ESC 2 SECONDS TO EXIT",
-                "8 P PAUSE / H CREATE WORMHOLE",
-                "Z/C PAGE       ENTER RETURN",
+                "FLIGHT / 1 OF 5",
+                "W/S PITCH    A/D TURN",
+                "V VIEW   Q ROLL   B BOOST",
+                "I IMU   K CALIBRATE   U HUD",
+                "H WORMHOLE   J DIRECTOR SHOW",
+                "P PAUSE   R RETRY   F2 SETTINGS",
+                "ESC BACK / HOLD 2S TO EXIT",
+                "A/D PAGE       ENTER RETURN",
             ],
             [
                 "MISSIONS / 2 OF 5",
@@ -110,38 +110,38 @@ pub fn draw(app: &mut App) {
                 "WIN : ENTER ADVANCES TO NEXT MAP",
                 "FAIL : ENTER RETRIES THIS STAGE",
                 "R REPLAYS CURRENT STAGE",
-                "WIN IN COMBAT : Z/C PICK UPGRADE",
-                "Z/C PAGE       ENTER RETURN",
+                "WIN IN COMBAT : A/D PICK UPGRADE",
+                "A/D PAGE       ENTER RETURN",
             ],
             [
                 "COMBAT / 3 OF 5",
-                "3 L FIRE   2 AUTO   O WEAPON",
-                "1 E NOVA   0 Y OVERDRIVE",
+                "1 FIRE     2 NEXT WEAPON",
+                "3 NOVA     4 OVERDRIVE",
+                "5 AUTO FIRE ON/OFF",
                 "GRAZE BULLETS TO CHARGE OVERDRIVE",
-                "G M L P O : WEAPON UPGRADES",
-                "B NOVA  S SHIELD  A ENERGY",
-                "W WINGMEN     Q ROLL TO EVADE",
-                "Z/C PAGE       ENTER RETURN",
+                "COLLECT WEAPONS SHIELDS ENERGY",
+                "Q ROLL TO EVADE",
+                "A/D PAGE       ENTER RETURN",
             ],
             [
-                "OBJECTIVES / 4 OF 5",
-                "P PATROL : DEFEAT THE QUOTA",
-                "C CONVOY : KEEP TRANSPORT ALIVE",
-                "T STRIKE : DESTROY GROUND GUNS",
-                "S SURVIVE : HOLD UNTIL TIMER ENDS",
-                "B BOSS : DESTROY THE FLAGSHIP",
-                "SIDES : SHIELD ENERGY GOAL ALERTS",
-                "Z/C PAGE       ENTER RETURN",
+                "WORLD / 4 OF 5",
+                "F3 MAP   F4 WEATHER   F5 TIME",
+                "F6 WINGMEN   F7 NEW TERRAIN",
+                "F8 AUTOPILOT   F9 MODEL",
+                "F10 SOUND   F2 VOLUME / DISPLAY",
+                "DESKTOP F11 FULLSCREEN  F12 HD",
+                "HD : 1X / 2X / 4X / 8X",
+                "A/D PAGE       ENTER RETURN",
             ],
             [
                 "AEROBATICS / 5 OF 5",
-                "LOOP READY : HOLD PITCH FOR 3S",
+                "HIGH ALTITUDE : HOLD PITCH 1.8S",
                 "IMU HOLD LEFT/RIGHT 0.8S : ROLL",
                 "LOW FLIGHT : LIMITED PITCH / ROLL",
-                "GROUND GUARD : REGIONAL BASELINE",
-                "CANYONS LOW / TOWERS SMOOTH CLIMB",
-                "H : REPLACE TWO MAP PORTALS",
-                "Z/C PAGE       ENTER RETURN",
+                "DIRECTOR : TWO WARP SEQUENCES",
+                "H : ONE FORWARD PORTAL / 680-800",
+                "F2 : FACETS AND PORTAL LABELS",
+                "A/D PAGE       ENTER RETURN",
             ],
         ];
         for (i, line) in pages[app.help_page].iter().enumerate() {
@@ -154,6 +154,30 @@ pub fn draw(app: &mut App) {
         }
         return;
     }
+    if app.page == Page::Settings {
+        c.shade(24, 16, 272, 141);
+        c.rect(24, 16, 2, 141, CYAN);
+        c.text_scale(43, 23, "SETTINGS", WHITE, 2);
+        let toggle = |value| if value { "ON" } else { "OFF" };
+        let rows = [
+            format!("FACETED TERRAIN   {}", toggle(f.faceted)),
+            format!("PORTAL LABELS     {}", toggle(app.portal_labels)),
+            format!("FLIGHT HUD        {}", toggle(f.hud)),
+            format!("SOUND   {}", app.audio_settings.name()),
+            format!("VOLUME           {:3}%", app.audio_settings.volume * 10),
+            "BACK".to_owned(),
+        ];
+        for (i, line) in rows.iter().enumerate() {
+            let y = 48 + i as i32 * 16;
+            if i == app.selection {
+                c.rect(32, y - 2, 256, 13, [36, 73, 86]);
+                c.text(34, y, ">", GOLD);
+            }
+            c.text(47, y, line, if i == app.selection { GOLD } else { WHITE });
+        }
+        c.text(34, 146, "A/D CHANGE     ESC RETURN", MUTED);
+        return;
+    }
     if app.page == Page::Paused {
         c.shade(35, 16, 250, 140);
         c.rect(35, 16, 2, 140, CYAN);
@@ -162,7 +186,7 @@ pub fn draw(app: &mut App) {
             "RESUME FLIGHT",
             "RETRY MISSION",
             if f.hud { "HIDE UI / U" } else { "SHOW UI / U" },
-            "FLIGHT MANUAL",
+            "SETTINGS / F2",
             "MAIN MENU",
             "EXIT TO LAUNCHER",
         ];
@@ -178,7 +202,7 @@ pub fn draw(app: &mut App) {
             45,
             145,
             &format!(
-                "9 SOUND {}  Z/C VOL {}%",
+                "F10 {}  VOL {}%",
                 app.audio_settings.name(),
                 app.audio_settings.volume * 10
             ),
@@ -243,7 +267,7 @@ pub fn draw(app: &mut App) {
                 28,
                 110,
                 &format!(
-                    "Z/C REWARD {}",
+                    "A/D REWARD {}",
                     crate::gameplay::progression::Upgrade::ALL[app.reward].name()
                 ),
                 GOLD,

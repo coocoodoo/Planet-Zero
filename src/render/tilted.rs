@@ -142,6 +142,7 @@ impl Renderer {
                         camera,
                         world,
                         indices.map(|i| boundary[i]),
+                        flight.faceted,
                         &colors,
                         (fog_start, far, haze),
                     );
@@ -153,6 +154,7 @@ impl Renderer {
                     camera,
                     world,
                     [center, boundary[i], boundary[(i + 1) % boundary.len()]],
+                    flight.faceted,
                     &colors,
                     (fog_start, far, haze),
                 );
@@ -164,6 +166,7 @@ impl Renderer {
         camera: &Camera,
         world: &World,
         vertices: [Vec3; 3],
+        faceted: bool,
         colors: &[u32; MATERIAL_COUNT],
         fog: (f32, f32, u32),
     ) {
@@ -190,6 +193,7 @@ impl Renderer {
                     camera,
                     world,
                     [clipped[0], clipped[i], clipped[i + 1]],
+                    faceted,
                     colors,
                     fog,
                 );
@@ -201,8 +205,14 @@ impl Renderer {
         else {
             return;
         };
-        let area = (b - a).perp_dot(c - a);
-        if area.abs() < 0.1 {
+        let snapped = [a, b, c].map(|p| (p * 256.0).round());
+        let [a, b, c] = snapped.map(|p| p / 256.0);
+        let edge = |a: Vec2, b: Vec2, p: Vec2| -> i64 {
+            (b.x as i64 - a.x as i64) * (p.y as i64 - a.y as i64)
+                - (b.y as i64 - a.y as i64) * (p.x as i64 - a.x as i64)
+        };
+        let area = edge(snapped[0], snapped[1], snapped[2]);
+        if area == 0 {
             return;
         }
         let min = a.min(b).min(c).max(Vec2::ZERO);
@@ -219,51 +229,80 @@ impl Renderer {
             .cross(vertices[2] - vertices[0])
             .normalize_or_zero();
         let shade = (normal.x * 0.3 + normal.y * 0.2 + normal.z.abs() * 0.9).clamp(0.45, 1.0);
-        let inverse_area = 1.0 / area;
-        let du = (c.x - b.x) * inverse_area;
-        let dv = (a.x - c.x) * inverse_area;
+        let inverse_area = 1.0 / area as f32;
+        let columns = super::primitives::TriangleColumns::new([a, b, c]);
+        let weighted = std::array::from_fn::<_, 3, _>(|i| vertices[i] * inverse[i]);
+        let vertex_shade = if faceted {
+            [shade; 3]
+        } else {
+            vertices.map(|p| {
+                let h = |x, y| world.heights[index(x, y, SIZE)] as f32;
+                let x = p.x as i32;
+                let y = p.y as i32;
+                let normal =
+                    vec3(h(x - 8, y) - h(x + 8, y), h(x, y - 8) - h(x, y + 8), 16.0).normalize();
+                (normal.x * 0.3 + normal.y * 0.2 + normal.z * 0.9).clamp(0.45, 1.0)
+            })
+        };
+        let sign = area.signum();
+        let du = (snapped[2].x as i64 - snapped[1].x as i64) * 256;
+        let dv = (snapped[0].x as i64 - snapped[2].x as i64) * 256;
+        let u_step = du as f32 * inverse_area;
+        let v_step = dv as f32 * inverse_area;
+        let position_step =
+            (weighted[0] - weighted[2]) * u_step + (weighted[1] - weighted[2]) * v_step;
+        let denominator_step =
+            (inverse[0] - inverse[2]) * u_step + (inverse[1] - inverse[2]) * v_step;
+        let linear_depth_step = (da - dc) * u_step + (db - dc) * v_step;
         let inverse_q = if camera.q > 0.00001 {
             1.0 / camera.q
         } else {
             0.0
         };
-        let columns = super::primitives::TriangleColumns::new([a, b, c]);
-        let weighted = std::array::from_fn::<_, 3, _>(|i| vertices[i] * inverse[i]);
-        let position_step = (weighted[0] - weighted[2]) * du + (weighted[1] - weighted[2]) * dv;
-        let depth_step = (inverse[0] - inverse[2]) * du + (inverse[1] - inverse[2]) * dv;
+        let inverse_fog = 1.0 / (fog.1 - fog.0);
         for x in min.x as i32..=max.x as i32 {
             let (top, bottom) = columns.rows(x as f32);
             let y0 = (min.y as i32).max(self.visible[x as usize].0).max(top);
             let y1 = (max.y as i32 + 1)
                 .min(self.visible[x as usize].1)
                 .min(bottom);
-            let start = vec2(x as f32, y0 as f32);
-            let mut u_next = (b - start).perp_dot(c - start) * inverse_area;
-            let mut v_next = (c - start).perp_dot(a - start) * inverse_area;
-            let mut position_next = weighted[2]
-                + (weighted[0] - weighted[2]) * u_next
-                + (weighted[1] - weighted[2]) * v_next;
-            let mut depth_next = inverse[2]
-                + (inverse[0] - inverse[2]) * u_next
-                + (inverse[1] - inverse[2]) * v_next;
+            let start = vec2(x as f32 * 256.0, y0 as f32 * 256.0);
+            let mut eu = edge(snapped[1], snapped[2], start);
+            let mut ev = edge(snapped[2], snapped[0], start);
+            let u = eu as f32 * inverse_area;
+            let v = ev as f32 * inverse_area;
+            let mut position_next =
+                weighted[2] + (weighted[0] - weighted[2]) * u + (weighted[1] - weighted[2]) * v;
+            let mut denominator_next =
+                inverse[2] + (inverse[0] - inverse[2]) * u + (inverse[1] - inverse[2]) * v;
+            let mut linear_depth = dc + (da - dc) * u + (db - dc) * v;
             for y in y0..y1 {
-                let (numerator, denominator) = (position_next, depth_next);
+                let (numerator, denominator, orthographic_depth) =
+                    (position_next, denominator_next, linear_depth);
                 position_next += position_step;
-                depth_next += depth_step;
-                let (u, v) = (u_next, v_next);
-                u_next += du;
-                v_next += dv;
-                let w = 1.0 - u - v;
-                if u < -0.00001 || v < -0.00001 || w < -0.00001 {
+                denominator_next += denominator_step;
+                linear_depth += linear_depth_step;
+                let (u_edge, v_edge) = (eu, ev);
+                eu += du;
+                ev += dv;
+                let w_edge = area - u_edge - v_edge;
+                if u_edge * sign < 0 || v_edge * sign < 0 || w_edge * sign < 0 {
                     continue;
                 }
+                let u = u_edge as f32 * inverse_area;
+                let v = v_edge as f32 * inverse_area;
+                let w = w_edge as f32 * inverse_area;
                 let reciprocal = 1.0 / denominator;
-                let depth = (reciprocal - 1.0) * inverse_q;
+                let pos = numerator * reciprocal;
+                let depth = if camera.q > 0.00001 {
+                    (reciprocal - 1.0) * inverse_q
+                } else {
+                    orthographic_depth
+                };
                 let at = x as usize * self.h + y as usize;
                 if depth >= self.depth[at] || self.clip_depth.get(at).is_some_and(|d| depth < *d) {
                     continue;
                 }
-                let pos = numerator * reciprocal;
                 let material = world.materials
                     [index(pos.x.floor() as i32, pos.y.floor() as i32, SIZE)]
                     as usize;
@@ -274,10 +313,61 @@ impl Renderer {
                 } else {
                     1.0
                 };
+                let shade = if faceted {
+                    shade
+                } else {
+                    (vertex_shade[0] * inverse[0] * u
+                        + vertex_shade[1] * inverse[1] * v
+                        + vertex_shade[2] * inverse[2] * w)
+                        * reciprocal
+                };
                 let color = mix(rgb(17, 23, 35), colors[material], (shade * detail).min(1.0));
-                let amount = ((depth - fog.0) / (fog.1 - fog.0)).clamp(0.0, 1.0);
+                let amount = ((depth - fog.0) * inverse_fog).clamp(0.0, 1.0);
                 self.pixels[at] = mix(color, fog.2, amount);
                 self.depth[at] = depth;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn terrain_covers_shared_edges_at_every_camera_attitude() {
+        let mut world = World::new(7);
+        world.heights.fill(60);
+        world.materials.fill(15);
+        world.clouds.fill(0);
+        world.scenery.clear();
+        world.portals.clear();
+        world.ceiling = 60;
+        let mut flight = Flight::new(&world);
+        flight.position.z = 180.0;
+        flight.follow = flight.position;
+        flight.wing_count = 0;
+        for view in [0, 1] {
+            flight.weights = [0.0; 3];
+            flight.weights[view] = 1.0;
+            for pitch in [0.0, -0.55, 0.35, -2.8] {
+                flight.pitch = pitch;
+                let camera = Camera::new(&flight, 320, 170);
+                let mut renderer = Renderer::single();
+                renderer.render(&world, &flight, 320, 170, 0);
+                for x in 0..320 {
+                    for y in 0..170 {
+                        let (eye, ray) = camera.ray(vec2(x as f32, y as f32));
+                        let point = eye + ray * ((60.0 - eye.z) / ray.z);
+                        let depth = (point - camera.position).dot(camera.forward);
+                        if 1.0 + camera.q * depth > 0.13 && point.distance(camera.position) < 900.0
+                        {
+                            assert!(
+                                renderer.depth[x * 170 + y].is_finite(),
+                                "view {view} pitch {pitch} at {x}/{y}"
+                            );
+                        }
+                    }
+                }
             }
         }
     }
