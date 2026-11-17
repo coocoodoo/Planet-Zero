@@ -148,7 +148,7 @@ fn held_pitch_completes_upward_and_downward_loops() {
     let world = terrain();
     for direction in [-1.0, 1.0] {
         let mut f = Flight::new(&world);
-        f.position.z = 320.0;
+        f.position.z = f.loop_altitude() + 25.0;
         f.follow = f.position;
         let mut rotation = 0.0;
         for _ in 0..420 {
@@ -218,14 +218,15 @@ fn flat_ground_clearance_stays_low_and_high_terrain_triggers_early_climb() {
 }
 
 #[test]
-fn low_altitude_loops_preserve_pitch_and_lift_the_trajectory() {
+fn low_altitude_controls_limit_pitch_without_forced_lift() {
     let world = terrain();
     for direction in [-1.0, 1.0] {
         let mut f = Flight::new(&world);
         f.position.z = MIN_CLEARANCE + 2.0;
-        let mut rotation = 0.0;
-        for _ in 0..420 {
-            let before = f.pitch;
+        assert!(!f.roll());
+        let mut previous_speed = 0.0_f32;
+        for _ in 0..120 {
+            let before = f.position.z;
             f.step(
                 1.0 / 60.0,
                 &Controls {
@@ -236,9 +237,39 @@ fn low_altitude_loops_preserve_pitch_and_lift_the_trajectory() {
                 },
                 &world,
             );
-            rotation += angle(f.pitch - before);
+            let speed = (f.position.z - before) * 60.0;
+            assert!(
+                (speed - previous_speed).abs() < 2.0,
+                "vertical acceleration: {}",
+                speed - previous_speed
+            );
+            previous_speed = speed;
             assert!(f.position.z >= MIN_CLEARANCE);
+            assert!(f.pitch.abs() <= NORMAL_PITCH + 0.02);
         }
-        assert!(rotation * direction > TAU);
     }
+    let mut f = Flight::new(&world);
+    f.position.z = f.loop_altitude() + 25.0;
+    assert!(f.roll());
+    let mut rotation = 0.0;
+    for frame in 0..420 {
+        let before = f.pitch;
+        let altitude = f.position.z;
+        f.step(
+            1.0 / 60.0,
+            &Controls {
+                climb: if frame < 60 { -1.0 } else { 0.0 },
+                manual: true,
+                aerobatic: true,
+                boost: true,
+                ..Default::default()
+            },
+            &world,
+        );
+        rotation += angle(f.pitch - before);
+        assert!((f.position.z - altitude).abs() <= f.speed / 60.0 + 0.01);
+        assert!(f.position.z >= MIN_CLEARANCE);
+    }
+    assert!(rotation < -TAU + 0.03);
+    assert!(f.pitch.abs() < 0.03);
 }

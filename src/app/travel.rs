@@ -26,7 +26,7 @@ impl App {
         let exit = self.network.exit(&destination, route.id);
         let before = self.flight.position;
         self.flight.warp(route.aperture, exit);
-        self.flight.space = destination.kind == crate::world::MapKind::Space;
+        self.flight.enter_region(&destination);
         self.mission.relocate(
             route.aperture,
             exit,

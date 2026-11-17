@@ -222,8 +222,7 @@ async fn main() {
                     || (app.mode != Mode::Combat && mx >= 280.0 && my < 14.0))
             {
                 app.click(mx.max(0.0) as usize, my.max(0.0) as usize);
-            } else if app.mode == Mode::Free {
-                app.flight.roll();
+            } else if app.mode == Mode::Free && app.flight.roll() {
                 app.sounds.push(rust_fly::audio::Sound::Roll);
             }
         }

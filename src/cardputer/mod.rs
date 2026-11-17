@@ -97,8 +97,9 @@ impl Game {
             }
             controls.manual = true;
             if self.page == Page::Playing && self.mission.countdown <= 0.0 {
-                if let Some(direction) = self.gestures.update(dt, roll) {
-                    self.flight.roll_toward(direction);
+                if let Some(direction) = self.gestures.update(dt, roll)
+                    && self.flight.roll_toward(direction)
+                {
                     self.mission.dodge();
                     self.sounds.push(crate::audio::Sound::Roll);
                 }

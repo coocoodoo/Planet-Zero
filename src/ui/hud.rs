@@ -37,6 +37,15 @@ pub fn draw(app: &mut App) {
             WHITE,
         );
     }
+    if m.mode == Mode::Free && !f.demo && !f.space {
+        let label = if f.can_loop() {
+            "LOOP READY".to_owned()
+        } else {
+            format!("LOOP {:03.0}", f.loop_altitude().ceil())
+        };
+        c.shade(232, 15, 87, 11);
+        c.text(233, 17, &label, if f.can_loop() { CYAN } else { MUTED });
+    }
     c.rect(279, 1, 40, 11, [36, 73, 86]);
     c.text(280, 3, "U UI", WHITE);
     if m.mode == Mode::Free {

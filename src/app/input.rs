@@ -114,9 +114,10 @@ impl App {
             21 | 94 | 11 => self.mission.activate_overdrive(),
             40 | 5 | 57 => self.flight.view = (self.flight.view + 1) % 3,
             41 | 6 | 16 => {
-                self.flight.roll();
-                self.sounds.push(crate::audio::Sound::Roll);
-                self.mission.dodge();
+                if self.flight.roll() {
+                    self.sounds.push(crate::audio::Sound::Roll);
+                    self.mission.dodge();
+                }
             }
             51 | 8 | 20 => self.theme = (self.theme + 1) % 3,
             35 => {
