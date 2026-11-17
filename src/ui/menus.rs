@@ -1,4 +1,88 @@
 use super::*;
+
+pub(super) const HELP_PAGES: [[&str; 8]; 8] = [
+    [
+        "FLIGHT",
+        "W   PITCH UP",
+        "S   PITCH DOWN",
+        "A   TURN LEFT",
+        "D   TURN RIGHT",
+        "B   HOLD TO BOOST",
+        "Q   ROLL",
+        "V   CHANGE VIEW",
+    ],
+    [
+        "EXPLORATION / FREE FLIGHT",
+        "H   SUMMON ONE WORMHOLE",
+        "J   DIRECTOR SHOW ON/OFF",
+        "F3  CHANGE MAP",
+        "F4  CHANGE WEATHER",
+        "F5  CHANGE TIME OF DAY",
+        "F6  CHANGE WINGMEN COUNT",
+        "F7  GENERATE NEW TERRAIN",
+    ],
+    [
+        "INTERFACE",
+        "U   HUD ON/OFF",
+        "P   PAUSE / RESUME",
+        "R   RETRY CURRENT STAGE",
+        "F1  HELP ON/OFF",
+        "F2  SETTINGS ON/OFF",
+        "ESC BACK / PAUSE / RESUME",
+        "ESC HOLD 2S TO EXIT",
+    ],
+    [
+        "FLIGHT TOOLS",
+        "F8  AUTOPILOT IN FREE FLIGHT",
+        "F9  MODEL IN FREE FLIGHT",
+        "F10 CHANGE SOUND MODE",
+        "F11 FULLSCREEN ON DESKTOP",
+        "F12 HD SCALE ON DESKTOP",
+        "I   IMU ON/OFF ON CARDPUTER",
+        "K   CALIBRATE IMU ON CARDPUTER",
+    ],
+    [
+        "COMBAT",
+        "1   HOLD TO FIRE",
+        "2   NEXT WEAPON",
+        "3   RELEASE NOVA",
+        "4   ACTIVATE OVERDRIVE",
+        "5   AUTO FIRE ON/OFF",
+        "GRAZE BULLETS TO CHARGE OVERDRIVE",
+        "COLLECT WEAPONS SHIELDS ENERGY",
+    ],
+    [
+        "MISSIONS",
+        "RACE : CROSS GREEN GATES IN ORDER",
+        "COINS : 3-5 SECOND CHAIN / X10",
+        "ENTER NEXT STAGE AFTER WIN",
+        "ENTER RETRY AFTER FAILURE",
+        "A   PREVIOUS UPGRADE AFTER COMBAT",
+        "D   NEXT UPGRADE AFTER COMBAT",
+        "R   REPLAY CURRENT STAGE",
+    ],
+    [
+        "MENU / SETTINGS",
+        "W   SELECT PREVIOUS ROW",
+        "S   SELECT NEXT ROW",
+        "A   SELECT PREVIOUS VALUE",
+        "D   SELECT NEXT VALUE",
+        "ENTER ACTIVATE SELECTION",
+        "ENTER ON CONFIG : GO TO START",
+        "ARROW KEYS ALSO SELECT / ADJUST",
+    ],
+    [
+        "AEROBATICS",
+        "HIGH ALTITUDE : HOLD PITCH 1.8S",
+        "IMU HOLD ONE SIDE 0.8S : ROLL",
+        "LOW FLIGHT : LIMITED PITCH / ROLL",
+        "DIRECTOR : TWO WARP SEQUENCES",
+        "PORTAL DISTANCE : 680-800",
+        "RELEASE PITCH RESETS LOOP TIMER",
+        "LOOPS FINISH AFTER INPUT RELEASE",
+    ],
+];
+
 pub fn draw(app: &mut App) {
     let mut c = Canvas {
         pixels: &mut app.screen,
@@ -92,66 +176,21 @@ pub fn draw(app: &mut App) {
     if app.page == Page::Help {
         c.shade(6, 6, 308, 158);
         c.rect(6, 6, 2, 158, CYAN);
-        let pages = [
-            [
-                "FLIGHT / 1 OF 5",
-                "W/S PITCH    A/D TURN",
-                "V VIEW   Q ROLL   B BOOST",
-                "I IMU   K CALIBRATE   U HUD",
-                "H WORMHOLE   J DIRECTOR SHOW",
-                "P PAUSE   R RETRY   F2 SETTINGS",
-                "ESC BACK / HOLD 2S TO EXIT",
-                "A/D PAGE       ENTER RETURN",
-            ],
-            [
-                "MISSIONS / 2 OF 5",
-                "RACE : CROSS GREEN GATES IN ORDER",
-                "COINS : 3-5 SECOND CHAIN / X10",
-                "WIN : ENTER ADVANCES TO NEXT MAP",
-                "FAIL : ENTER RETRIES THIS STAGE",
-                "R REPLAYS CURRENT STAGE",
-                "WIN IN COMBAT : A/D PICK UPGRADE",
-                "A/D PAGE       ENTER RETURN",
-            ],
-            [
-                "COMBAT / 3 OF 5",
-                "1 FIRE     2 NEXT WEAPON",
-                "3 NOVA     4 OVERDRIVE",
-                "5 AUTO FIRE ON/OFF",
-                "GRAZE BULLETS TO CHARGE OVERDRIVE",
-                "COLLECT WEAPONS SHIELDS ENERGY",
-                "Q ROLL TO EVADE",
-                "A/D PAGE       ENTER RETURN",
-            ],
-            [
-                "WORLD / 4 OF 5",
-                "F3 MAP   F4 WEATHER   F5 TIME",
-                "F6 WINGMEN   F7 NEW TERRAIN",
-                "F8 AUTOPILOT   F9 MODEL",
-                "F10 SOUND   F2 VOLUME / DISPLAY",
-                "DESKTOP F11 FULLSCREEN  F12 HD",
-                "HD : 1X / 2X / 4X / 8X",
-                "A/D PAGE       ENTER RETURN",
-            ],
-            [
-                "AEROBATICS / 5 OF 5",
-                "HIGH ALTITUDE : HOLD PITCH 1.8S",
-                "IMU HOLD LEFT/RIGHT 0.8S : ROLL",
-                "LOW FLIGHT : LIMITED PITCH / ROLL",
-                "DIRECTOR : TWO WARP SEQUENCES",
-                "H : ONE FORWARD PORTAL / 680-800",
-                "F2 : FACETS AND PORTAL LABELS",
-                "A/D PAGE       ENTER RETURN",
-            ],
-        ];
-        for (i, line) in pages[app.help_page].iter().enumerate() {
-            c.text(
-                14,
-                17 + i as i32 * 19,
-                line,
-                if i == 0 { GOLD } else { WHITE },
-            );
+        let page = &HELP_PAGES[app.help_page];
+        c.text(14, 16, page[0], GOLD);
+        c.text(
+            266,
+            16,
+            &format!("{}/{}", app.help_page + 1, HELP_PAGES.len()),
+            GOLD,
+        );
+        for (i, line) in page[1..].iter().enumerate() {
+            c.text(14, 33 + i as i32 * 13, line, WHITE);
         }
+        c.rect(14, 123, 292, 1, MUTED);
+        c.text(14, 130, "A     PREVIOUS PAGE", CYAN);
+        c.text(14, 141, "D     NEXT PAGE", CYAN);
+        c.text(14, 152, "ENTER RETURN", CYAN);
         return;
     }
     if app.page == Page::Settings {
