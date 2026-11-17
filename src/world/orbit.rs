@@ -22,7 +22,7 @@ impl Body {
     }
     pub fn center(self) -> Vec3 {
         if self == Self::Moon {
-            vec3(2800.0, 1400.0, 780.0)
+            vec3(14000.0, -5800.0, -460.0)
         } else {
             vec3(-2800.0, 5000.0, 1400.0)
         }
@@ -93,6 +93,28 @@ impl SurfaceWarp {
         self.bend = bend;
         self.latitude_axes = (((self.anchor.y - self.origin.y) / UV_SCALE) * bend).sin_cos();
     }
+    pub fn ground(world: &World, position: Vec3) -> Self {
+        let body = Body::of(world.kind);
+        let other = if body == Body::Earth {
+            Body::Moon
+        } else {
+            Body::Earth
+        };
+        let direction = (other.center() - body.center()).normalize();
+        let axis = direction.cross(Vec3::Z).normalize();
+        let n = glam::Quat::from_axis_angle(axis, 55.0_f32.to_radians()) * direction;
+        let anchor = position.truncate();
+        let origin = anchor - vec2(n.y.atan2(n.x), n.z.asin()) * UV_SCALE;
+        Self::new(body, origin, anchor, 0.0)
+    }
+    pub fn at_surface_position(mut self, position: Vec3) -> Self {
+        if self.bend <= 0.0 {
+            let offset = position.truncate() - self.anchor;
+            self.anchor += offset;
+            self.origin += offset;
+        }
+        self
+    }
     pub fn normal(&self, uv: Vec2) -> Vec3 {
         let angles = (uv - self.origin) / UV_SCALE;
         let (sl, cl) = angles.x.sin_cos();
@@ -157,6 +179,29 @@ pub fn smooth(t: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn surface_sky_keeps_the_other_body_distant_and_above_the_horizon() {
+        for kind in [MapKind::Moon, MapKind::Islands] {
+            let world = World::generate(kind, kind.seed());
+            let position = vec3(world.spawn.0, world.spawn.1, 120.0);
+            let surface = SurfaceWarp::ground(&world, position);
+            let other = if kind == MapKind::Moon {
+                Body::Earth
+            } else {
+                Body::Moon
+            };
+            let offset = |warp: SurfaceWarp, player: Vec3| {
+                warp.anchor.extend(0.0)
+                    + warp.basis.transpose() * (other.center() - warp.space_origin())
+                    - player
+            };
+            let original = offset(surface, position);
+            assert!(original.length() > 18000.0);
+            assert!((0.3..0.8).contains(&original.normalize().z));
+            let moved = position + vec3(30000.0, -16000.0, 0.0);
+            assert!(original.distance(offset(surface.at_surface_position(moved), moved)) < 0.01);
+        }
+    }
     #[test]
     fn curvature_matches_the_sphere_and_converges_to_the_plane() {
         let origin = vec2(2048.0, 2048.0);

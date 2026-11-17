@@ -110,6 +110,9 @@ impl Flight {
         self.position = entry.transform(exit, self.position);
         self.follow = entry.transform(exit, self.follow);
         self.yaw += rotation;
+        self.space_attitude = self
+            .space_attitude
+            .map(|q| glam::Quat::from_rotation_z(rotation) * q);
         self.camera_yaw -= rotation;
         self.camera_offset -= rotation * 0.4;
         for trail in &mut self.trails {
@@ -140,6 +143,9 @@ impl Flight {
                 wing.trails.clear();
             }
             wing.yaw += rotation;
+            wing.space_attitude = wing
+                .space_attitude
+                .map(|q| glam::Quat::from_rotation_z(rotation) * q);
             wing.camera_yaw -= rotation;
         }
         self.portal_exit = Some(exit);

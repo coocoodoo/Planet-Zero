@@ -67,6 +67,14 @@ fn ascent_waits_for_preload_and_can_return_to_both_surfaces() {
             let previous = app.world.kind;
             app.step(0.1, Some(Controls::default()));
             switched += usize::from(previous != app.world.kind);
+            if previous != app.world.kind {
+                assert!((body.altitude(app.flight.position) - ORBIT_ALTITUDE).abs() < 50.0);
+                assert!((app.flight.speed - app.flight.vehicle.speed()).abs() < 0.01);
+                assert_eq!(app.orbit.arrival_notice, 5.0);
+                if body == Body::Earth {
+                    assert_ne!(app.orbit.earth.unwrap().kind, kind);
+                }
+            }
         }
         assert_eq!(switched, 1);
         assert_eq!(app.world.kind, MapKind::Space);
@@ -78,6 +86,7 @@ fn ascent_waits_for_preload_and_can_return_to_both_surfaces() {
         app.flight.translate(position - app.flight.position);
         app.flight.pitch = -0.2;
         app.flight.yaw = 0.0;
+        app.flight.space_attitude = Some(Quat::from_rotation_x(0.2) * Quat::from_rotation_y(0.3));
         app.flight.camera_adjustment = None;
         let camera = Camera::new(&app.flight, 320, 170);
         app.network.remember(original);
@@ -162,7 +171,7 @@ fn earth_destination_is_stable_while_visible_and_uses_surface_maps() {
     app.flight.yaw = 0.0;
     app.flight.view = 1;
     app.flight.weights = [0.0, 1.0, 0.0];
-    app.orbit.reroll_earth = true;
+    app.orbit.departure = Some(MapKind::Islands);
     for _ in 0..10 {
         app.prepare_orbit();
         assert_eq!(app.orbit.earth, Some(first));
@@ -200,6 +209,7 @@ fn surface_handoff_preserves_the_rendered_globe() {
         app.flight.follow = app.flight.position;
         app.flight.yaw = 0.0;
         app.flight.pitch = -0.2;
+        app.flight.space_attitude = Some(Quat::from_rotation_x(0.2) * Quat::from_rotation_y(0.3));
         app.flight.weights = [0.0, 1.0, 0.0];
         app.flight.wing_count = 0;
         app.flight.orbit_quiet = true;
@@ -219,6 +229,34 @@ fn surface_handoff_preserves_the_rendered_globe() {
             kind.name(),
             error as f32 / (320.0 * 170.0 * 4.0)
         );
+    }
+}
+
+#[test]
+fn transition_velocity_remains_continuous_at_and_after_the_endpoint() {
+    let mut app = app(MapKind::Moon);
+    app.begin_transition(
+        false,
+        MapKey::of(&app.world),
+        app.flight.position + Vec3::Y * 500.0,
+    );
+    let transition = app.orbit.transition.as_ref().unwrap();
+    assert!(transition.velocity(0.0).distance(transition.velocity) < 0.001);
+    for time in [transition.duration, transition.duration + 0.1] {
+        assert!(transition.velocity(time).distance(transition.exit_velocity) < 0.001);
+    }
+}
+
+#[test]
+fn planetary_collision_protection_checks_bodies_outside_the_view() {
+    let mut app = app(MapKind::Space);
+    app.orbit.cooldown = 2.0;
+    for body in Body::ALL {
+        app.flight.position = body.center() + Vec3::Y * (body.radius() + 100.0);
+        app.flight.follow = app.flight.position;
+        app.flight.space_attitude = Some(Quat::from_rotation_z(std::f32::consts::PI));
+        assert!(!app.step_orbit(0.03));
+        assert!(body.altitude(app.flight.position) >= 419.99);
     }
 }
 

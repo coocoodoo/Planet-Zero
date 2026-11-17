@@ -10,6 +10,8 @@ impl App {
     pub fn controls(&self) -> Controls {
         let held = |key| f32::from(self.keys.contains(&key));
         Controls {
+            direction: None,
+            throttle: None,
             bank: None,
             aerobatic: true,
             turn: held(RIGHT) - held(LEFT),
@@ -90,6 +92,15 @@ impl App {
                         }
                     }
                     VEHICLE => self.chart.focus = Some(self.flight.position.truncate()),
+                    WINGMEN if self.world.kind == crate::world::MapKind::Space => {
+                        self.select_chart_body(crate::world::orbit::Body::Earth)
+                    }
+                    MODEL if self.world.kind == crate::world::MapKind::Space => {
+                        self.select_chart_body(crate::world::orbit::Body::Moon)
+                    }
+                    AUTOPILOT if self.world.kind == crate::world::MapKind::Space => {
+                        self.cycle_landing()
+                    }
                     VIEW => self.mark_chart(),
                     ENTER => self.navigate_chart(),
                     _ => {}
@@ -179,6 +190,7 @@ impl App {
             AUTOFIRE if self.mode == Mode::Combat => self.mission.autofire = !self.mission.autofire,
             UP | LEFT | DOWN | RIGHT if self.orbit.transition.is_none() => {
                 self.navigation.active = false;
+                self.navigation.arrived = false;
                 self.auto = false;
                 self.flight.set_demo(false);
                 let now = Instant::now();

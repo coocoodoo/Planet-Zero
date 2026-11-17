@@ -42,8 +42,10 @@ fn compass(c: &mut Canvas<'_>, heading: f32) {
 
 fn instruments(c: &mut Canvas<'_>, f: &Flight, ground: Option<f32>, chase: bool, cockpit: bool) {
     if chase {
-        for (x, value, step, right) in [(38, f.speed, 10.0, false), (270, f.position.z, 25.0, true)]
-        {
+        for (x, value, step, right) in [
+            (38, f.speed, 10.0, false),
+            (270, f.orbital_altitude(), 25.0, true),
+        ] {
             c.rect(x - 1, 53, 3, 55, INK);
             c.line(x, 54, x, 106, MUTED);
             let base = (value / step).floor() as i32;
@@ -67,7 +69,7 @@ fn instruments(c: &mut Canvas<'_>, f: &Flight, ground: Option<f32>, chase: bool,
     c.osd_value(left, y + 12, &format!("{:03.0}", f.speed), WHITE);
     c.osd(left, y + 28, "U/S", MUTED);
     c.osd_right(right, y, "ALT", MUTED);
-    let altitude = format!("{:.0}", f.position.z);
+    let altitude = format!("{:.0}", f.orbital_altitude());
     c.osd_value(
         right - altitude.len() as i32 * 8 + 1,
         y + 12,
@@ -482,11 +484,19 @@ pub fn draw(app: &mut App) {
         c.osd(
             64,
             159,
-            &format!(
-                "X{:04} Y{:04}",
-                f.position.x.rem_euclid(SIZE as f32) as usize % SIZE,
-                f.position.y.rem_euclid(SIZE as f32) as usize % SIZE
-            ),
+            &if f.space {
+                format!(
+                    "X{:.1}K Y{:.1}K",
+                    f.position.x / 1000.0,
+                    f.position.y / 1000.0
+                )
+            } else {
+                format!(
+                    "X{:04} Y{:04}",
+                    f.position.x.rem_euclid(SIZE as f32) as usize % SIZE,
+                    f.position.y.rem_euclid(SIZE as f32) as usize % SIZE
+                )
+            },
             WHITE,
         );
     }

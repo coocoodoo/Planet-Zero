@@ -207,7 +207,7 @@ impl Renderer {
             remote.mask.fill(0);
             let mut view = *camera;
             view.position = entry.transform(exit, camera.position);
-            view.orient(view.yaw - entry.rotation_to(exit), view.pitch);
+            view.rotate_yaw(entry.rotation_to(exit));
             remote.clip_plane = None;
             remote.near_depth = if expansion > 0.0 {
                 f32::NEG_INFINITY
@@ -441,15 +441,14 @@ mod tests {
         f.follow = f.position;
         f.yaw = entry.yaw + std::f32::consts::PI;
         f.camera_yaw = -f.yaw;
+        f.bank = 0.45;
+        f.space_attitude = Some(f.attitude());
         for weights in [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]] {
             f.weights = weights;
             let camera = Camera::new(&f, 320, 170);
             let mut virtual_camera = camera;
             virtual_camera.position = entry.transform(exit, camera.position);
-            virtual_camera.orient(
-                virtual_camera.yaw - entry.rotation_to(exit),
-                virtual_camera.pitch,
-            );
+            virtual_camera.rotate_yaw(entry.rotation_to(exit));
             for point in [
                 entry.center,
                 entry.center + entry.right() * 20.0 + Vec3::Z * 15.0,

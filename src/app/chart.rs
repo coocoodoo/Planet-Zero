@@ -7,6 +7,7 @@ pub(crate) const CHART_SIZE: usize = 136;
 #[derive(Default)]
 pub(crate) struct Chart {
     pub zoom: usize,
+    pub space: bool,
     pub focus: Option<Vec2>,
     pub selected: usize,
     pub pixels: Vec<[u8; 3]>,
@@ -21,12 +22,43 @@ pub(crate) fn offset(position: Vec2, center: Vec2) -> Vec2 {
         - Vec2::splat(period * 0.5)
 }
 
+pub(crate) fn map_offset(kind: MapKind, position: Vec2, center: Vec2) -> Vec2 {
+    if kind == MapKind::Space {
+        position - center
+    } else {
+        offset(position, center)
+    }
+}
+
 impl Chart {
     pub fn prepare(&mut self, world: &World, position: Vec3) {
+        self.space = world.kind == MapKind::Space;
+        let mut low = position.truncate();
+        let mut high = low;
+        if self.space {
+            for body in crate::world::orbit::Body::ALL {
+                low = low.min(body.center().truncate() - Vec2::splat(body.radius()));
+                high = high.max(body.center().truncate() + Vec2::splat(body.radius()));
+            }
+        }
+        let full_span = if self.space {
+            2.0_f32.powf(
+                ((high - low).max_element() * 1.3)
+                    .max(32768.0)
+                    .log2()
+                    .ceil(),
+            )
+        } else {
+            SIZE as f32
+        };
         let center = if let Some(center) = self.focus {
             center
         } else if self.zoom == 0 {
-            Vec2::splat(SIZE as f32 * 0.5)
+            if self.space {
+                (low + high) * 0.5
+            } else {
+                Vec2::splat(SIZE as f32 * 0.5)
+            }
         } else {
             position.truncate()
         };
@@ -35,7 +67,7 @@ impl Chart {
             return;
         }
         self.center = center;
-        self.span = SIZE as f32 / (1 << self.zoom) as f32;
+        self.span = full_span / (1 << self.zoom) as f32;
         self.pixels.resize(CHART_SIZE * CHART_SIZE, [0; 3]);
         let step = self.span / CHART_SIZE as f32;
         for y in 0..CHART_SIZE {
@@ -63,8 +95,12 @@ impl Chart {
     }
     pub fn pan(&mut self, world: &World, position: Vec3, movement: Vec2) {
         self.prepare(world, position);
-        self.focus =
-            Some((self.center + movement * self.span).rem_euclid(Vec2::splat(SIZE as f32)));
+        let position = self.center + movement * self.span;
+        self.focus = Some(if self.space {
+            position
+        } else {
+            position.rem_euclid(Vec2::splat(SIZE as f32))
+        });
     }
     pub fn zoom_by(&mut self, direction: i32, world: &World, position: Vec3) {
         self.prepare(world, position);
@@ -73,7 +109,12 @@ impl Chart {
     }
     pub fn point(&self, position: Vec3) -> Vec2 {
         Vec2::splat(CHART_SIZE as f32 * 0.5)
-            + offset(position.truncate(), self.center) * CHART_SIZE as f32 / self.span
+            + (if self.space {
+                position.truncate() - self.center
+            } else {
+                offset(position.truncate(), self.center)
+            }) * CHART_SIZE as f32
+                / self.span
     }
 }
 

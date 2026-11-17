@@ -260,9 +260,14 @@ fn direction_double_taps_require_release_and_ignore_hold_repeat() {
     app.key(UP, 0);
     let mut rotation = 0.0;
     for _ in 0..360 {
-        let before = app.flight.pitch;
+        let before = app.flight.attitude();
         app.step(1.0 / 60.0, None);
-        rotation += crate::flight::angle(app.flight.pitch - before);
+        rotation += 2.0
+            * before
+                .dot(app.flight.attitude())
+                .abs()
+                .clamp(0.0, 1.0)
+                .acos();
     }
     assert!(rotation > 5.5);
     app.key(LEFT, 1);
@@ -295,7 +300,7 @@ fn chart_zooms_pans_marks_and_navigates_without_changing_the_view() {
     }
     app.chart.prepare(&app.world, app.flight.position);
     assert_eq!(app.chart.zoom, 9);
-    assert_eq!(app.chart.span, 8.0);
+    assert_eq!(app.chart.span, 64.0);
     let center = app.chart.center;
     app.key(RIGHT, 1);
     app.step(0.1, None);

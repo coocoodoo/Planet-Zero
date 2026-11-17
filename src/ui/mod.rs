@@ -38,7 +38,7 @@ fn portal_labels(app: &mut App) {
     }
     let camera = crate::flight::Camera::new(&app.flight, 320, 170);
     let pivot = glam::vec2(160.0, 170.0 * 0.43);
-    let (s, c) = (-(app.flight.bank + app.flight.spin) * app.flight.weights[2]).sin_cos();
+    let (s, c) = (-app.flight.screen_roll() * app.flight.weights[2]).sin_cos();
     let routes = app.network.routes(&app.world);
     let fpv = app.uses_fpv_hud();
     let cockpit = app.flight.weights[2] >= 0.5;

@@ -37,6 +37,26 @@ impl Camera {
             flight.camera_yaw + angle(-flight.yaw - flight.camera_yaw) * (chase + cockpit),
             flight.pitch * (chase + cockpit),
         );
+        if flight.space || flight.space_attitude.is_some() {
+            let [right, forward, up] = flight.axes();
+            let base = glam::Quat::from_mat3(&glam::Mat3::from_cols(
+                camera.right,
+                -camera.forward,
+                camera.up,
+            ));
+            let target = glam::Quat::from_mat3(&glam::Mat3::from_cols(right, -forward, up));
+            let q = base.slerp(target, chase + cockpit);
+            camera.right = q * Vec3::X;
+            camera.forward = q * -Vec3::Y;
+            camera.up = q * Vec3::Z;
+            camera.yaw = (-camera.forward.x).atan2(-camera.forward.y);
+            camera.pitch = camera.forward.z.clamp(-1.0, 1.0).asin();
+            camera.slope = (45.0 * top).to_radians().tan();
+        } else {
+            camera.slope = (45.0 * top + 12.0 * chase * (1.0 - flight.orbital_thrust))
+                .to_radians()
+                .tan();
+        }
         let target = flight.position + camera.forward * 64.0 + camera.up * 1.8;
         camera.position = flight.follow.lerp(target, cockpit);
         if flight.fixed_weight > 0.0001 {
@@ -59,6 +79,7 @@ impl Camera {
         if let Some(adjustment) = flight.camera_adjustment {
             let rotation = glam::Quat::IDENTITY.slerp(adjustment.rotation, adjustment.weight);
             camera.position += adjustment.offset * adjustment.weight;
+            camera.slope += adjustment.slope * adjustment.weight;
             camera.right = rotation * camera.right;
             camera.up = rotation * camera.up;
             camera.forward = rotation * camera.forward;
@@ -76,6 +97,13 @@ impl Camera {
         self.right = vec3(cy, -sy, 0.0);
         self.forward = forward * cp + Vec3::Z * sp;
         self.up = Vec3::Z * cp - forward * sp;
+    }
+    pub fn rotate_yaw(&mut self, rotation: f32) {
+        let q = glam::Quat::from_rotation_z(rotation);
+        self.right = q * self.right;
+        self.forward = q * self.forward;
+        self.up = q * self.up;
+        self.yaw -= rotation;
     }
     pub fn portal_frame(
         &self,

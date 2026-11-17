@@ -251,7 +251,7 @@ impl Renderer {
         self.visible.resize(self.w, (self.h as i32, 0));
         self.mapping.resize(width * height, 0);
         self.output.resize(width * height, 0);
-        let roll = (flight.bank + flight.spin) * cockpit;
+        let roll = flight.screen_roll() * cockpit;
         let (s, c) = roll.sin_cos();
         let pivot = vec2(width as f32 * 0.5, height as f32 * 0.43);
         let mapping_key = (
@@ -391,6 +391,7 @@ impl Renderer {
             if thin_air > 0.0 {
                 self.stars(camera, thin_air, flight.sky_rotation);
             }
+            self.orbital_bodies(world, camera, flight);
         }
         let started = std::time::Instant::now();
         self.draw_clouds(world, flight, camera, theme);

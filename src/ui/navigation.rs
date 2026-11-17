@@ -1,5 +1,5 @@
 use super::*;
-use crate::app::chart::offset;
+use crate::app::chart::map_offset;
 use crate::world::network::MapKey;
 use glam::vec2;
 
@@ -11,7 +11,11 @@ pub(super) fn draw(app: &mut App) {
     else {
         return;
     };
-    let delta = offset(target.position.truncate(), app.flight.position.truncate());
+    let delta = map_offset(
+        app.world.kind,
+        target.position.truncate(),
+        app.flight.position.truncate(),
+    );
     let bearing = angle(delta.x.atan2(-delta.y) - app.flight.yaw);
     let height = target.position.z - app.flight.position.z;
     let color = if app.navigation.arrived {
@@ -33,7 +37,18 @@ pub(super) fn draw(app: &mut App) {
             MUTED,
         );
     }
-    let direction = vec2(bearing.sin(), -bearing.cos());
+    let direction = if app.flight.space {
+        let [right, forward, up] = app.flight.axes();
+        let d = (target.position - app.flight.position).normalize_or_zero();
+        let v = vec2(d.dot(right), -d.dot(up));
+        if v.length_squared() > 0.0001 {
+            v.normalize()
+        } else {
+            vec2(0.0, if d.dot(forward) >= 0.0 { -1.0 } else { 1.0 })
+        }
+    } else {
+        vec2(bearing.sin(), -bearing.cos())
+    };
     let right = vec2(-direction.y, direction.x);
     let tip = center + direction * 14.0;
     for p in [
@@ -66,7 +81,14 @@ pub(super) fn draw(app: &mut App) {
         },
         color,
     );
-    let distance = format!("{:.0}U", delta.length());
+    let distance = format!(
+        "{:.0}U",
+        if app.flight.space {
+            target.position.distance(app.flight.position)
+        } else {
+            delta.length()
+        }
+    );
     c.osd(160 - Canvas::osd_width(&distance) / 2, 92, &distance, color);
     if height.abs() > 12.0 {
         c.osd(179, 70, &format!("{:+.0}", height), MUTED);

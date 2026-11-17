@@ -1,5 +1,5 @@
 use super::*;
-use crate::flight::{Camera, angle};
+use crate::flight::angle;
 use crate::world::{
     MapKind,
     network::MapKey,
@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 pub const ARM_ALTITUDE: f32 = 500.0;
 const EXIT_ALTITUDE: f32 = 1200.0;
+const ORBIT_ALTITUDE: f32 = 3000.0;
 const DURATION: f32 = 8.0;
 
 #[derive(Default)]
@@ -17,7 +18,8 @@ pub struct Orbit {
     pub boost: bool,
     pub transition: Option<Transition>,
     pub earth: Option<MapKey>,
-    reroll_earth: bool,
+    departure: Option<MapKind>,
+    pub arrival_notice: f32,
     hold: f32,
     cooldown: f32,
 }
@@ -44,6 +46,13 @@ impl Transition {
             + self.velocity * self.duration * (t3 - 2.0 * t2 + t)
             + self.end * (-2.0 * t3 + 3.0 * t2)
             + self.exit_velocity * self.duration * (t3 - t2)
+    }
+    fn velocity(&self, time: f32) -> Vec3 {
+        let t = (time / self.duration).clamp(0.0, 1.0);
+        let t2 = t * t;
+        (self.start - self.end) * ((6.0 * t2 - 6.0 * t) / self.duration)
+            + self.velocity * (3.0 * t2 - 4.0 * t + 1.0)
+            + self.exit_velocity * (3.0 * t2 - 2.0 * t)
     }
 }
 impl App {
@@ -89,6 +98,16 @@ impl App {
             controls.orbital = false;
             return;
         }
+        if self.world.kind == MapKind::Space {
+            let nearest = Body::ALL
+                .into_iter()
+                .map(|body| body.altitude(self.flight.position))
+                .fold(f32::INFINITY, f32::min);
+            if nearest < 1700.0 {
+                let limit = ((nearest - 420.0) / 1200.0).clamp(0.05, 1.0);
+                controls.throttle = Some(controls.throttle.unwrap_or(1.0).min(limit));
+            }
+        }
         let climbing = controls.boost && controls.climb > 0.35 && self.flight.axes()[1].z > 0.18;
         self.orbit.hold = if climbing { self.orbit.hold + dt } else { 0.0 };
         controls.orbital = controls.boost
@@ -107,11 +126,8 @@ impl App {
             return true;
         }
         if self.world.kind == MapKind::Space {
-            if self.orbit.earth.is_none()
-                || (self.orbit.reroll_earth && !self.body_visible(Body::Earth))
-            {
-                self.orbit.earth = Some(self.network.random_earth());
-                self.orbit.reroll_earth = false;
+            if self.orbit.earth.is_none() {
+                self.orbit.earth = Some(self.network.random_earth_except(self.orbit.departure));
             }
             let first = self.orbit_body();
             for body in [
@@ -149,15 +165,9 @@ impl App {
             false
         }
     }
-    fn body_visible(&self, body: Body) -> bool {
-        let camera = Camera::new(&self.flight, 320, 170);
-        camera.project(body.center()).is_some_and(|(p, _, s)| {
-            let radius = (body.radius() + 255.0) * s;
-            p.x + radius > 0.0 && p.x - radius < 320.0 && p.y + radius > 0.0 && p.y - radius < 170.0
-        })
-    }
     pub(super) fn step_orbit(&mut self, dt: f32) -> bool {
         self.orbit.cooldown = (self.orbit.cooldown - dt).max(0.0);
+        self.orbit.arrival_notice = (self.orbit.arrival_notice - dt).max(0.0);
         if !self.orbit_enabled() {
             return false;
         }
@@ -165,9 +175,12 @@ impl App {
             transition.elapsed += dt;
             let progress = smooth(transition.elapsed / transition.duration);
             let position = transition.position(transition.elapsed);
-            let velocity =
-                (position - transition.position(transition.elapsed - dt)) / dt.max(0.001);
-            let target_pitch = if transition.ascent { 0.9 } else { -0.12 };
+            let velocity = transition.velocity(transition.elapsed);
+            let target_pitch = if transition.ascent {
+                std::f32::consts::FRAC_PI_2
+            } else {
+                -0.12
+            };
             let pitch = transition.pitch + angle(target_pitch - transition.pitch) * progress;
             self.flight.cinematic_position(position, pitch, velocity);
             self.flight.bank = transition.bank * (1.0 - progress);
@@ -209,29 +222,37 @@ impl App {
             && Body::ALL
                 .into_iter()
                 .any(|body| body.altitude(self.flight.position) < 2200.0);
-        if self.orbit.cooldown > 0.0 {
-            return false;
-        }
         if self.world.kind == MapKind::Space {
-            let body = self.orbit_body();
-            let delta = body.center() - self.flight.position;
-            if body.altitude(self.flight.position) < 1050.0
-                && delta.normalize_or_zero().dot(self.flight.axes()[1]) > 0.35
-                && let Some(key) = self.orbit_key(body)
-            {
-                if self.network.get(key).is_some() {
-                    self.begin_descent(body, key);
-                    return true;
+            let mut bodies = Body::ALL;
+            bodies.sort_by(|a, b| {
+                a.altitude(self.flight.position)
+                    .total_cmp(&b.altitude(self.flight.position))
+            });
+            for body in bodies {
+                let delta = body.center() - self.flight.position;
+                if self.orbit.cooldown <= 0.0
+                    && body.altitude(self.flight.position) < 1050.0
+                    && delta.normalize_or_zero().dot(self.flight.axes()[1]) > 0.1
+                    && let Some(key) = self.orbit_key(body)
+                {
+                    if self.network.get(key).is_some() {
+                        self.begin_descent(body, key);
+                        return true;
+                    }
+                    self.network.request(key);
                 }
-                self.network.request(key);
+                let radius = body.radius() + 420.0;
+                if delta.length() < radius {
+                    let normal = (-delta).try_normalize().unwrap_or(Vec3::Z);
+                    self.flight
+                        .translate(body.center() + normal * radius - self.flight.position);
+                    self.flight.speed *= 0.5;
+                }
             }
-            let radius = body.radius() + 420.0;
-            if delta.length() < radius {
-                self.flight.translate(
-                    body.center() - delta.normalize_or_zero() * radius - self.flight.position,
-                );
-            }
-        } else if self.orbit.boost && self.flight.position.z >= EXIT_ALTITUDE {
+        } else if self.orbit.cooldown <= 0.0
+            && self.orbit.boost
+            && self.flight.position.z >= EXIT_ALTITUDE
+        {
             let target = MapKey {
                 kind: MapKind::Space,
                 seed: MapKind::Space.seed(),
@@ -239,12 +260,12 @@ impl App {
             if self.network.get(target).is_some() {
                 self.flight.orbital_scenery = self.network.get(target).cloned();
                 let body = Body::of(self.world.kind);
-                self.flight.surface = Some(SurfaceWarp::new(
-                    body,
-                    self.flight.position.truncate(),
-                    self.flight.position.truncate(),
-                    0.0,
-                ));
+                self.flight.surface = Some(
+                    self.flight
+                        .surface
+                        .unwrap_or_else(|| SurfaceWarp::ground(&self.world, self.flight.position))
+                        .at_surface_position(self.flight.position),
+                );
                 let mut map = SurfaceMap::new(
                     &self.world,
                     crate::world::network::Environment {
@@ -252,13 +273,14 @@ impl App {
                         theme: self.theme,
                     },
                 );
-                map.origin = self.flight.position.truncate();
+                map.origin = self.flight.surface.unwrap().origin;
                 self.flight.planet_maps[body.index()] = Some(Arc::new(map));
                 if body == Body::Earth {
                     self.orbit.earth = Some(MapKey::of(&self.world));
-                    self.orbit.reroll_earth = true;
+                    self.orbit.departure = Some(self.world.kind);
                 }
-                let end = self.flight.position + self.flight.velocity() * 3.0 + Vec3::Z * 700.0;
+                let end = (self.flight.position + self.flight.velocity() * 3.0)
+                    .with_z(ORBIT_ALTITUDE.max(self.flight.position.z + 300.0));
                 self.begin_transition(true, target, end);
                 return true;
             }
@@ -277,7 +299,11 @@ impl App {
                 .min((self.flight.position.z - end.z).abs() / (-velocity.z).max(1.0) * 2.2)
                 .max(4.0)
         };
-        let pitch = if ascent { 0.9_f32 } else { -0.12_f32 };
+        let pitch = if ascent {
+            std::f32::consts::FRAC_PI_2
+        } else {
+            -0.12_f32
+        };
         let exit_velocity = vec3(
             self.flight.yaw.sin() * pitch.cos(),
             -self.flight.yaw.cos() * pitch.cos(),
@@ -304,11 +330,14 @@ impl App {
     }
     fn begin_descent(&mut self, body: Body, key: MapKey) {
         let destination = self.network.take(key).unwrap();
-        let map = self.flight.planet_maps[body.index()]
-            .get_or_insert_with(|| {
-                Arc::new(SurfaceMap::new(&destination, self.network.environment(key)))
-            })
-            .clone();
+        let slot = &mut self.flight.planet_maps[body.index()];
+        if slot.as_ref().is_none_or(|map| map.key != key) {
+            *slot = Some(Arc::new(SurfaceMap::new(
+                &destination,
+                self.network.environment(key),
+            )));
+        }
+        let map = slot.as_ref().unwrap().clone();
         let normal = (self.flight.position - body.center()).normalize();
         let anchor = map.uv(normal);
         let surface = SurfaceWarp::new(body, map.origin, anchor, 1.0);
@@ -344,14 +373,19 @@ impl App {
         self.network.take(MapKey::of(&destination));
         let surface = self.flight.surface.unwrap();
         let rotation = surface.basis;
-        self.flight.transform_frame(
-            rotation,
-            surface.space_origin() - rotation * surface.anchor.extend(0.0),
-        );
         self.flight.space = true;
         for wing in &mut self.flight.wingmen {
             wing.space = true;
         }
+        self.flight.transform_frame(
+            rotation,
+            surface.space_origin() - rotation * surface.anchor.extend(0.0),
+        );
+        if surface.body == Body::Earth {
+            self.orbit.earth = Some(self.network.random_earth_except(self.orbit.departure));
+        }
+        self.orbit.arrival_notice = 5.0;
+        self.sounds.push(crate::audio::Sound::Phase);
         self.flight.surface = None;
         self.flight.orbital_scenery = None;
         self.flight.sky_rotation = Quat::IDENTITY;

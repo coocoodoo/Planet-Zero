@@ -57,12 +57,12 @@ fn warp_preserves_speed_camera_formation_and_cooldown() {
 fn space_flight_can_descend_below_the_surface_reference() {
     let world = World::generate(crate::world::MapKind::Space, 1999);
     let mut f = Flight::new(&world);
-    for _ in 0..150 {
+    for frame in 0..150 {
         f.step(
             0.033,
             &Controls {
                 manual: true,
-                climb: -1.0,
+                climb: if frame < 30 { -1.0 } else { 0.0 },
                 ..Default::default()
             },
             &world,

@@ -3,7 +3,7 @@ use crate::world::MapKind;
 
 pub(super) fn clearance_floor(world: &World, position: Vec3) -> f32 {
     if world.kind == MapKind::Space {
-        return -20000.0;
+        return -f32::INFINITY;
     }
     let mut height = 0.0_f32;
     for y in [-8.0, 0.0, 8.0] {
@@ -22,7 +22,7 @@ pub(super) fn flight_floor(
     turn: f32,
 ) -> (f32, f32) {
     if world.kind == MapKind::Space {
-        return (-20000.0, -f32::INFINITY);
+        return (-f32::INFINITY, -f32::INFINITY);
     }
     let floor = clearance_floor(world, position);
     let surface = world.airspace.floor(world, position);
@@ -68,7 +68,7 @@ pub(super) fn flight_floor(
 
 pub(super) fn advance(world: &World, from: Vec3, to: Vec3) -> Vec3 {
     if world.kind == MapKind::Space {
-        return to.with_z(to.z.clamp(-20000.0, 20000.0));
+        return to;
     }
     let collision = |p| clearance_floor(world, p) - MIN_CLEARANCE + 8.0;
     let z = to.z.clamp(collision(from), world.flight_ceiling(from));

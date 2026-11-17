@@ -44,9 +44,12 @@ pub struct Network {
 }
 impl Network {
     pub fn random_earth(&mut self) -> MapKey {
+        self.random_earth_except(None)
+    }
+    pub fn random_earth_except(&mut self, exclude: Option<MapKind>) -> MapKey {
         let kinds: Vec<_> = MapKind::ALL
             .into_iter()
-            .filter(|kind| !kind.vacuum())
+            .filter(|kind| !kind.vacuum() && Some(*kind) != exclude)
             .collect();
         let kind = kinds[(self.random.next() * kinds.len() as f32) as usize];
         MapKey {

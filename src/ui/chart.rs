@@ -1,6 +1,6 @@
 use super::*;
-use crate::app::chart::{CHART_SIZE, offset};
-use crate::world::{SIZE, network::MapKey};
+use crate::app::chart::{CHART_SIZE, map_offset};
+use crate::world::{SIZE, network::MapKey, orbit::Body};
 use glam::{Vec2, vec2};
 
 const ORIGIN: Vec2 = vec2(24.0, 28.0);
@@ -58,9 +58,12 @@ pub fn draw(app: &mut App) {
         .target
         .filter(|t| t.map == MapKey::of(&app.world));
     let focused = routes.iter().min_by(|a, b| {
-        offset(a.aperture.center.truncate(), chart.center)
+        map_offset(app.world.kind, a.aperture.center.truncate(), chart.center)
             .length_squared()
-            .total_cmp(&offset(b.aperture.center.truncate(), chart.center).length_squared())
+            .total_cmp(
+                &map_offset(app.world.kind, b.aperture.center.truncate(), chart.center)
+                    .length_squared(),
+            )
     });
     let mut c = Canvas {
         pixels: &mut app.screen,
@@ -95,12 +98,38 @@ pub fn draw(app: &mut App) {
                 };
                 c.pixel(x, y, [74, 96, 109]);
             }
-            let label = format!("{:04}", coordinate.rem_euclid(SIZE as f32) as u32);
+            let label = if chart.space {
+                format!("{:.0}K", coordinate / 1000.0)
+            } else {
+                format!("{:04}", coordinate.rem_euclid(SIZE as f32) as u32)
+            };
             if axis == 0 && at <= 112 {
                 c.osd(25 + at, 17, &label, MUTED);
             }
             if axis == 1 && at <= 126 {
                 c.osd(0, 30 + at, &label, MUTED);
+            }
+        }
+    }
+    if chart.space {
+        for body in Body::ALL {
+            let p = chart.point(body.center());
+            let radius = (body.radius() * CHART_SIZE as f32 / chart.span).max(3.0);
+            let color = if body == Body::Earth { CYAN } else { WHITE };
+            for i in 0..64 {
+                let a = i as f32 * std::f32::consts::TAU / 64.0;
+                let q = p + vec2(a.sin(), a.cos()) * radius;
+                if inside(q, 1.0) {
+                    c.pixel((q.x + ORIGIN.x) as i32, (q.y + ORIGIN.y) as i32, color);
+                }
+            }
+            if inside(p, 22.0) {
+                c.osd(
+                    (p.x + ORIGIN.x - 12.0) as i32,
+                    (p.y + ORIGIN.y + radius + 3.0) as i32,
+                    body.name(),
+                    color,
+                );
             }
         }
     }
@@ -110,7 +139,8 @@ pub fn draw(app: &mut App) {
             &mut c,
             player,
             player
-                + offset(t.position.truncate(), f.position.truncate()) * CHART_SIZE as f32
+                + map_offset(app.world.kind, t.position.truncate(), f.position.truncate())
+                    * CHART_SIZE as f32
                     / chart.span,
             GOLD,
         );
@@ -195,6 +225,57 @@ pub fn draw(app: &mut App) {
             WHITE,
         );
     }
+    if chart.space {
+        c.osd(171, 18, "LANDING / EARTH", CYAN);
+        c.osd(
+            171,
+            29,
+            app.orbit.earth.map_or("PREPARING", |key| key.kind.name()),
+            GOLD,
+        );
+        c.osd(
+            171,
+            41,
+            &format!("X{:.0} Y{:.0}", chart.center.x, chart.center.y),
+            WHITE,
+        );
+        if let Some(t) = target {
+            c.osd(171, 53, t.body.map_or("WAYPOINT", |body| body.name()), CYAN);
+            c.osd(
+                171,
+                64,
+                &format!(
+                    "Z{:.0} D{:.0}",
+                    t.position.z,
+                    t.position.distance(f.position)
+                ),
+                MUTED,
+            );
+        }
+        for (i, line) in [
+            "▲ ▼ ◀ ▶ PAN",
+            "1 ZOOM IN",
+            "2 ZOOM OUT",
+            "3 FIND PORTAL",
+            "4 FIND AIRCRAFT",
+            "5 SELECT EARTH",
+            "6 SELECT MOON",
+            "7 CHANGE LANDING",
+            "ENTER AUTO NAV",
+            "M RETURN",
+        ]
+        .iter()
+        .enumerate()
+        {
+            c.osd(
+                171,
+                77 + i as i32 * 9,
+                line,
+                if i == 8 { GOLD } else { MUTED },
+            );
+        }
+        return;
+    }
     let x = chart.center.x.rem_euclid(SIZE as f32) as u32;
     let y = chart.center.y.rem_euclid(SIZE as f32) as u32;
     c.osd(
@@ -216,7 +297,7 @@ pub fn draw(app: &mut App) {
         CYAN,
     );
     if let Some(t) = target {
-        let delta = offset(t.position.truncate(), f.position.truncate());
+        let delta = map_offset(app.world.kind, t.position.truncate(), f.position.truncate());
         c.osd(171, 69, &format!("RANGE {:.0} U", delta.length()), WHITE);
     } else if let Some(route) = focused {
         c.osd(171, 69, route.target.kind.name(), WHITE);

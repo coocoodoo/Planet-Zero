@@ -6,6 +6,14 @@ pub(super) fn draw(app: &mut App) {
     if app.page != Page::Playing || app.mode != Mode::Free || app.flight.demo {
         return;
     }
+    if app.orbit.arrival_notice > 0.0 {
+        let mut c = Canvas {
+            pixels: &mut app.screen,
+        };
+        c.shade(62, 40, 196, 36);
+        c.text_scale(64, 44, "SPACE REACHED", CYAN, 2);
+        c.osd(88, 65, "M OPEN ORBITAL CHART", WHITE);
+    }
     if !app.flight.hud {
         return;
     }
@@ -25,10 +33,19 @@ pub(super) fn draw(app: &mut App) {
         pixels: &mut app.screen,
     };
     c.osd(160 - Canvas::osd_width(label) / 2, 120, label, CYAN);
-    if app.world.kind == MapKind::Space && app.navigation.target.is_none() {
+    if app.world.kind == MapKind::Space
+        && app.navigation.target.is_none()
+        && app.orbit.arrival_notice <= 0.0
+    {
         let delta = body.center() - app.flight.position;
-        let bearing = angle(delta.x.atan2(-delta.y) - app.flight.yaw);
-        let direction = vec2(bearing.sin(), -bearing.cos());
+        let [right_axis, forward, up] = app.flight.axes();
+        let d = delta.normalize_or_zero();
+        let v = vec2(d.dot(right_axis), -d.dot(up));
+        let direction = if v.length_squared() > 0.0001 {
+            v.normalize()
+        } else {
+            vec2(0.0, if d.dot(forward) >= 0.0 { -1.0 } else { 1.0 })
+        };
         let right = vec2(-direction.y, direction.x);
         let center = vec2(160.0, 73.0);
         let tip = center + direction * 16.0;

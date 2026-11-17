@@ -3,6 +3,7 @@ mod camera;
 mod director;
 mod orbit;
 mod portals;
+mod space;
 pub use orbit::CameraAdjustment;
 mod safety;
 pub use portals::PortalTransit;
@@ -31,6 +32,8 @@ pub fn ease(rate: f32, dt: f32) -> f32 {
 
 #[derive(Default)]
 pub struct Controls {
+    pub direction: Option<Vec3>,
+    pub throttle: Option<f32>,
     pub bank: Option<f32>,
     pub aerobatic: bool,
     pub turn: f32,
@@ -42,6 +45,7 @@ pub struct Controls {
 
 #[derive(Clone)]
 pub struct Flight {
+    pub space_attitude: Option<glam::Quat>,
     pub orbit_quiet: bool,
     pub orbital_scenery: Option<std::sync::Arc<World>>,
     pub surface: Option<crate::world::orbit::SurfaceWarp>,
@@ -104,6 +108,7 @@ impl Flight {
             110.0_f32.max(world.height(world.spawn.0, world.spawn.1) + 70.0),
         );
         let mut flight = Self {
+            space_attitude: None,
             orbit_quiet: false,
             orbital_scenery: None,
             surface: None,
@@ -302,6 +307,8 @@ impl Flight {
             _ => (0.22, 95.0, true),
         };
         Controls {
+            direction: None,
+            throttle: None,
             turn,
             climb: ((altitude - self.position.z) * 1.4 / (self.speed * 0.55)).clamp(-1.0, 1.0),
             boost,
@@ -326,6 +333,10 @@ impl Flight {
     }
 
     pub fn axes(&self) -> [Vec3; 3] {
+        if let Some(q) = self.space_attitude {
+            let q = q * glam::Quat::from_rotation_y(self.spin);
+            return [q * Vec3::X, q * -Vec3::Y, q * Vec3::Z];
+        }
         let (sy, cy) = self.yaw.sin_cos();
         let (sr, cr) = (self.bank + self.spin).sin_cos();
         let (sp, cp) = self.pitch.sin_cos();
@@ -371,6 +382,13 @@ impl Flight {
         let boost_goal = f32::from(controls.boost);
         self.boost += (boost_goal - self.boost) * ease(4.0, dt);
         self.orbital_thrust += (f32::from(controls.orbital) - self.orbital_thrust) * ease(1.5, dt);
+        if self.space && !self.demo {
+            self.step_space(dt, controls);
+            self.advance_roll(dt);
+            self.update_visuals(dt, world);
+            return;
+        }
+        self.space_attitude = None;
         self.speed = self.vehicle.speed() * (1.0 + self.boost * 0.8 + self.orbital_thrust * 3.0);
         let turn = if controls.manual {
             controls.turn
@@ -391,7 +409,8 @@ impl Flight {
                 self.loop_direction * LOOP_RATE
             } else {
                 let neutral = (self.pitch / std::f32::consts::PI).round() * std::f32::consts::PI;
-                let pitch_limit = NORMAL_PITCH + self.orbital_thrust * 0.6;
+                let pitch_limit = NORMAL_PITCH
+                    + self.orbital_thrust * (std::f32::consts::FRAC_PI_2 - NORMAL_PITCH);
                 angle(neutral + input * pitch_limit - self.pitch) * 2.0
             };
             self.pitch_rate += (target_rate - self.pitch_rate) * ease(5.0, dt);
@@ -454,6 +473,10 @@ impl Flight {
             self.pitch += angle((actual_climb / self.speed).clamp(-0.7, 0.9).asin() - self.pitch)
                 * ease(4.0, dt);
         }
+        self.advance_roll(dt);
+        self.update_visuals(dt, world);
+    }
+    fn advance_roll(&mut self, dt: f32) {
         if self.roll_time >= 0.0 {
             self.roll_time += dt / 1.0;
             let t = self.roll_time.min(1.0);
@@ -463,7 +486,6 @@ impl Flight {
                 self.spin = 0.0;
             }
         }
-        self.update_visuals(dt, world);
     }
     pub(crate) fn update_visuals(&mut self, dt: f32, world: &World) {
         self.follow += (self.position - self.follow) * ease(4.5, dt);
@@ -509,6 +531,12 @@ impl Flight {
             wing.yaw += angle(self.yaw - wing.yaw) * ease(4.0, dt);
             wing.bank += (self.bank - side * split * 0.7 - wing.bank) * ease(3.2, dt);
             wing.pitch += angle(self.pitch - wing.pitch) * ease(3.0, dt);
+            if let Some(q) = self.space_attitude {
+                wing.space_attitude = Some(wing.attitude().slerp(q, ease(4.0, dt)));
+                wing.sync_space_angles();
+            } else {
+                wing.space_attitude = None;
+            }
             wing.weather = self.weather;
             wing.space = self.space;
             wing.vehicle = self.vehicle;

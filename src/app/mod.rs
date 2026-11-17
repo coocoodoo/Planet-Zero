@@ -300,9 +300,13 @@ impl App {
                     .pan(&self.world, self.flight.position, movement * dt * 0.65);
             }
             self.network.ensure(&self.world);
-            let routes = self.network.routes(&self.world);
-            if let Some(route) = routes.get(self.chart.selected % routes.len().max(1)) {
-                self.network.request(route.target);
+            if self.world.kind == crate::world::MapKind::Space {
+                self.prepare_orbit();
+            } else {
+                let routes = self.network.routes(&self.world);
+                if let Some(route) = routes.get(self.chart.selected % routes.len().max(1)) {
+                    self.network.request(route.target);
+                }
             }
             return;
         }

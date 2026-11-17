@@ -70,11 +70,17 @@ pub(super) fn earth_color(
 
 impl Renderer {
     pub(super) fn orbital_bodies(&mut self, world: &World, camera: &Camera, flight: &Flight) {
+        let surface = flight
+            .surface
+            .or_else(|| {
+                (world.kind != MapKind::Space).then(|| SurfaceWarp::ground(world, flight.position))
+            })
+            .map(|surface| surface.at_surface_position(flight.position));
         for body in Body::ALL {
             if world.kind != MapKind::Space && body == Body::of(world.kind) {
                 continue;
             }
-            let (center, rotation, offset) = if let Some(surface) = flight.surface {
+            let (center, rotation, offset) = if let Some(surface) = surface {
                 let rotation = surface.basis;
                 let offset = surface.space_origin() - rotation * surface.anchor.extend(0.0);
                 (
@@ -109,7 +115,11 @@ impl Renderer {
             }) {
                 continue;
             }
-            if let Some(map) = flight.planet_maps[body.index()].as_deref() {
+            let detailed = body.altitude(rotation * camera.position + offset) < 4500.0;
+            if let Some(map) = flight.planet_maps[body.index()]
+                .as_deref()
+                .filter(|_| detailed)
+            {
                 let mut space_camera = *camera;
                 space_camera.position = rotation * camera.position + offset;
                 space_camera.right = rotation * camera.right;
@@ -117,7 +127,7 @@ impl Renderer {
                 space_camera.forward = rotation * camera.forward;
                 self.surface_body(&space_camera, flight, body, map);
             } else {
-                self.distant_body(camera, center, body);
+                self.distant_body(camera, center, body, rotation);
             }
         }
     }
@@ -135,7 +145,7 @@ impl Renderer {
         self.pitched_terrain(&map.world, flight.faceted, &view, map.environment);
         self.warp = previous;
     }
-    fn distant_body(&mut self, camera: &Camera, center: Vec3, body: Body) {
+    fn distant_body(&mut self, camera: &Camera, center: Vec3, body: Body, rotation: glam::Mat3) {
         let radius = body.radius();
         let Some((point, _, scale)) = camera.project(center) else {
             return;
@@ -165,7 +175,7 @@ impl Renderer {
                 if depth >= self.depth[at] {
                     continue;
                 }
-                let normal = (hit - center).normalize();
+                let normal = rotation * (hit - center).normalize();
                 let base = if body == Body::Earth {
                     earth_texel(
                         vec2(normal.y.atan2(normal.x), normal.z.asin()) * UV_SCALE,

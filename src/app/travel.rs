@@ -37,6 +37,9 @@ impl App {
         self.orbit = orbit::Orbit::default();
         self.flight.warp(route.aperture, exit);
         self.flight.enter_region(&destination);
+        if !self.flight.space {
+            self.flight.settle_surface_attitude();
+        }
         self.flight.demo_target = None;
         let environment = self.network.environment(route.target);
         self.flight.weather = environment.weather;
