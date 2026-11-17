@@ -207,7 +207,10 @@ impl Renderer {
                     }
                     let [color, side] = colors[fog_index][usize::from(shade)][material];
                     if previous[h] < highest {
-                        if matches!(material, 12..=14 | 19..=20) {
+                        if matches!(material, 12..=14 | 19..=20)
+                            || (world.kind == crate::world::MapKind::Canyon
+                                && matches!(material, 17..=20))
+                        {
                             let palette: [u32; 16] = std::array::from_fn(|i| {
                                 mix(side, rgb(38, 31, 28), (15 - i) as f32 * 0.025)
                             });

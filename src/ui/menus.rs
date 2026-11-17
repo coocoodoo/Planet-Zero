@@ -33,7 +33,7 @@ pub fn draw(app: &mut App) {
         c.shade(0, 0, 320, 32);
         c.text_scale(10, 7, "RUST / FLY", WHITE, 2);
         c.text(224, 8, "FLIGHT CLUB", CYAN);
-        c.text(224, 20, "ARCADE 0.8", MUTED);
+        c.text(224, 20, "ARCADE 0.9", MUTED);
         c.shade(8, 34, 304, 115);
         c.rect(8, 34, 2, 115, CYAN);
         let stage = format!(
@@ -140,7 +140,7 @@ pub fn draw(app: &mut App) {
                 "RELEASE PITCH : LEVEL OUT",
                 "GROUND GUARD : 18 WORLD UNITS",
                 "HIGH TERRAIN : EARLY PULL-UP",
-                "H : CREATE LINKED WORMHOLES",
+                "H : CROSS MAPS / PC F2 : 1-8X",
                 "Z/C PAGE       ENTER RETURN",
             ],
         ];

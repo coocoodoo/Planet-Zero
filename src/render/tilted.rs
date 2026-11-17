@@ -254,7 +254,9 @@ impl Renderer {
                 let material = world.materials
                     [index(pos.x.floor() as i32, pos.y.floor() as i32, SIZE)]
                     as usize;
-                let detail = if matches!(material, 12..=14 | 19..=20) {
+                let detail = if matches!(material, 12..=14 | 19..=20)
+                    || (world.kind == crate::world::MapKind::Canyon && matches!(material, 17..=20))
+                {
                     0.65 + super::geology::stone_texel(pos) as f32 * 0.035
                 } else {
                     1.0

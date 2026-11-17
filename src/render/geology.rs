@@ -95,15 +95,21 @@ impl Renderer {
                                 outer(angle, y)
                             }
                         };
-                        let p = [
-                            local(point(a, -length)),
-                            local(point(b, -length)),
-                            local(point(b, length)),
-                            local(point(a, length)),
-                        ];
-                        let color = mix(rock, rgb(23, 29, 35), shade + (i % 3) as f32 * 0.035);
-                        self.rock_triangle(camera, [p[0], p[1], p[2]], color);
-                        self.rock_triangle(camera, [p[0], p[2], p[3]], color);
+                        let segments = if cave { 6 } else { 1 };
+                        for segment in 0..segments {
+                            let y0 = -length + 2.0 * length * segment as f32 / segments as f32;
+                            let y1 =
+                                -length + 2.0 * length * (segment + 1) as f32 / segments as f32;
+                            let p = [
+                                local(point(a, y0)),
+                                local(point(b, y0)),
+                                local(point(b, y1)),
+                                local(point(a, y1)),
+                            ];
+                            let color = mix(rock, rgb(23, 29, 35), shade + (i % 3) as f32 * 0.035);
+                            self.rock_triangle(camera, [p[0], p[1], p[2]], color);
+                            self.rock_triangle(camera, [p[0], p[2], p[3]], color);
+                        }
                     }
                 }
                 for side in [-1.0, 1.0] {
