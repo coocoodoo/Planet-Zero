@@ -135,6 +135,15 @@ impl Renderer {
                     } else {
                         u * da + v * db + w * dc
                     };
+                    let at = x as usize * self.h + y as usize;
+                    if depth > self.depth[at] + 1.0
+                        || self
+                            .clip_depth
+                            .get(at)
+                            .is_some_and(|near| depth < *near - 1.0)
+                    {
+                        continue;
+                    }
                     let shaded = if stone {
                         let weights = vec3(u * inverse[0], v * inverse[1], w * inverse[2]);
                         let p =

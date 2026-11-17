@@ -114,6 +114,9 @@ impl Cockpit {
                     }
                     let color_index =
                         self.layers[layer].pixels[sy as usize * 342 + sx as usize] as usize;
+                    if color_index == 0 {
+                        continue;
+                    }
                     let lit = usize::from(
                         flight.weather == crate::content::weather::Weather::Clear
                             && (x - sunlight + (y - 95) / 2).abs() < 40,
