@@ -90,7 +90,7 @@ pub fn draw(app: &mut App) {
                 "I IMU ON/OFF   K RECALIBRATE",
                 "PAUSE Z/C VOLUME  U UI  9 SOUND",
                 "HOLD ESC 2 SECONDS TO EXIT",
-                "8 H P PAUSE / ENTER START",
+                "8 P PAUSE / H CREATE WORMHOLE",
                 "Z/C PAGE       ENTER RETURN",
             ],
             [

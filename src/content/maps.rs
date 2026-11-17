@@ -13,6 +13,8 @@ pub struct MapDefinition {
     pub elevation_octaves: Vec<(usize, f32)>,
     #[serde(default)]
     pub cosmic: Option<CosmicDefinition>,
+    #[serde(default)]
+    pub landmarks: Vec<Landmark>,
 }
 
 #[derive(serde::Deserialize)]
@@ -58,6 +60,10 @@ pub fn definition(kind: MapKind) -> &'static MapDefinition {
             include_str!("../../content/maps/volcanic.toml"),
             include_str!("../../content/maps/moon.toml"),
             include_str!("../../content/maps/space.toml"),
+            include_str!("../../content/maps/fjords.toml"),
+            include_str!("../../content/maps/icebergs.toml"),
+            include_str!("../../content/maps/city.toml"),
+            include_str!("../../content/maps/highlands.toml"),
         ]
         .into_iter()
         .map(|source| toml::from_str(source).expect("地图配置格式错误"))

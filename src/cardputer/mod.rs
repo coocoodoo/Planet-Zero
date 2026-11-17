@@ -2,12 +2,14 @@ use crate::app::{App, Page};
 pub use crate::app::{HEIGHT, WIDTH};
 use crate::world::World;
 use std::ops::{Deref, DerefMut};
+mod gestures;
 pub mod imu;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
 pub struct Game {
     pub app: App,
+    gestures: gestures::Gestures,
     pub motion: imu::Motion,
     pub imu_enabled: bool,
     pub calibrate_imu: bool,
@@ -35,6 +37,7 @@ impl Game {
     pub fn with_world(world: World) -> Self {
         Self {
             app: App::new(world),
+            gestures: gestures::Gestures::default(),
             motion: imu::Motion::default(),
             imu_enabled: false,
             calibrate_imu: false,
@@ -93,6 +96,18 @@ impl Game {
                 controls.climb = pitch;
             }
             controls.manual = true;
+            if self.page == Page::Playing && self.mission.countdown <= 0.0 {
+                if let Some(direction) = self.gestures.update(dt, roll) {
+                    self.flight.roll_toward(direction);
+                    self.mission.dodge();
+                    self.sounds.push(crate::audio::Sound::Roll);
+                }
+            } else {
+                self.gestures.reset();
+            }
+        }
+        if self.flight.demo || !self.imu_enabled || !self.motion.available || !self.motion.ready {
+            self.gestures.reset();
         }
         self.app.step(dt, Some(controls));
     }

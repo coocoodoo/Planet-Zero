@@ -80,7 +80,7 @@ impl Cockpit {
     pub fn prepare(&mut self, flight: &Flight, world: &World, w: usize, h: usize, theme: usize) {
         self.native.fill(0);
         let head = flight.rate * 2.2 + (flight.time * 9.0).sin() * flight.boost * 0.4;
-        let lift = flight.pitch * 5.0;
+        let lift = flight.pitch.sin() * 5.0;
         let away = 1.0 - ((flight.weights[2] - 0.55) / 0.45).clamp(0.0, 1.0);
         let shifts = [
             (
@@ -216,7 +216,9 @@ impl Cockpit {
             }
         }
         for deg in [-20.0_f32, -10.0, 0.0, 10.0, 20.0] {
-            let dy = (flight.pitch - deg.to_radians().tan()) * 192.0 * crate::flight::VIEW_SCALE;
+            let dy = (crate::flight::angle(flight.pitch - deg.to_radians()))
+                * 192.0
+                * crate::flight::VIEW_SCALE;
             for side in [-1.0, 1.0] {
                 let (a, b) = if deg == 0.0 { (9.0, 30.0) } else { (4.0, 11.0) };
                 p.line(
@@ -428,7 +430,7 @@ fn instruments(p: &mut Paint<'_>, f: &Flight, world: &World) {
             if d > 196 {
                 continue;
             }
-            let yy = s * x as f32 + c * y as f32 - f.pitch * 23.0;
+            let yy = s * x as f32 + c * y as f32 - f.pitch.sin() * 23.0;
             let xx = c * x as f32 - s * y as f32;
             let mut color = if yy > 0.0 {
                 rgb(153, 82, 38)
@@ -455,7 +457,7 @@ fn instruments(p: &mut Paint<'_>, f: &Flight, world: &World) {
     let needles = [
         -225.0 + f.speed / 166.0 * 270.0,
         -225.0 + f.position.z / 300.0 * 270.0,
-        -90.0 + f.pitch * 240.0,
+        -90.0 + f.pitch.sin() * 240.0,
         -90.0 + f.rate / 1.25 * 120.0,
     ];
     for ((x, y), degrees) in [(119, 120), (119, 139), (201, 120), (201, 139)]
@@ -475,7 +477,7 @@ fn levers(p: &mut Paint<'_>, f: &Flight) {
     p.rect(68, y - 1, 24, 7, INK);
     p.rect(69, y, 22, 5, rgb(240, 88, 14));
     p.rect(70, y, 20, 2, AMBER);
-    let top = 143 - (f.pitch * 6.0) as i32;
+    let top = 143 - (f.pitch.sin() * 6.0) as i32;
     for y in top..181 {
         let d = y - top;
         let x = 160 + (f.rate / 1.25 * 5.0 * (1.0 - d as f32 / 50.0)) as i32;

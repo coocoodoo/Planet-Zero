@@ -7,6 +7,7 @@ impl Renderer {
         flight: &Flight,
         camera: &Camera,
         mission: Option<&Mission>,
+        theme: usize,
     ) {
         if world.portals.len() != 2 {
             return;
@@ -21,63 +22,37 @@ impl Renderer {
         remote.depth.resize(self.w * self.h, f32::INFINITY);
         remote.mask.resize(self.w * self.h, 0);
         remote.visible.resize(self.w, (0, 0));
-        for (i, entry) in world.portals.iter().enumerate() {
+        for (i, original) in world.portals.iter().enumerate() {
             let exit = world.portals[1 - i];
-            let (eye, direction) = camera.ray(camera.center);
-            let front = if camera.q > 0.00001 {
-                (eye - entry.center).dot(entry.normal()) > 0.0
-            } else {
-                direction.dot(entry.normal()) < 0.0
+            let (eye, _) = camera.ray(camera.center);
+            let entry = original.facing(eye);
+            let Some((center, depth, scale)) = camera.project(entry.center) else {
+                continue;
             };
-            if !front || entry.center.distance_squared(camera.position) > 2000.0_f32.powi(2) {
+            if entry.center.distance_squared(camera.position) > 2400.0_f32.powi(2) {
                 continue;
             }
+            let radius = (entry.radius * scale).max(1.0);
+            let extent = radius * 1.6;
+            let min_x = ((center.x - extent).floor() as i32).max(0);
+            let max_x = ((center.x + extent).ceil() as i32).min(self.w as i32 - 1);
             let mut samples = Vec::new();
             remote.visible.fill((self.h as i32, 0));
-            let normal = entry.normal();
-            let right = entry.right();
-            let (sin, cos) = camera.yaw.sin_cos();
-            let forward = vec3(-sin, -cos, 0.0);
-            // 门平面垂直，同一屏幕列的交点深度相同
-            for x in 0..self.w {
-                if self.visible[x].0 >= self.visible[x].1 {
-                    continue;
-                }
-                let (origin, ray) = camera.ray(vec2(x as f32, 0.0));
-                let divisor = ray.dot(normal);
-                if divisor.abs() < 0.00001 {
-                    continue;
-                }
-                let t = (entry.center - origin).dot(normal) / divisor;
-                if camera.q > 0.00001 && t <= 0.0 {
-                    continue;
-                }
-                let hit = origin + ray * t;
-                let horizontal = (hit - entry.center).dot(right) / entry.radius;
-                let extent2 = 1.19_f32.powi(2) - horizontal * horizontal;
-                if extent2 <= 0.0 {
-                    continue;
-                }
-                let step = if camera.q > 0.00001 {
-                    camera.q * t / camera.scale
-                } else {
-                    1.0 / camera.scale
-                };
-                let center_y = (hit.z - entry.center.z) / step;
-                let extent_y = extent2.sqrt() * entry.radius / step;
-                let y0 = ((center_y - extent_y).ceil() as i32).max(self.visible[x].0);
-                let y1 = ((center_y + extent_y).floor() as i32 + 1).min(self.visible[x].1);
-                let depth = (hit - camera.position).dot(forward);
+            for x in min_x..=max_x {
+                let nx = (x as f32 - center.x) / radius;
+                let half = (2.56 - nx * nx).max(0.0).sqrt() * radius;
+                let y0 = ((center.y - half).ceil() as i32).max(self.visible[x as usize].0);
+                let y1 = ((center.y + half).floor() as i32 + 1).min(self.visible[x as usize].1);
                 for y in y0..y1 {
-                    let at = x * self.h + y as usize;
+                    let at = x as usize * self.h + y as usize;
                     if depth >= self.depth[at] {
                         continue;
                     }
-                    let vertical = (hit.z - entry.center.z - step * y as f32) / entry.radius;
-                    let radius2 = horizontal * horizontal + vertical * vertical;
-                    samples.push((x, y as usize, depth, radius2));
-                    remote.visible[x].0 = remote.visible[x].0.min(y);
-                    remote.visible[x].1 = remote.visible[x].1.max(y + 1);
+                    let ny = (y as f32 - center.y) / radius;
+                    let radius2 = nx * nx + ny * ny;
+                    samples.push((x as usize, y as usize, depth, radius2));
+                    remote.visible[x as usize].0 = remote.visible[x as usize].0.min(y);
+                    remote.visible[x as usize].1 = remote.visible[x as usize].1.max(y + 1);
                 }
             }
             if samples.is_empty() {
@@ -93,48 +68,70 @@ impl Renderer {
             remote.mask.fill(0);
             let mut view = *camera;
             view.position = entry.transform(exit, camera.position);
-            view.yaw -= entry.rotation_to(exit);
-            remote.clip_plane = Some((exit.center, exit.normal()));
-            remote.cosmos(world, &view, flight.time);
+            view.orient(view.yaw - entry.rotation_to(exit), view.pitch);
+            remote.clip_plane = None;
+            remote.near_depth = depth;
+            remote.column.resize(self.w, self.h as i32);
+            for (column, visible) in remote.column.iter_mut().zip(&remote.visible) {
+                *column = visible.1;
+            }
+            if world.kind != crate::world::MapKind::Space {
+                remote.world(world, flight, &view, theme);
+            }
+            if world.kind.vacuum() {
+                remote.cosmos(world, &view, flight.time);
+            } else {
+                remote.sky(&view, flight, theme, 170);
+            }
             remote.scenery(world, &view, flight.time);
             if let Some(mission) = mission {
                 remote.mission(mission, flight, &view);
             }
-            let center = camera.project(entry.center).map_or(camera.center, |p| p.0);
             let base = self.pixels.clone();
             let rim = if i == 0 {
-                rgb(72, 206, 255)
+                rgb(90, 201, 255)
             } else {
-                rgb(255, 159, 62)
+                rgb(255, 155, 70)
             };
+            let phase = flight.time * 1.5;
+            let (s, c) = phase.sin_cos();
             for (x, y, depth, radius2) in samples {
                 let at = x * self.h + y;
-                if radius2 < 0.94_f32.powi(2) {
+                if radius2 < 0.82_f32.powi(2) {
                     self.pixels[at] = remote.pixels[at];
                     self.depth[at] = depth;
                     continue;
                 }
-                let radius = radius2.sqrt();
-                let offset = vec2(x as f32, y as f32) - center;
-                let bend = (1.0 - ((radius - 1.0) / 0.19).abs()).max(0.0);
-                let swirl = (flight.time * 2.0 + radius * 18.0).sin() * bend;
-                let warped = vec2(x as f32, y as f32)
-                    + offset.normalize_or_zero() * bend * 5.0
-                    + vec2(-offset.y, offset.x).normalize_or_zero() * swirl * 2.0;
+                let r = radius2.sqrt();
+                let direction = (vec2(x as f32, y as f32) - center) / (radius * r);
+                let tangent = vec2(-direction.y, direction.x);
+                let influence = ((1.6 - r) / 0.6).clamp(0.0, 1.0).powi(2);
+                let pull = influence * (radius * 0.35).clamp(5.0, 22.0);
+                let swirl = (direction.x * c + direction.y * s) * influence * 4.0;
+                let warped = vec2(x as f32, y as f32) + direction * pull + tangent * swirl;
                 let sx = warped.x.clamp(0.0, self.w as f32 - 1.0) as usize;
                 let sy = warped.y.clamp(0.0, self.h as f32 - 1.0) as usize;
-                let mut color = if radius < 0.94 {
-                    remote.pixels[at]
-                } else if radius < 1.0 {
-                    mix(remote.pixels[at], rim, bend * 0.65)
+                let mut color = if r < 1.0 {
+                    let sample =
+                        vec2(x as f32, y as f32) - direction * pull * 0.25 + tangent * swirl;
+                    let px = sample.x.clamp(0.0, self.w as f32 - 1.0) as usize;
+                    let py = sample.y.clamp(0.0, self.h as f32 - 1.0) as usize;
+                    mix(
+                        remote.pixels[px * self.h + py],
+                        rgb(3, 5, 13),
+                        ((r - 0.82) / 0.18).clamp(0.0, 1.0) * 0.65,
+                    )
                 } else {
-                    mix(base[sx * self.h + sy], rim, bend * 0.48)
+                    base[sx * self.h + sy]
                 };
-                if (radius - 1.0).abs() < 0.024 {
-                    color = mix(rim, rgb(242, 250, 255), 0.65);
-                }
+                let photon = (1.0 - ((r - 1.035) / 0.045).abs()).max(0.0);
+                let halo = (1.0 - ((r - 1.13) / 0.16).abs()).max(0.0);
+                let filament =
+                    (direction.x * 17.0 + direction.y * 11.0 - phase * 3.0).sin() * 0.18 + 0.42;
+                color = mix(color, rim, (halo * filament).clamp(0.0, 0.7));
+                color = mix(color, mix(rim, rgb(255, 245, 216), 0.72), photon * 0.95);
                 self.pixels[at] = color;
-                if radius < 1.025 {
+                if r < 1.06 {
                     self.depth[at] = depth;
                 }
             }
@@ -161,7 +158,10 @@ mod tests {
             let camera = Camera::new(&f, 320, 170);
             let mut virtual_camera = camera;
             virtual_camera.position = entry.transform(exit, camera.position);
-            virtual_camera.yaw -= entry.rotation_to(exit);
+            virtual_camera.orient(
+                virtual_camera.yaw - entry.rotation_to(exit),
+                virtual_camera.pitch,
+            );
             for point in [
                 entry.center,
                 entry.center + entry.right() * 20.0 + Vec3::Z * 15.0,

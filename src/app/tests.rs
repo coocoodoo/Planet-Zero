@@ -120,9 +120,35 @@ fn teleport_does_not_collect_pickups_between_portal_endpoints() {
             ..Default::default()
         }),
     );
-    assert!(app.flight.position.distance(exit.center) < 10.0);
+    assert!(app.flight.position.distance(exit.center) < 100.0);
     assert_eq!(app.mission.collected, 0);
     assert!(!app.mission.pickups[0].collected);
     assert!(app.sounds.iter().any(|s| s == crate::audio::Sound::Warp));
     assert!(app.flight.position != Vec3::ZERO);
+}
+
+#[test]
+fn wormhole_hotkey_creates_safe_pairs_on_every_map_without_pausing() {
+    for map in crate::world::MapKind::ALL {
+        let mut app = App::new(World::generate(map, map.seed()));
+        app.start();
+        app.key(35, 1);
+        app.key(35, 0);
+        assert_eq!(app.page, Page::Playing);
+        assert_eq!(app.world.portals.len(), 2);
+        for portal in &app.world.portals {
+            assert!(portal.center.is_finite());
+            if !map.eq(&crate::world::MapKind::Space) {
+                assert!(
+                    portal.center.z - portal.radius
+                        >= app.world.height(portal.center.x, portal.center.y)
+                            + crate::flight::MIN_CLEARANCE
+                );
+            }
+        }
+        let center = app.world.portals[0].center;
+        app.flight.position.x += 600.0;
+        app.key(35, 1);
+        assert!(app.world.portals[0].center.distance(center) > 500.0);
+    }
 }

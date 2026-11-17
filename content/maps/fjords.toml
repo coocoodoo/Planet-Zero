@@ -1,0 +1,31 @@
+name = "FJORDS"
+seed = 9317
+water_coverage = 0.4
+height_scale = 1.0
+tree_threshold = 0
+cloud_clusters = 0
+elevation_octaves = [[128, 1.0], [64, 0.6], [32, 0.3], [8, 0.08]]
+
+[[landmarks]]
+kind = "lighthouse"
+position = [1700.0, 2850.0, 0.0]
+yaw = 0.2
+scale = 1.0
+
+[[landmarks]]
+kind = "lighthouse"
+position = [2450.0, 2550.0, 0.0]
+yaw = 0.2
+scale = 1.2
+
+[[landmarks]]
+kind = "lighthouse"
+position = [1320.0, 1750.0, 0.0]
+yaw = 0.2
+scale = 1.4
+
+[[landmarks]]
+kind = "lighthouse"
+position = [2650.0, 1200.0, 0.0]
+yaw = 0.2
+scale = 1.0

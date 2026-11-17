@@ -7,6 +7,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::time::Instant;
 
+#[path = "cardputer/scenarios.rs"]
+mod scenarios;
+
 struct Options {
     audio: bool,
     audio_benchmark: Option<f32>,
@@ -14,6 +17,7 @@ struct Options {
     mode: Option<rust_fly::gameplay::Mode>,
     vehicle: usize,
     benchmark: Option<usize>,
+    maneuvers: Option<usize>,
     frames: Option<usize>,
     capture: Option<PathBuf>,
     scale: usize,
@@ -36,6 +40,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
         mode: None,
         vehicle: 0,
         benchmark: None,
+        maneuvers: None,
         frames: None,
         capture: None,
         scale: 1,
@@ -55,7 +60,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
     while let Some(arg) = args.next() {
         if arg == "--help" {
             println!(
-                "rust-fly-cardputer [--audio on|off] [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..3] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic|moon|space] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
+                "rust-fly-cardputer [--audio on|off] [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..3] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--maneuvers N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic|moon|space|fjords|icebergs|city|highlands] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
             );
             std::process::exit(0);
         }
@@ -103,6 +108,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
                     _ => return Err("imu 支持 on 或 off".into()),
                 }
             }
+            "--maneuvers" => result.maneuvers = Some(value.parse()?),
             "--benchmark" => result.benchmark = Some(value.parse()?),
             "--frames" => result.frames = Some(value.parse()?),
             "--capture-dir" => result.capture = Some(value.into()),
@@ -132,6 +138,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
     if result.vehicle > 3
         || result.scale != 1
         || !(1..=60).contains(&result.fps)
+        || result.maneuvers.is_some_and(|n| n < 180)
         || result.benchmark == Some(0)
         || result.frames == Some(0)
         || result.imu_test.is_some_and(|s| !s.is_finite() || s <= 0.0)
@@ -516,6 +523,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     game.flight.weights = [0.0; 3];
     let view = game.flight.view;
     game.flight.weights[view] = 1.0;
+    if let Some(frames) = options.maneuvers {
+        return scenarios::maneuvers(&options, &mut game, frames);
+    }
     if let Some(frames) = options.benchmark {
         return benchmark(&options, &mut game, frames);
     }

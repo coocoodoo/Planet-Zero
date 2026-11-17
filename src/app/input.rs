@@ -9,6 +9,7 @@ impl App {
         let held = |codes: &[u16]| codes.iter().any(|code| self.keys.contains(code));
         Controls {
             bank: None,
+            aerobatic: true,
             turn: f32::from(held(&[46, 106, 32])) - f32::from(held(&[44, 105, 30])),
             climb: f32::from(held(&[33, 103, 17])) - f32::from(held(&[45, 108, 31])),
             boost: held(&[43, 7, 42, 54]),
@@ -118,7 +119,12 @@ impl App {
                 self.mission.dodge();
             }
             51 | 8 | 20 => self.theme = (self.theme + 1) % 3,
-            52 | 9 | 35 | 25 => {
+            35 => {
+                self.world
+                    .spawn_portals(self.flight.position, self.flight.axes()[1]);
+                self.sounds.push(crate::audio::Sound::Warp);
+            }
+            52 | 9 | 25 => {
                 self.page = Page::Paused;
                 self.selection = 0;
             }

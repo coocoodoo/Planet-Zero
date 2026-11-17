@@ -5,6 +5,12 @@ impl World {
         if kind.vacuum() {
             return Self::cosmic(kind, seed);
         }
+        if matches!(
+            kind,
+            MapKind::Fjords | MapKind::Icebergs | MapKind::City | MapKind::Highlands
+        ) {
+            return Self::region(kind, seed);
+        }
         let profile = crate::content::maps::definition(kind);
         let mut random = Random(seed.wrapping_mul(7919).wrapping_add(13));
         let mut elevation = vec![0.0_f32; NOISE_SIZE * NOISE_SIZE];
@@ -38,11 +44,16 @@ impl World {
                 let e = elevation[at];
                 let m = moisture[at];
                 elevation[at] = match kind {
-                    MapKind::Moon | MapKind::Space => unreachable!(),
+                    MapKind::Moon
+                    | MapKind::Space
+                    | MapKind::Fjords
+                    | MapKind::Icebergs
+                    | MapKind::City
+                    | MapKind::Highlands => unreachable!(),
                     MapKind::Islands => (e - sea) / (1.0 - sea) * 59.0,
                     MapKind::Alpine => {
                         let ridge =
-                            (e * e * 79.0 + 5.0) * ((m - 0.49).abs() / 0.075).clamp(0.0, 1.0);
+                            (e * e * 165.0 + 5.0) * ((m - 0.49).abs() / 0.075).clamp(0.0, 1.0);
                         if ridge < 1.1 { -1.0 } else { ridge }
                     }
                     MapKind::Canyon => {
@@ -50,7 +61,7 @@ impl World {
                         if canyon < 0.08 {
                             -1.0
                         } else {
-                            (14.0 + (e * 6.0).floor() * 8.0) * canyon.min(1.0)
+                            (14.0 + (e * 8.0).floor() * 17.0) * canyon.min(1.0)
                         }
                     }
                     MapKind::Desert => {
@@ -85,6 +96,8 @@ impl World {
         let mut world = Self {
             heights: vec![0; SIZE * SIZE],
             materials: vec![0; SIZE * SIZE],
+            obstacles: vec![],
+            ceiling: 0,
             clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
             spawn: (2048.0, 2048.0),
             kind,
@@ -107,7 +120,14 @@ impl World {
                 let h = a + (b - a) * tx + (c - a + (d - c - b + a) * tx) * ty;
                 let at = y * SIZE + x;
                 let n = hash(at as u32 ^ seed);
-                let level = h.max(0.0).round().min(79.0) as u8;
+                let level =
+                    h.max(0.0)
+                        .round()
+                        .min(if matches!(kind, MapKind::Alpine | MapKind::Canyon) {
+                            190.0
+                        } else {
+                            79.0
+                        }) as u8;
                 world.heights[at] = level;
                 world.materials[at] = if h < 0.2 {
                     if kind == MapKind::Wetlands {
@@ -123,7 +143,12 @@ impl World {
                     }
                 } else {
                     match kind {
-                        MapKind::Moon | MapKind::Space => unreachable!(),
+                        MapKind::Moon
+                        | MapKind::Space
+                        | MapKind::Fjords
+                        | MapKind::Icebergs
+                        | MapKind::City
+                        | MapKind::Highlands => unreachable!(),
                         MapKind::Islands => {
                             if h < 1.6 {
                                 if n < 40 { 5 } else { 4 }
@@ -280,6 +305,8 @@ impl World {
                 }
             }
         }
+        world.add_landmarks();
+        world.update_ceiling();
         world
     }
 }

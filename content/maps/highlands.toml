@@ -1,0 +1,55 @@
+name = "HIGHLANDS"
+seed = 5527
+water_coverage = 0.4
+height_scale = 1.0
+tree_threshold = 0
+cloud_clusters = 0
+elevation_octaves = [[128, 1.0], [64, 0.6], [32, 0.3], [8, 0.08]]
+
+[[landmarks]]
+kind = "windmill"
+position = [1960.0, 2950.0, 0.0]
+yaw = 0.2
+scale = 1.0
+
+[[landmarks]]
+kind = "windmill"
+position = [2100.0, 2820.0, 0.0]
+yaw = 0.2
+scale = 1.2
+
+[[landmarks]]
+kind = "windmill"
+position = [2240.0, 2900.0, 0.0]
+yaw = 0.2
+scale = 1.4
+
+[[landmarks]]
+kind = "windmill"
+position = [2400.0, 2750.0, 0.0]
+yaw = 0.2
+scale = 1.0
+
+[[landmarks]]
+kind = "windmill"
+position = [1860.0, 2700.0, 0.0]
+yaw = 0.2
+scale = 1.2
+
+[[landmarks]]
+kind = "windmill"
+position = [1670.0, 2940.0, 0.0]
+yaw = 0.2
+scale = 1.4
+
+[[landmarks]]
+kind = "windmill"
+position = [2600.0, 3020.0, 0.0]
+yaw = 0.2
+scale = 1.0
+
+[[landmarks]]
+kind = "windmill"
+position = [2800.0, 2850.0, 0.0]
+yaw = 0.2
+scale = 1.2

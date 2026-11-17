@@ -157,7 +157,8 @@ impl Mission {
             0.0
         };
         flight.camera_yaw = 0.0;
-        flight.position.z = 150.0;
+        flight.position.z =
+            150.0_f32.max(world.height(flight.position.x, flight.position.y) + 70.0);
         flight.follow = flight.position;
         flight.wing_count = if mode == Mode::Free { 2 } else { 0 };
         let mut mission = Self {

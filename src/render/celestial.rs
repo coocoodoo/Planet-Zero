@@ -51,26 +51,6 @@ fn starfield() -> &'static Vec<u32> {
     })
 }
 
-impl Camera {
-    pub(crate) fn ray(&self, p: Vec2) -> (Vec3, Vec3) {
-        let (s, c) = self.yaw.sin_cos();
-        let forward = vec3(-s, -c, 0.0);
-        let right = vec3(c, -s, 0.0);
-        let offset = (p - self.center) / self.scale;
-        if self.q > 0.00001 {
-            (
-                self.position - forward / self.q + Vec3::Z * (self.slope / self.q),
-                forward + right * (offset.x * self.q) + Vec3::Z * (-offset.y * self.q - self.slope),
-            )
-        } else {
-            (
-                self.position + right * offset.x - Vec3::Z * offset.y,
-                forward - Vec3::Z * self.slope,
-            )
-        }
-    }
-}
-
 impl Renderer {
     pub(super) fn cosmos(&mut self, world: &World, camera: &Camera, time: f32) {
         let texture = starfield();
@@ -78,7 +58,7 @@ impl Renderer {
         sky_camera.q = camera.q.max(0.004);
         for x in 0..self.w {
             let (_, mut ray) = sky_camera.ray(vec2(x as f32, self.visible[x].0 as f32));
-            let step = Vec3::Z * (-sky_camera.q / sky_camera.scale);
+            let step = sky_camera.up * (-sky_camera.q / sky_camera.scale);
             for y in self.visible[x].0..self.visible[x].1 {
                 let at = x * self.h + y as usize;
                 if self.pixels[at] == 0 {
@@ -204,6 +184,10 @@ impl Renderer {
         let panel = rgb(37, 73, 137);
         let light = rgb(118, 232, 248);
         match object.kind {
+            Structure::Building
+            | Structure::Windmill
+            | Structure::Lighthouse
+            | Structure::RockStack => self.landscape_structure(camera, object, time),
             Structure::Base => {
                 for x in [-51.0, 0.0, 51.0] {
                     self.box_mesh(
@@ -433,7 +417,7 @@ impl Renderer {
         }
     }
 
-    fn box_mesh(
+    pub(super) fn box_mesh(
         &mut self,
         camera: &Camera,
         local: &impl Fn(Vec3) -> Vec3,

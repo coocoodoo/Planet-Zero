@@ -15,7 +15,7 @@ impl Portal {
         vec3(self.yaw.cos(), self.yaw.sin(), 0.0)
     }
     pub fn rotation_to(self, exit: Self) -> f32 {
-        exit.yaw - self.yaw + std::f32::consts::PI
+        crate::flight::angle(exit.yaw - self.yaw + std::f32::consts::PI)
     }
     pub fn transform(self, exit: Self, point: Vec3) -> Vec3 {
         let delta = point - self.center;
@@ -27,14 +27,58 @@ impl Portal {
                 delta.z,
             )
     }
+    pub fn facing(self, observer: Vec3) -> Self {
+        let d = observer - self.center;
+        Self {
+            yaw: if d.truncate().length_squared() > 0.001 {
+                d.x.atan2(-d.y)
+            } else {
+                self.yaw
+            },
+            ..self
+        }
+    }
     pub fn crossed(self, from: Vec3, to: Vec3) -> bool {
-        let a = (from - self.center).dot(self.normal());
-        let b = (to - self.center).dot(self.normal());
-        if a <= 0.0 || b > 0.0 {
+        let delta = to - from;
+        let offset = from - self.center;
+        if delta.length_squared() < 0.000001 || offset.dot(delta) >= 0.0 {
             return false;
         }
-        let hit = from.lerp(to, a / (a - b)) - self.center;
-        hit.length_squared() < (self.radius - 4.0).powi(2)
+        let t = (-offset.dot(delta) / delta.length_squared()).clamp(0.0, 1.0);
+        (from + delta * t - self.center).length_squared() < (self.radius * 0.7).powi(2)
+    }
+}
+
+impl super::World {
+    pub fn spawn_portals(&mut self, position: Vec3, forward: Vec3) {
+        let heading = forward.x.atan2(-forward.y);
+        let direction = vec3(heading.sin(), -heading.cos(), 0.0);
+        let right = vec3(direction.y, -direction.x, 0.0);
+        let radius = 48.0;
+        let safe = |mut center: Vec3| {
+            if self.kind != super::MapKind::Space {
+                let mut floor = 0.0_f32;
+                for dx in [-radius, 0.0, radius] {
+                    for dy in [-radius, 0.0, radius] {
+                        floor = floor.max(self.height(center.x + dx, center.y + dy));
+                    }
+                }
+                center.z = center.z.max(floor + radius + crate::flight::MIN_CLEARANCE);
+            }
+            center
+        };
+        self.portals = vec![
+            Portal {
+                center: safe(position + forward * 240.0),
+                yaw: heading + std::f32::consts::PI,
+                radius,
+            },
+            Portal {
+                center: safe(position + direction * 1500.0 + right * 850.0),
+                yaw: heading + 0.9,
+                radius,
+            },
+        ];
     }
 }
 
@@ -62,7 +106,7 @@ mod tests {
         assert!((point.distance(a.center) - out.distance(b.center)).abs() < 0.001);
     }
     #[test]
-    fn high_speed_crossing_requires_front_face_and_clear_aperture() {
+    fn high_speed_crossing_accepts_every_approach_and_rejects_the_outer_rim() {
         let p = Portal {
             center: Vec3::ZERO,
             yaw: 0.0,
@@ -70,7 +114,7 @@ mod tests {
         };
         assert!(p.crossed(vec3(0.0, -300.0, 20.0), vec3(0.0, 300.0, 20.0)));
         assert!(!p.crossed(vec3(55.0, -300.0, 0.0), vec3(55.0, 300.0, 0.0)));
-        assert!(!p.crossed(vec3(0.0, 300.0, 0.0), vec3(0.0, -300.0, 0.0)));
-        assert!(!p.crossed(vec3(0.0, -300.0, 0.0), vec3(0.0, -1.0, 0.0)));
+        assert!(p.crossed(vec3(0.0, 300.0, 0.0), vec3(0.0, -300.0, 0.0)));
+        assert!(!p.crossed(vec3(0.0, -300.0, 0.0), vec3(0.0, -80.0, 0.0)));
     }
 }

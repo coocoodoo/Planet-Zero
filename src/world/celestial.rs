@@ -9,6 +9,10 @@ pub enum Structure {
     Satellite,
     Cruiser,
     Asteroid,
+    Building,
+    Windmill,
+    Lighthouse,
+    RockStack,
 }
 
 #[derive(Clone, Copy)]
@@ -34,6 +38,8 @@ impl World {
             } else {
                 vec![]
             },
+            obstacles: vec![],
+            ceiling: 0,
             clouds: vec![],
             spawn: (layout.spawn[0], layout.spawn[1]),
             kind,
@@ -138,6 +144,7 @@ impl World {
                     radius: p.radius,
                 })
                 .collect();
+            world.update_ceiling();
             world
                 .scenery
                 .extend(layout.landmarks.iter().map(|p| Scenery {
@@ -163,6 +170,7 @@ impl World {
                 });
             }
         }
+        world.update_ceiling();
         world
     }
 }

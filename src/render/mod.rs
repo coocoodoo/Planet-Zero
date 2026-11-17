@@ -1,11 +1,13 @@
 mod aircraft;
 mod celestial;
 mod cockpit;
+mod landmarks;
 mod objects;
 mod palette;
 mod portals;
 mod primitives;
 mod terrain;
+mod tilted;
 mod weather;
 use crate::gameplay::{Mission, Mode, PickupKind, Weapon};
 use glam::{Vec2, Vec3, vec2, vec3};
@@ -47,6 +49,11 @@ const TOP: [[u8; 3]; MATERIAL_COUNT] = [
     [164, 167, 174],
     [205, 207, 211],
     [105, 109, 120],
+    [38, 47, 59],
+    [210, 188, 110],
+    [111, 125, 142],
+    [61, 82, 104],
+    [111, 147, 171],
 ];
 const SIDE: [[u8; 3]; MATERIAL_COUNT] = [
     [36, 104, 180],
@@ -79,6 +86,11 @@ const SIDE: [[u8; 3]; MATERIAL_COUNT] = [
     [66, 67, 76],
     [99, 100, 108],
     [49, 52, 63],
+    [26, 31, 40],
+    [149, 137, 86],
+    [73, 81, 96],
+    [38, 51, 69],
+    [67, 95, 116],
 ];
 
 pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
@@ -118,6 +130,7 @@ pub struct Renderer {
     portal_view: Option<Box<Renderer>>,
     clip_plane: Option<(Vec3, Vec3)>,
     clip_depth: Vec<f32>,
+    near_depth: f32,
     cockpit: crate::render::cockpit::Cockpit,
     visible: Vec<(i32, i32)>,
     mapping: Vec<usize>,
@@ -168,6 +181,7 @@ impl Renderer {
             portal_view: None,
             clip_plane: None,
             clip_depth: vec![],
+            near_depth: f32::NEG_INFINITY,
             cockpit: crate::render::cockpit::Cockpit::new(),
             visible: vec![],
             mapping: vec![],
@@ -317,7 +331,7 @@ impl Renderer {
             }
         }
         self.scenery(world, &camera, flight.time);
-        self.portals(world, flight, &camera, mission);
+        self.portals(world, flight, &camera, mission, theme);
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
         let mut jets: Vec<&Flight> = flight.wingmen.iter().take(flight.wing_count).collect();

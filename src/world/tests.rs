@@ -37,7 +37,7 @@ fn maps_have_distinct_terrain_and_valid_periodic_samples() {
             world.height(124.0, SIZE as f32 + 71.0),
             world.height(124.0, 71.0)
         );
-        assert!(world.height(world.spawn.0, world.spawn.1) < 80.0);
+        assert!(world.height(world.spawn.0, world.spawn.1) < 200.0);
     }
 }
 

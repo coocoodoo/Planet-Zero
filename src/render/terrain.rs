@@ -12,13 +12,25 @@ impl Renderer {
     ) {
         for y in y0.max(self.visible[x].0)..y1.min(self.visible[x].1) {
             let i = x * self.h + y as usize;
-            if self.pixels[i] == 0 && !(checker && (x + self.x_origin + y as usize) & 1 == 0) {
+            if self.pixels[i] == 0
+                && self.clip_depth.get(i).is_none_or(|near| depth >= *near)
+                && !(checker && (x + self.x_origin + y as usize) & 1 == 0)
+            {
                 self.pixels[i] = color;
                 self.depth[i] = depth;
             }
         }
     }
     pub(super) fn world(&mut self, world: &World, flight: &Flight, camera: &Camera, theme: usize) {
+        if camera.pitch.abs() > 0.001 {
+            self.pitched_terrain(world, flight, camera, theme);
+            return;
+        }
+        let height_limit = (world.ceiling as usize).max(if world.kind.vacuum() {
+            0
+        } else {
+            CLOUD_ALT + 8
+        });
         let (s, c) = camera.yaw.sin_cos();
         let q = camera.q;
         let scale = camera.scale;
@@ -98,11 +110,12 @@ impl Renderer {
             1e8
         };
         let dn = scale * slope + q * below;
-        let mut distance = if camera_height > MAX_HEIGHT as f32 + 1.0 && dn > 0.00001 {
-            ((scale * (altitude - MAX_HEIGHT as f32) - below) / dn - 2.0).max(nearest)
+        let mut distance = if camera_height > height_limit as f32 + 1.0 && dn > 0.00001 {
+            ((scale * (altitude - height_limit as f32) - below) / dn - 2.0).max(nearest)
         } else {
             nearest
         };
+        distance = distance.max(self.near_depth);
         let (fog_start, view_distance) = if world.kind.vacuum() {
             (2400.0, 2600.0)
         } else {
@@ -115,7 +128,7 @@ impl Renderer {
             view_distance
         };
         let mut rows = [0_i32; MAX_HEIGHT + 1];
-        for (z, row) in rows.iter_mut().enumerate() {
+        for (z, row) in rows[..=height_limit].iter_mut().enumerate() {
             *row = (cy - scale / (1.0 + q * distance) * (slope * distance - altitude + z as f32))
                 .floor() as i32;
         }
@@ -146,7 +159,7 @@ impl Renderer {
             let denominator = 1.0 + q * distance;
             let m = scale / denominator;
             let previous = rows;
-            for (z, row) in rows.iter_mut().enumerate() {
+            for (z, row) in rows[..=height_limit].iter_mut().enumerate() {
                 *row = (cy - m * (slope * distance - altitude + z as f32) + 0.00001).floor() as i32;
             }
             let inverse = denominator / scale;
@@ -267,7 +280,12 @@ impl Renderer {
         };
         let flash = weather.flash(flight.time);
         for y in 0..self.h {
-            let gradient = ((horizon - y as f32) / (height as f32 * 0.75)).clamp(0.0, 1.0);
+            let (_, ray) = camera.ray(vec2(camera.center.x, y as f32));
+            let gradient = if camera.pitch.abs() > 0.001 {
+                (ray.z / ray.length() * 1.4).clamp(0.0, 1.0)
+            } else {
+                ((horizon - y as f32) / (height as f32 * 0.75)).clamp(0.0, 1.0)
+            };
             let color = mix(
                 mix(low, high, (gradient * 12.0).floor() / 12.0),
                 rgb(225, 234, 255),

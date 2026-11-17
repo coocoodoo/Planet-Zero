@@ -5,3 +5,33 @@ height_scale = 1.0
 tree_threshold = 115
 cloud_clusters = 800
 elevation_octaves = [[128, 0.7], [64, 1.0], [32, 0.5], [16, 0.24], [8, 0.1], [4, 0.04]]
+
+[[landmarks]]
+kind = "rockstack"
+position = [1750.0, 2200.0, 0.0]
+yaw = 0.2
+scale = 1.0
+
+[[landmarks]]
+kind = "rockstack"
+position = [1820.0, 2250.0, 0.0]
+yaw = 0.2
+scale = 1.2
+
+[[landmarks]]
+kind = "rockstack"
+position = [2100.0, 1950.0, 0.0]
+yaw = 0.2
+scale = 1.4
+
+[[landmarks]]
+kind = "rockstack"
+position = [2260.0, 2040.0, 0.0]
+yaw = 0.2
+scale = 1.0
+
+[[landmarks]]
+kind = "rockstack"
+position = [2420.0, 1820.0, 0.0]
+yaw = 0.2
+scale = 1.2

@@ -27,8 +27,7 @@ impl Renderer {
         }
     }
     pub(super) fn triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32) {
-        let (s, c) = camera.yaw.sin_cos();
-        let forward = vec3(-s, -c, 0.0);
+        let forward = camera.forward;
         let near = camera.position
             + forward
                 * if camera.q > 0.00001 {
@@ -119,7 +118,7 @@ impl Renderer {
                     && yy >= 0
                     && xx < self.w as i32
                     && yy < self.h as i32
-                    && (self.clip_plane.is_none()
+                    && (self.clip_depth.is_empty()
                         || (yy >= self.visible[xx as usize].0 && yy < self.visible[xx as usize].1))
                 {
                     let at = xx as usize * self.h + yy as usize;
