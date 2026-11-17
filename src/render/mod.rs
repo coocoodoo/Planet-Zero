@@ -1,5 +1,6 @@
 mod aircraft;
 mod celestial;
+mod clouds;
 mod cockpit;
 mod landmarks;
 mod objects;
@@ -15,7 +16,7 @@ use glam::{Vec2, Vec3, vec2, vec3};
 use crate::content::weather::Weather;
 use crate::flight::{Camera, Flight, MODEL_SCALE};
 use crate::render::palette::JET;
-use crate::world::{CLOUD_ALT, MATERIAL_COUNT, MAX_HEIGHT, SIZE, World, hash, index};
+use crate::world::{MATERIAL_COUNT, MAX_HEIGHT, SIZE, World, hash, index};
 
 const MODEL: &[u8] = include_bytes!("../../assets/vehicles/falcon.bin");
 const TOP: [[u8; 3]; MATERIAL_COUNT] = [

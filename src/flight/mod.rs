@@ -188,7 +188,7 @@ impl Flight {
         let stage = (self.demo_time / 8.0) as usize % 7;
         let phase = self.demo_time % 8.0;
         if phase < dt || self.demo_time <= dt {
-            self.view = if stage == 2 || stage == 4 { 0 } else { 1 };
+            self.view = 1;
         }
         let wave = (phase * std::f32::consts::PI / 8.0).sin();
         let (turn, altitude, boost) = match stage {
@@ -287,6 +287,17 @@ impl Flight {
         } else {
             vec3(self.yaw.sin(), -self.yaw.cos(), 0.0)
         };
+        if manual_attitude && controls.climb.abs() > 0.35 {
+            let lift = safety::loop_lift(
+                world,
+                self.position,
+                self.yaw,
+                self.pitch,
+                controls.climb * 1.25,
+                self.speed,
+            );
+            self.position.z += lift * ease(3.5, dt);
+        }
         let proposed = self.position + horizontal * self.speed * dt;
         let (floor, ahead_climb) = flight_floor(world, self.position, horizontal, self.speed);
         let mut climb = if manual_attitude {
@@ -296,7 +307,6 @@ impl Flight {
         } else {
             (110.0 - self.position.z) * 0.6
         };
-        let protected = climb < ahead_climb;
         climb = climb.max(ahead_climb).clamp(-self.speed, self.speed);
         let old_altitude = self.position.z;
         self.position.x = proposed.x;
@@ -307,21 +317,6 @@ impl Flight {
         if !manual_attitude {
             self.pitch += angle((actual_climb / self.speed).clamp(-0.7, 0.9).asin() - self.pitch)
                 * ease(4.0, dt);
-        } else if protected {
-            let safe_pitch = (actual_climb / self.speed).clamp(0.0, 0.95).asin();
-            self.pitch = if self.pitch.cos() < 0.0 {
-                std::f32::consts::PI - safe_pitch
-            } else {
-                safe_pitch
-            };
-            self.pitch_rate = 0.0;
-        } else if self.position.z >= 899.9 && self.pitch.sin() > 0.0 {
-            self.pitch = if self.pitch.cos() < 0.0 {
-                std::f32::consts::PI
-            } else {
-                0.0
-            };
-            self.pitch_rate = 0.0;
         }
         if self.roll_time >= 0.0 {
             self.roll_time += dt / 1.0;
@@ -334,8 +329,21 @@ impl Flight {
         }
         self.follow += (self.position - self.follow) * ease(4.5, dt);
         self.camera_yaw += angle(-self.yaw * 0.6 - self.camera_yaw) * ease(1.5, dt);
-        for i in 0..3 {
-            self.weights[i] += (f32::from(i == self.view) - self.weights[i]) * ease(3.2, dt);
+        let camera_top = if self.demo && matches!((self.demo_time / 8.0) as usize % 7, 2 | 4) {
+            (std::f32::consts::PI * (self.demo_time % 8.0) / 8.0)
+                .sin()
+                .powi(2)
+                * 0.9
+        } else {
+            0.0
+        };
+        let target_weights = if self.demo {
+            [camera_top, 1.0 - camera_top, 0.0]
+        } else {
+            std::array::from_fn(|i| f32::from(i == self.view))
+        };
+        for (weight, target) in self.weights.iter_mut().zip(target_weights) {
+            *weight += (target - *weight) * ease(if self.demo { 2.0 } else { 3.2 }, dt);
         }
         self.spread += ((if self.exploded { 5.0 } else { 1.0 }) - self.spread) * ease(5.0, dt);
         let [formation_right, formation_forward, formation_up] = self.axes();

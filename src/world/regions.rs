@@ -50,6 +50,7 @@ impl World {
             clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
             obstacles: vec![],
             ceiling: 0,
+            cloud_levels: vec![],
             spawn: if kind == MapKind::City {
                 (2304.0, 3264.0)
             } else {
@@ -131,6 +132,10 @@ impl World {
                 };
             }
         }
+        world.generate_clouds(
+            &mut random,
+            crate::content::maps::definition(kind).cloud_clusters,
+        );
         world.add_landmarks();
         world.update_ceiling();
         world

@@ -1,5 +1,6 @@
 pub use noise::{hash, index};
 pub mod celestial;
+mod clouds;
 mod generation;
 mod landmarks;
 mod loader;
@@ -14,7 +15,6 @@ use std::thread::JoinHandle;
 
 pub const SIZE: usize = 4096;
 pub const CLOUD_SIZE: usize = 2048;
-pub const CLOUD_ALT: usize = 80;
 pub const MAX_HEIGHT: usize = 255;
 pub const MATERIAL_COUNT: usize = 35;
 const NOISE_SIZE: usize = 1024;
@@ -78,6 +78,7 @@ pub struct World {
     pub ceiling: u8,
     pub materials: Vec<u8>,
     pub clouds: Vec<u8>,
+    pub cloud_levels: Vec<u16>,
     pub spawn: (f32, f32),
     pub kind: MapKind,
     pub seed: u32,
@@ -91,6 +92,7 @@ impl World {
     }
     pub fn update_ceiling(&mut self) {
         self.ceiling = self.heights.iter().copied().max().unwrap_or(0);
+        self.prepare_cloud_heights();
     }
     pub fn height(&self, x: f32, y: f32) -> f32 {
         if self.kind == MapKind::Space {
@@ -105,7 +107,7 @@ impl World {
         ground.max(obstacle) as f32
     }
     pub fn cloud(&self, x: f32, y: f32, time: f32) -> usize {
-        if self.kind.vacuum() {
+        if self.kind.vacuum() || self.height(x, y) + 12.0 >= self.cloud_height(x, y) {
             return 0;
         }
         let cell = self.clouds[index(

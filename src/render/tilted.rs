@@ -60,6 +60,7 @@ impl Renderer {
                 cells.push(((cx + x) * 512, (cy + y) * 512, 512));
             }
         }
+        let mut leaves = Vec::new();
         while let Some((x, y, size)) = cells.pop() {
             let half = vec3(
                 size as f32 * 0.5,
@@ -84,29 +85,53 @@ impl Renderer {
                 cells.extend([(x, y, h), (x + h, y, h), (x, y + h, h), (x + h, y + h, h)]);
                 continue;
             }
-            let point = |dx, dy| {
-                let (wx, wy) = (x + dx, y + dy);
-                vec3(
-                    wx as f32,
-                    wy as f32,
-                    world.heights[index(wx, wy, SIZE)] as f32,
-                )
-            };
-            let corners = [
-                point(0, 0),
-                point(size, 0),
-                point(size, size),
-                point(0, size),
-            ];
-            for vertices in [
-                [corners[0], corners[1], corners[2]],
-                [corners[0], corners[2], corners[3]],
-            ] {
-                self.ground_triangle(camera, world, vertices, &colors, (fog_start, far, haze));
-            }
+            leaves.push((x, y, size));
         }
-        if !world.kind.vacuum() && crate::content::maps::definition(world.kind).cloud_clusters > 0 {
-            self.tilted_clouds(world, flight, camera, theme, far);
+        let lookup: std::collections::HashSet<_> = leaves.iter().copied().collect();
+        for (x, y, size) in leaves {
+            let sample = |x, y| vec3(x as f32, y as f32, world.heights[index(x, y, SIZE)] as f32);
+            let center = sample(x + size / 2, y + size / 2);
+            let mut boundary = Vec::with_capacity(8);
+            for edge in 0..4 {
+                let mut offset = 0;
+                while offset < size {
+                    let (px, py, nx, ny, coordinate) = match edge {
+                        0 => (x + offset, y, x + offset, y - 1, x + offset),
+                        1 => (x + size, y + offset, x + size, y + offset, y + offset),
+                        2 => (
+                            x + size - offset,
+                            y + size,
+                            x + size - offset - 1,
+                            y + size,
+                            -(x + size - offset),
+                        ),
+                        _ => (
+                            x,
+                            y + size - offset,
+                            x - 1,
+                            y + size - offset - 1,
+                            -(y + size - offset),
+                        ),
+                    };
+                    boundary.push(sample(px, py));
+                    let neighbor = [8, 16, 32, 64, 128, 256, 512]
+                        .into_iter()
+                        .find(|&n| {
+                            lookup.contains(&(nx.div_euclid(n) * n, ny.div_euclid(n) * n, n))
+                        })
+                        .unwrap_or(size);
+                    offset += (neighbor - coordinate.rem_euclid(neighbor)).min(size - offset);
+                }
+            }
+            for i in 0..boundary.len() {
+                self.ground_triangle(
+                    camera,
+                    world,
+                    [center, boundary[i], boundary[(i + 1) % boundary.len()]],
+                    &colors,
+                    (fog_start, far, haze),
+                );
+            }
         }
     }
     fn ground_triangle(
@@ -188,7 +213,7 @@ impl Renderer {
                 u_next += du;
                 v_next += dv;
                 let w = 1.0 - u - v;
-                if u < 0.0 || v < 0.0 || w < 0.0 {
+                if u < -0.00001 || v < -0.00001 || w < -0.00001 {
                     continue;
                 }
                 let weights = vec3(u * inverse[0], v * inverse[1], w * inverse[2]);
@@ -208,53 +233,6 @@ impl Renderer {
                 let color = mix(rgb(17, 23, 35), colors[material], shade);
                 let amount = ((depth - fog.0) / (fog.1 - fog.0)).clamp(0.0, 1.0);
                 self.pixels[at] = mix(color, fog.2, amount);
-                self.depth[at] = depth;
-            }
-        }
-    }
-    fn tilted_clouds(
-        &mut self,
-        world: &World,
-        flight: &Flight,
-        camera: &Camera,
-        theme: usize,
-        far: f32,
-    ) {
-        if camera.q <= 0.00001 {
-            return;
-        }
-        for x in 0..self.w {
-            let (origin, mut ray) = camera.ray(vec2(x as f32, self.visible[x].0 as f32));
-            let step = camera.up * (-camera.q / camera.scale);
-            for y in self.visible[x].0..self.visible[x].1 {
-                let direction = ray;
-                ray += step;
-                if direction.z.abs() < 0.00001 {
-                    continue;
-                }
-                let t = (CLOUD_ALT as f32 + 4.0 - origin.z) / direction.z;
-                if t < 0.12 / camera.q || t > far + 1.0 / camera.q {
-                    continue;
-                }
-                let p = origin + direction * t;
-                let cloud = world.cloud(p.x, p.y, flight.time);
-                if cloud == 0 || (cloud == 1 && (x + y as usize).is_multiple_of(2)) {
-                    continue;
-                }
-                let t = (CLOUD_ALT as f32 + cloud as f32 - origin.z) / direction.z;
-                let depth = t - 1.0 / camera.q;
-                let at = x * self.h + y as usize;
-                if depth >= self.depth[at] || self.clip_depth.get(at).is_some_and(|d| depth < *d) {
-                    continue;
-                }
-                self.pixels[at] = flight.weather.shade(grade(
-                    if direction.z < 0.0 {
-                        rgb(240, 248, 255)
-                    } else {
-                        rgb(153, 180, 214)
-                    },
-                    theme,
-                ));
                 self.depth[at] = depth;
             }
         }

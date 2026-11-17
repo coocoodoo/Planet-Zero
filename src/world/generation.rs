@@ -98,6 +98,7 @@ impl World {
             materials: vec![0; SIZE * SIZE],
             obstacles: vec![],
             ceiling: 0,
+            cloud_levels: vec![],
             clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
             spawn: (2048.0, 2048.0),
             kind,
@@ -275,36 +276,7 @@ impl World {
         if kind == MapKind::Volcanic {
             world.spawn = (532.0 * CELL as f32 - 180.0, 508.0 * CELL as f32 + 630.0);
         }
-        for cluster in 0..profile.cloud_clusters {
-            let rank = (cluster & 15) as u8;
-            let cx = random.next() * CLOUD_SIZE as f32;
-            let cy = random.next() * CLOUD_SIZE as f32;
-            let scale = 0.6 + random.next() * random.next() * 1.25;
-            let angle = 0.35 + (random.next() - 0.5) * 1.3;
-            let length = (12.0 + random.next() * 24.0) * scale;
-            let puffs = 4 + (random.next() * 7.0) as i32;
-            for puff in 0..puffs {
-                let t = puff as f32 / (puffs - 1) as f32 * 2.0 - 1.0;
-                let px = cx + angle.cos() * t * length + (random.next() - 0.5) * 9.0 * scale;
-                let py = cy + angle.sin() * t * length + (random.next() - 0.5) * 9.0 * scale;
-                let r = (6.0 + random.next() * 8.0) * scale * (1.0 - 0.45 * t.abs());
-                let thickness = (r * 0.6).round().clamp(2.0, 8.0);
-                let extent = r.ceil() as i32;
-                for dy in -extent..=extent {
-                    for dx in -extent..=extent {
-                        let distance = (dx * dx + dy * dy) as f32 / (r * r);
-                        if distance > 1.0 {
-                            continue;
-                        }
-                        let height = ((1.0 - distance).sqrt() * thickness).round().max(1.0) as u8;
-                        let at = index(px.round() as i32 + dx, py.round() as i32 + dy, CLOUD_SIZE);
-                        if height > world.clouds[at] & 15 {
-                            world.clouds[at] = (rank << 4) | height;
-                        }
-                    }
-                }
-            }
-        }
+        world.generate_clouds(&mut random, profile.cloud_clusters);
         world.add_landmarks();
         world.update_ceiling();
         world

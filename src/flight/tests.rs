@@ -5,6 +5,7 @@ fn terrain() -> World {
     World {
         obstacles: vec![],
         ceiling: 40,
+        cloud_levels: vec![],
         heights: vec![0; SIZE * SIZE],
         materials: vec![0; SIZE * SIZE],
         clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
@@ -126,7 +127,7 @@ fn demonstration_completes_a_safe_cycle_and_releases_control() {
 }
 
 #[test]
-fn ground_protection_levels_out_the_aircraft() {
+fn automatic_descent_levels_out_at_ground_protection() {
     let world = terrain();
     let mut flight = Flight::new(&world);
     let controls = Controls {
@@ -213,4 +214,30 @@ fn flat_ground_clearance_stays_low_and_high_terrain_triggers_early_climb() {
         assert!(f.position.z >= world.height(f.position.x, f.position.y) + MIN_CLEARANCE);
     }
     assert!(rose_before_ridge);
+}
+
+#[test]
+fn low_altitude_loops_preserve_pitch_and_lift_the_trajectory() {
+    let world = terrain();
+    for direction in [-1.0, 1.0] {
+        let mut f = Flight::new(&world);
+        f.position.z = MIN_CLEARANCE + 2.0;
+        let mut rotation = 0.0;
+        for _ in 0..420 {
+            let before = f.pitch;
+            f.step(
+                1.0 / 60.0,
+                &Controls {
+                    climb: direction,
+                    manual: true,
+                    aerobatic: true,
+                    ..Default::default()
+                },
+                &world,
+            );
+            rotation += angle(f.pitch - before);
+            assert!(f.position.z >= MIN_CLEARANCE);
+        }
+        assert!(rotation * direction > TAU);
+    }
 }

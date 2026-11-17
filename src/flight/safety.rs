@@ -32,3 +32,27 @@ pub(super) fn flight_floor(world: &World, position: Vec3, forward: Vec3, speed: 
     }
     (floor, climb)
 }
+
+pub(super) fn loop_lift(
+    world: &World,
+    position: Vec3,
+    yaw: f32,
+    pitch: f32,
+    rate: f32,
+    speed: f32,
+) -> f32 {
+    if world.kind == MapKind::Space {
+        return 0.0;
+    }
+    let heading = vec3(yaw.sin(), -yaw.cos(), 0.0);
+    let radius = speed / rate;
+    let mut lift = 0.0_f32;
+    for t in [0.4, 0.8, 1.3, 1.9, 2.6, 3.4] {
+        let a = pitch + rate * t;
+        let probe = position
+            + heading * radius * (a.sin() - pitch.sin())
+            + Vec3::Z * radius * (pitch.cos() - a.cos());
+        lift = lift.max(clearance_floor(world, probe) + 6.0 - probe.z);
+    }
+    lift
+}

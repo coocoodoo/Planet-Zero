@@ -24,13 +24,10 @@ impl Renderer {
     pub(super) fn world(&mut self, world: &World, flight: &Flight, camera: &Camera, theme: usize) {
         if camera.pitch.abs() > 0.001 {
             self.pitched_terrain(world, flight, camera, theme);
+            self.draw_clouds(world, flight, camera, theme);
             return;
         }
-        let height_limit = (world.ceiling as usize).max(if world.kind.vacuum() {
-            0
-        } else {
-            CLOUD_ALT + 8
-        });
+        let height_limit = world.ceiling as usize;
         let (s, c) = camera.yaw.sin_cos();
         let q = camera.q;
         let scale = camera.scale;
@@ -60,10 +57,9 @@ impl Renderer {
             mix(weather.haze(theme), rgb(225, 234, 255), flash)
         };
         let mut colors = [[[[0_u32; 2]; MATERIAL_COUNT + 2]; 2]; 11];
-        let mut clouds = [[0_u32; 9]; 11];
-        for fog in 0..=10 {
+        for (fog, palette) in colors.iter_mut().enumerate() {
             let amount = fog as f32 / 10.0;
-            for (shade, materials) in colors[fog].iter_mut().enumerate() {
+            for (shade, materials) in palette.iter_mut().enumerate() {
                 for (material, faces) in materials.iter_mut().enumerate() {
                     let color = match material {
                         MATERIAL_COUNT => lighting(rgb(240, 252, 255)),
@@ -87,19 +83,6 @@ impl Renderer {
                         );
                     }
                 }
-            }
-            for (k, cloud_color) in clouds[fog].iter_mut().enumerate() {
-                let f = k as f32 / 7.0;
-                let base = match k {
-                    8 => rgb(255, 255, 255),
-                    7 => rgb(138, 160, 200),
-                    _ => rgb(
-                        (158.0 + 44.0 * f) as u8,
-                        (182.0 + 36.0 * f) as u8,
-                        (222.0 + 18.0 * f) as u8,
-                    ),
-                };
-                *cloud_color = mix(lighting(base), haze, amount);
             }
         }
         let below = self.h as f32 - cy;
@@ -180,30 +163,6 @@ impl Renderer {
                     wy += ay;
                     continue;
                 }
-                let cloud = world.cloud(wx, wy, flight.time);
-                if cloud > 0 {
-                    let z = CLOUD_ALT + cloud - 1;
-                    let color = clouds[fog_index][8];
-                    self.span(x, rows[z], previous[z], color, distance, cloud == 1);
-                    self.span(
-                        x,
-                        previous[CLOUD_ALT],
-                        rows[CLOUD_ALT],
-                        clouds[fog_index][7],
-                        distance,
-                        cloud == 1,
-                    );
-                    for k in (0..cloud - 1).rev() {
-                        self.span(
-                            x,
-                            previous[CLOUD_ALT + k + 1],
-                            previous[CLOUD_ALT + k],
-                            clouds[fog_index][k],
-                            distance,
-                            false,
-                        );
-                    }
-                }
                 let gx = wx.floor() as i32;
                 let gy = wy.floor() as i32;
                 let at = index(gx, gy, SIZE);
@@ -250,6 +209,7 @@ impl Renderer {
                 wy += ay;
             }
         }
+        self.draw_clouds(world, flight, camera, theme);
     }
     pub(super) fn sky(&mut self, camera: &Camera, flight: &Flight, theme: usize, height: usize) {
         let horizon = if camera.q > 0.00001 {
