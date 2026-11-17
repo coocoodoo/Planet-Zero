@@ -23,7 +23,7 @@ pub fn draw(app: &mut App) {
         c.shade(0, 0, 320, 32);
         c.text_scale(10, 7, "RUST / FLY", WHITE, 2);
         c.text(224, 8, "FLIGHT CLUB", CYAN);
-        c.text(224, 20, "ARCADE 0.7", MUTED);
+        c.text(224, 20, "ARCADE 0.8", MUTED);
         c.shade(8, 34, 304, 115);
         c.rect(8, 34, 2, 115, CYAN);
         let stage = format!(
@@ -84,7 +84,7 @@ pub fn draw(app: &mut App) {
         c.rect(6, 6, 2, 158, CYAN);
         let pages = [
             [
-                "FLIGHT MANUAL / 1 OF 4",
+                "FLIGHT MANUAL / 1 OF 5",
                 "Z X C F / WASD : STEER / CLIMB",
                 "4 VIEW  5 Q ROLL  6 SHIFT BOOST",
                 "I IMU ON/OFF   K RECALIBRATE",
@@ -94,7 +94,7 @@ pub fn draw(app: &mut App) {
                 "Z/C PAGE       ENTER RETURN",
             ],
             [
-                "MISSIONS / 2 OF 4",
+                "MISSIONS / 2 OF 5",
                 "RACE : CROSS GREEN GATES IN ORDER",
                 "COINS : 3-5 SECOND CHAIN / X10",
                 "WIN : ENTER ADVANCES TO NEXT MAP",
@@ -104,7 +104,7 @@ pub fn draw(app: &mut App) {
                 "Z/C PAGE       ENTER RETURN",
             ],
             [
-                "COMBAT / 3 OF 4",
+                "COMBAT / 3 OF 5",
                 "3 L FIRE   2 AUTO   O WEAPON",
                 "1 E NOVA   0 Y OVERDRIVE",
                 "GRAZE BULLETS TO CHARGE OVERDRIVE",
@@ -114,13 +114,23 @@ pub fn draw(app: &mut App) {
                 "Z/C PAGE       ENTER RETURN",
             ],
             [
-                "OBJECTIVES / 4 OF 4",
+                "OBJECTIVES / 4 OF 5",
                 "P PATROL : DEFEAT THE QUOTA",
                 "C CONVOY : KEEP TRANSPORT ALIVE",
                 "T STRIKE : DESTROY GROUND GUNS",
                 "S SURVIVE : HOLD UNTIL TIMER ENDS",
                 "B BOSS : DESTROY THE FLAGSHIP",
                 "SIDES : SHIELD ENERGY GOAL ALERTS",
+                "Z/C PAGE       ENTER RETURN",
+            ],
+            [
+                "AEROBATICS / 5 OF 5",
+                "HOLD PITCH : FULL 360 DEG LOOPS",
+                "IMU HOLD LEFT/RIGHT 0.8S : ROLL",
+                "RELEASE PITCH : LEVEL OUT",
+                "GROUND GUARD : 18 WORLD UNITS",
+                "HIGH TERRAIN : EARLY PULL-UP",
+                "H : CREATE LINKED WORMHOLES",
                 "Z/C PAGE       ENTER RETURN",
             ],
         ];

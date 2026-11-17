@@ -64,7 +64,7 @@ impl App {
         }
         if self.page == Page::Help {
             match code {
-                44 | 46 | 105 | 106 => self.help_page = (self.help_page + 1) % 4,
+                44 | 46 | 105 | 106 => self.help_page = (self.help_page + 1) % 5,
                 28 | 35 | 52 | 9 => self.page = self.help_return,
                 _ => {}
             }
