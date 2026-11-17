@@ -120,6 +120,8 @@ impl World {
                                 }
                             } else if xx < 20 || yy < 20 {
                                 32
+                            } else if (x / 192 + y / 192) % 5 != 0 {
+                                33
                             } else {
                                 6
                             }

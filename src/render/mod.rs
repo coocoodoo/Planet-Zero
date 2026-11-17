@@ -280,56 +280,7 @@ impl Renderer {
         }
         self.stages[0] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
-        if world.kind == crate::world::MapKind::Space {
-            self.cosmos(world, &camera, flight.time);
-        } else if self.workers.is_empty() {
-            self.world(world, flight, &camera, theme);
-            if world.kind.vacuum() {
-                self.cosmos(world, &camera, flight.time);
-            } else {
-                self.sky(&camera, flight, theme, height);
-            }
-        } else {
-            let strip = self.w.div_ceil(self.workers.len());
-            let w = self.w;
-            let h = self.h;
-            let visible = &self.visible;
-            std::thread::scope(|scope| {
-                for (i, worker) in self.workers.iter_mut().enumerate() {
-                    let start = i * strip;
-                    let end = ((i + 1) * strip).min(w);
-                    worker.x_origin = start;
-                    worker.w = end - start;
-                    worker.h = h;
-                    worker.pixels.resize(worker.w * h, 0);
-                    worker.pixels.fill(0);
-                    worker.depth.resize(worker.w * h, f32::INFINITY);
-                    worker.depth.fill(f32::INFINITY);
-                    worker.visible.clear();
-                    worker.visible.extend_from_slice(&visible[start..end]);
-                    worker.column.clear();
-                    worker
-                        .column
-                        .extend(visible[start..end].iter().map(|v| v.1));
-                    let mut view = camera;
-                    view.center.x -= start as f32;
-                    scope.spawn(move || {
-                        worker.world(world, flight, &view, theme);
-                        if world.kind.vacuum() {
-                            worker.cosmos(world, &view, flight.time);
-                        } else {
-                            worker.sky(&view, flight, theme, height);
-                        }
-                    });
-                }
-            });
-            for (i, worker) in self.workers.iter().enumerate() {
-                let start = i * strip * h;
-                let end = start + worker.pixels.len();
-                self.pixels[start..end].copy_from_slice(&worker.pixels);
-                self.depth[start..end].copy_from_slice(&worker.depth);
-            }
-        }
+        self.background(world, flight, &camera, theme, height);
         self.scenery(world, &camera, flight.time);
         self.portals(world, flight, &camera, mission, theme);
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;
@@ -374,6 +325,65 @@ impl Renderer {
                 *color
             };
             dest.copy_from_slice(&color.to_le_bytes());
+        }
+    }
+    fn background(
+        &mut self,
+        world: &World,
+        flight: &Flight,
+        camera: &Camera,
+        theme: usize,
+        height: usize,
+    ) {
+        if world.kind == crate::world::MapKind::Space {
+            self.cosmos(world, camera, flight.time);
+        } else if self.workers.is_empty() {
+            self.world(world, flight, camera, theme);
+            if world.kind.vacuum() {
+                self.cosmos(world, camera, flight.time);
+            } else {
+                self.sky(camera, flight, theme, height);
+            }
+        } else {
+            let strip = self.w.div_ceil(self.workers.len());
+            let w = self.w;
+            let h = self.h;
+            let visible = &self.visible;
+            std::thread::scope(|scope| {
+                for (i, worker) in self.workers.iter_mut().enumerate() {
+                    let start = i * strip;
+                    let end = ((i + 1) * strip).min(w);
+                    worker.x_origin = start;
+                    worker.w = end - start;
+                    worker.h = h;
+                    worker.pixels.resize(worker.w * h, 0);
+                    worker.pixels.fill(0);
+                    worker.depth.resize(worker.w * h, f32::INFINITY);
+                    worker.depth.fill(f32::INFINITY);
+                    worker.visible.clear();
+                    worker.visible.extend_from_slice(&visible[start..end]);
+                    worker.column.clear();
+                    worker
+                        .column
+                        .extend(visible[start..end].iter().map(|v| v.1));
+                    let mut view = *camera;
+                    view.center.x -= start as f32;
+                    scope.spawn(move || {
+                        worker.world(world, flight, &view, theme);
+                        if world.kind.vacuum() {
+                            worker.cosmos(world, &view, flight.time);
+                        } else {
+                            worker.sky(&view, flight, theme, height);
+                        }
+                    });
+                }
+            });
+            for (i, worker) in self.workers.iter().enumerate() {
+                let start = i * strip * h;
+                let end = start + worker.pixels.len();
+                self.pixels[start..end].copy_from_slice(&worker.pixels);
+                self.depth[start..end].copy_from_slice(&worker.depth);
+            }
         }
     }
 }

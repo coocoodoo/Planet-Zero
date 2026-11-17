@@ -169,27 +169,39 @@ impl Renderer {
             .cross(vertices[2] - vertices[0])
             .normalize_or_zero();
         let shade = (normal.x * 0.3 + normal.y * 0.2 + normal.z.abs() * 0.9).clamp(0.45, 1.0);
+        let inverse_area = 1.0 / area;
+        let du = (c.x - b.x) * inverse_area;
+        let dv = (a.x - c.x) * inverse_area;
+        let inverse_q = if camera.q > 0.00001 {
+            1.0 / camera.q
+        } else {
+            0.0
+        };
         for x in min.x as i32..=max.x as i32 {
             let y0 = (min.y as i32).max(self.visible[x as usize].0);
             let y1 = (max.y as i32 + 1).min(self.visible[x as usize].1);
+            let start = vec2(x as f32, y0 as f32);
+            let mut u_next = (b - start).perp_dot(c - start) * inverse_area;
+            let mut v_next = (c - start).perp_dot(a - start) * inverse_area;
             for y in y0..y1 {
-                let p = vec2(x as f32, y as f32);
-                let u = (b - p).perp_dot(c - p) / area;
-                let v = (c - p).perp_dot(a - p) / area;
+                let (u, v) = (u_next, v_next);
+                u_next += du;
+                v_next += dv;
                 let w = 1.0 - u - v;
                 if u < 0.0 || v < 0.0 || w < 0.0 {
                     continue;
                 }
                 let weights = vec3(u * inverse[0], v * inverse[1], w * inverse[2]);
                 let denominator = weights.element_sum();
-                let depth = (1.0 / denominator - 1.0) / camera.q;
+                let reciprocal = 1.0 / denominator;
+                let depth = (reciprocal - 1.0) * inverse_q;
                 let at = x as usize * self.h + y as usize;
                 if depth >= self.depth[at] || self.clip_depth.get(at).is_some_and(|d| depth < *d) {
                     continue;
                 }
                 let pos =
                     (vertices[0] * weights.x + vertices[1] * weights.y + vertices[2] * weights.z)
-                        / denominator;
+                        * reciprocal;
                 let material = world.materials
                     [index(pos.x.floor() as i32, pos.y.floor() as i32, SIZE)]
                     as usize;

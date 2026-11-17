@@ -58,6 +58,13 @@ impl Renderer {
                 if scale * object.scale < 0.16 {
                     return;
                 }
+                let (eye, _) = camera.ray(camera.center);
+                let delta = (eye - object.position) / object.scale;
+                let eye = vec3(
+                    c * delta.x + s * delta.y,
+                    -s * delta.x + c * delta.y,
+                    delta.z,
+                );
                 for floor in 1..12 {
                     let z = floor as f32 * 6.0;
                     let lit = if floor % 3 == 0 {
@@ -67,18 +74,22 @@ impl Renderer {
                     };
                     for side in [-1.0, 1.0] {
                         for window in [-1.0, 0.0, 1.0] {
-                            self.world_line(
-                                camera,
-                                local(vec3(window * 6.0 - 1.5, side * 14.5, z)),
-                                local(vec3(window * 6.0 + 1.5, side * 14.5, z)),
-                                lit,
-                            );
-                            self.world_line(
-                                camera,
-                                local(vec3(side * 11.5, window * 8.0 - 2.0, z)),
-                                local(vec3(side * 11.5, window * 8.0 + 2.0, z)),
-                                lit,
-                            );
+                            if eye.y * side > 14.0 {
+                                self.world_line(
+                                    camera,
+                                    local(vec3(window * 6.0 - 1.5, side * 14.5, z)),
+                                    local(vec3(window * 6.0 + 1.5, side * 14.5, z)),
+                                    lit,
+                                );
+                            }
+                            if eye.x * side > 11.0 {
+                                self.world_line(
+                                    camera,
+                                    local(vec3(side * 11.5, window * 8.0 - 2.0, z)),
+                                    local(vec3(side * 11.5, window * 8.0 + 2.0, z)),
+                                    lit,
+                                );
+                            }
                         }
                     }
                 }

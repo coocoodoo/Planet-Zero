@@ -80,25 +80,33 @@ impl Renderer {
             .max(b)
             .max(c)
             .min(vec2(self.w as f32 - 1.0, self.h as f32 - 1.0));
+        let inverse = [da, db, dc].map(|d| 1.0 / (1.0 + camera.q * d));
+        let inverse_area = 1.0 / area;
+        let du = (c.x - b.x) * inverse_area;
+        let dv = (a.x - c.x) * inverse_area;
+        let inverse_q = if camera.q > 0.00001 {
+            1.0 / camera.q
+        } else {
+            0.0
+        };
         for x in min.x as i32..=max.x as i32 {
             let y0 = (min.y as i32).max(self.visible[x as usize].0);
             let y1 = (max.y as i32 + 1).min(self.visible[x as usize].1);
+            let start = vec2(x as f32, y0 as f32);
+            let mut u_next = (b - start).perp_dot(c - start) * inverse_area;
+            let mut v_next = (c - start).perp_dot(a - start) * inverse_area;
             for y in y0..y1 {
-                let p = vec2(x as f32, y as f32);
-                let u = (b - p).perp_dot(c - p) / area;
-                let v = (c - p).perp_dot(a - p) / area;
+                let (u, v) = (u_next, v_next);
+                u_next += du;
+                v_next += dv;
                 let w = 1.0 - u - v;
                 if u >= 0.0 && v >= 0.0 && w >= 0.0 {
                     let depth = if camera.q > 0.00001 {
-                        (1.0 / (u / (1.0 + camera.q * da)
-                            + v / (1.0 + camera.q * db)
-                            + w / (1.0 + camera.q * dc))
-                            - 1.0)
-                            / camera.q
+                        (1.0 / (u * inverse[0] + v * inverse[1] + w * inverse[2]) - 1.0) * inverse_q
                     } else {
                         u * da + v * db + w * dc
                     };
-                    self.point(p, depth, color, 0, 1);
+                    self.point(vec2(x as f32, y as f32), depth, color, 0, 1);
                 }
             }
         }

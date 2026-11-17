@@ -51,8 +51,10 @@ impl Renderer {
                     let ny = (y as f32 - center.y) / radius;
                     let radius2 = nx * nx + ny * ny;
                     samples.push((x as usize, y as usize, depth, radius2));
-                    remote.visible[x as usize].0 = remote.visible[x as usize].0.min(y);
-                    remote.visible[x as usize].1 = remote.visible[x as usize].1.max(y + 1);
+                    if radius2 < 1.04_f32.powi(2) {
+                        remote.visible[x as usize].0 = remote.visible[x as usize].0.min(y);
+                        remote.visible[x as usize].1 = remote.visible[x as usize].1.max(y + 1);
+                    }
                 }
             }
             if samples.is_empty() {
@@ -75,14 +77,7 @@ impl Renderer {
             for (column, visible) in remote.column.iter_mut().zip(&remote.visible) {
                 *column = visible.1;
             }
-            if world.kind != crate::world::MapKind::Space {
-                remote.world(world, flight, &view, theme);
-            }
-            if world.kind.vacuum() {
-                remote.cosmos(world, &view, flight.time);
-            } else {
-                remote.sky(&view, flight, theme, 170);
-            }
+            remote.background(world, flight, &view, theme, 170);
             remote.scenery(world, &view, flight.time);
             if let Some(mission) = mission {
                 remote.mission(mission, flight, &view);
@@ -95,6 +90,8 @@ impl Renderer {
             };
             let phase = flight.time * 1.5;
             let (s, c) = phase.sin_cos();
+            let photon_color = mix(rim, rgb(255, 245, 216), 0.72);
+            let waves = portal_waves();
             for (x, y, depth, radius2) in samples {
                 let at = x * self.h + y;
                 if radius2 < 0.82_f32.powi(2) {
@@ -126,10 +123,11 @@ impl Renderer {
                 };
                 let photon = (1.0 - ((r - 1.035) / 0.045).abs()).max(0.0);
                 let halo = (1.0 - ((r - 1.13) / 0.16).abs()).max(0.0);
-                let filament =
-                    (direction.x * 17.0 + direction.y * 11.0 - phase * 3.0).sin() * 0.18 + 0.42;
+                let wave = ((direction.x * 17.0 + direction.y * 11.0 - phase * 3.0)
+                    * (256.0 / std::f32::consts::TAU)) as i32;
+                let filament = waves[(wave & 255) as usize];
                 color = mix(color, rim, (halo * filament).clamp(0.0, 0.7));
-                color = mix(color, mix(rim, rgb(255, 245, 216), 0.72), photon * 0.95);
+                color = mix(color, photon_color, photon * 0.95);
                 self.pixels[at] = color;
                 if r < 1.06 {
                     self.depth[at] = depth;
@@ -138,6 +136,13 @@ impl Renderer {
         }
         self.portal_view = Some(remote);
     }
+}
+
+fn portal_waves() -> &'static [f32; 256] {
+    static WAVES: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
+    WAVES.get_or_init(|| {
+        std::array::from_fn(|i| (i as f32 * std::f32::consts::TAU / 256.0).sin() * 0.18 + 0.42)
+    })
 }
 
 #[cfg(test)]

@@ -26,6 +26,7 @@ pub(super) fn maneuvers(
             );
             let mut samples = Vec::with_capacity(frames);
             let mut rotation = 0.0;
+            let mut stages = [0.0; 3];
             for frame in 0..frames {
                 let before = game.flight.pitch;
                 let start = Instant::now();
@@ -40,6 +41,9 @@ pub(super) fn maneuvers(
                 );
                 rotation += angle(game.flight.pitch - before);
                 game.draw();
+                for (total, value) in stages.iter_mut().zip(game.renderer.stages) {
+                    *total += value;
+                }
                 samples.push(start.elapsed().as_secs_f64() * 1000.0);
                 if let Some(path) = &options.capture
                     && [0, 40, 80, 120, 160].contains(&frame)
@@ -48,6 +52,7 @@ pub(super) fn maneuvers(
                 }
             }
             report(&name, 1, &mut samples);
+            eprintln!("{name} stages: {:?}", stages.map(|v| v / frames as f64));
             println!(
                 "{{\"scene\":\"{name}\",\"rotation_degrees\":{:.1}}}",
                 rotation.to_degrees()

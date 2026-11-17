@@ -164,6 +164,34 @@ impl Renderer {
             if object.position.distance_squared(camera.position) > 2100.0_f32.powi(2) {
                 continue;
             }
+            if object.kind == Structure::Building {
+                let half = vec3(18.0, 18.0, 47.0) * object.scale;
+                let delta = object.position + Vec3::Z * half.z - camera.position;
+                let bounds = [
+                    (camera.right * camera.scale, camera.center.x),
+                    (
+                        -camera.right * camera.scale,
+                        self.w as f32 - camera.center.x,
+                    ),
+                    (
+                        -camera.up * camera.scale - camera.forward * camera.scale * camera.slope,
+                        camera.center.y,
+                    ),
+                    (
+                        camera.up * camera.scale + camera.forward * camera.scale * camera.slope,
+                        self.h as f32 - camera.center.y,
+                    ),
+                ];
+                if bounds.iter().any(|(axis, offset)| {
+                    let plane = *axis + camera.forward * (*offset * camera.q);
+                    delta.dot(plane) + offset + plane.abs().dot(half) < 0.0
+                }) || 1.0
+                    + camera.q * (delta.dot(camera.forward) + camera.forward.abs().dot(half))
+                    < 0.12
+                {
+                    continue;
+                }
+            }
             if self
                 .clip_plane
                 .is_some_and(|(p, n)| (object.position - p).dot(n) < -100.0 * object.scale)

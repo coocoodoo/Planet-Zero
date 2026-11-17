@@ -185,8 +185,9 @@ fn flat_ground_clearance_stays_low_and_high_terrain_triggers_early_climb() {
         f.step(
             1.0 / 60.0,
             &Controls {
-                climb: -1.0,
+                climb: -0.2,
                 manual: true,
+                aerobatic: true,
                 ..Default::default()
             },
             &world,

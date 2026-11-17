@@ -267,6 +267,14 @@ fn capture_landmarks(game: &mut Game, path: &Path) -> Result<(), Box<dyn Error>>
             ("lunar-crater", vec3(2210.0, 3080.0, 240.0), 0.10, 1),
         ],
         MapKind::Space => vec![("stellar-sun", vec3(2048.0, 2900.0, 150.0), -0.6, 1)],
+        MapKind::City => vec![("city-skyline", vec3(2112.0, 2670.0, 205.0), 0.0, 1)],
+        MapKind::Highlands => vec![(
+            "wind-farm",
+            vec3(1960.0, 3120.0, game.world.height(1960.0, 3120.0) + 85.0),
+            0.0,
+            1,
+        )],
+        MapKind::Fjords => vec![("fjord-channel", vec3(1680.0, 3100.0, 110.0), 0.0, 1)],
         _ => vec![],
     };
     for (name, position, yaw, view) in scenes {
@@ -376,6 +384,9 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
     let mut presenting = Vec::new();
     let began = Instant::now();
     let mut previous_state = None;
+    let mut maneuvers = [0_u32; 3];
+    let mut pitch_rotation = 0.0_f32;
+    let mut minimum_clearance = f32::INFINITY;
     while !stopped() && !game.quit && options.frames.is_none_or(|limit| count < limit) {
         let start = Instant::now();
         keyboard.poll(game)?;
@@ -386,7 +397,19 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
             }
             game.motion = sensor.motion();
         }
+        let (pitch, spin, warp) = (game.flight.pitch, game.flight.spin, game.flight.warp_flash);
         game.step((start - previous).as_secs_f32());
+        if options.frames.is_some() {
+            pitch_rotation += rust_fly::flight::angle(game.flight.pitch - pitch);
+            if spin == 0.0 && game.flight.spin != 0.0 {
+                maneuvers[usize::from(game.flight.spin > 0.0)] += 1;
+            }
+            if game.flight.warp_flash > warp {
+                maneuvers[2] += 1;
+            }
+            let p = game.flight.position;
+            minimum_clearance = minimum_clearance.min(p.z - game.world.height(p.x, p.y));
+        }
         if let Some(audio) = &audio {
             audio.update(&mut game.app);
         }
@@ -430,6 +453,14 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
     if !rendering.is_empty() {
         report("render", 1, &mut rendering);
         report("present", 1, &mut presenting);
+        println!(
+            "{{\"roll_left\":{},\"roll_right\":{},\"warps\":{},\"portals\":{},\"pitch_rotation_degrees\":{:.1},\"minimum_clearance\":{minimum_clearance:.2}}}",
+            maneuvers[0],
+            maneuvers[1],
+            maneuvers[2],
+            game.world.portals.len(),
+            pitch_rotation.to_degrees()
+        );
     }
     println!(
         "{{\"display_frames\":{count},\"elapsed_seconds\":{:.3},\"view\":{},\"auto\":{},\"speed\":{:.2},\"altitude\":{:.2},\"yaw\":{:.4},\"bank\":{:.4},\"pitch\":{:.4},\"wings\":{},\"imu_enabled\":{},\"imu_ready\":{},\"width\":320,\"height\":170,\"map\":\"{}\",\"seed\":{},\"weather\":\"{}\",\"demo\":{},\"clearance\":{:.2}}}",
