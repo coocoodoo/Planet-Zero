@@ -301,7 +301,12 @@ impl Renderer {
         self.portals(world, flight, &camera, mission, theme, network);
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
-        let mut jets: Vec<&Flight> = flight.wingmen.iter().take(flight.wing_count).collect();
+        let mut jets: Vec<&Flight> = flight
+            .wingmen
+            .iter()
+            .take(flight.wing_count)
+            .filter(|wing| wing.portal_wait <= 0.0)
+            .collect();
         if cockpit < 0.6 {
             jets.push(flight);
         }

@@ -83,8 +83,7 @@ impl Renderer {
         remote.mask.resize(self.w * self.h, 0);
         remote.visible.resize(self.w, (0, 0));
         for (original, exit, destination, i) in scenes {
-            let (eye, _) = camera.ray(camera.center);
-            let entry = original.facing(eye);
+            let entry = camera.portal_frame(original);
             let Some((center, depth, scale)) = camera.project(entry.center) else {
                 continue;
             };

@@ -41,6 +41,9 @@ pub struct Flight {
     pub warp_flash: f32,
     portal_cooldown: f32,
     pub wing_count: usize,
+    pub portal_wait: f32,
+    rejoining: bool,
+    camera_offset: f32,
     pub demo: bool,
     pub hud: bool,
     pub vehicle: crate::content::vehicles::Vehicle,
@@ -85,6 +88,9 @@ impl Flight {
             warp_flash: 0.0,
             portal_cooldown: 0.0,
             wing_count: 2,
+            portal_wait: 0.0,
+            rejoining: false,
+            camera_offset: 0.0,
             demo: false,
             hud: true,
             vehicle: crate::content::vehicles::Vehicle::Falcon,
@@ -148,9 +154,10 @@ impl Flight {
         if world.portals.len() != 2 || self.portal_cooldown > 0.0 {
             return false;
         }
+        let camera = Camera::new(self, 320, 170);
         for (i, entry) in world.portals.iter().enumerate() {
-            if entry.crossed(previous, self.position) {
-                let entry = entry.facing(previous);
+            if camera.enters_portal(*entry, previous, self.position) {
+                let entry = camera.portal_frame(*entry);
                 let exit = world.portals[1 - i];
                 self.warp(entry, exit);
                 return true;
@@ -180,6 +187,7 @@ impl Flight {
         entry: crate::world::portal::Portal,
         exit: crate::world::portal::Portal,
     ) {
+        let camera = Camera::new(self, 320, 170);
         let rotation = entry.rotation_to(exit);
         self.position = entry.transform(exit, self.position);
         let distance = (self.position - exit.center).dot(exit.normal());
@@ -188,10 +196,26 @@ impl Flight {
         self.follow = entry.transform(exit, self.follow) + offset;
         self.yaw += rotation;
         self.camera_yaw -= rotation;
+        self.camera_offset -= rotation * 0.4;
         self.trails.clear();
-        for wing in &mut self.wingmen {
-            wing.position = entry.transform(exit, wing.position) + offset;
-            wing.follow = entry.transform(exit, wing.follow) + offset;
+        for (i, wing) in self.wingmen.iter_mut().enumerate() {
+            let entered = camera
+                .project(entry.center)
+                .zip(camera.project(wing.position))
+                .is_some_and(|((center, _, scale), (point, _, _))| {
+                    point.distance(center) < entry.radius * scale * 0.82
+                        && wing.position.distance(entry.center) < entry.radius * 1.6
+                });
+            if entered {
+                wing.position = entry.transform(exit, wing.position) + offset;
+                wing.follow = entry.transform(exit, wing.follow) + offset;
+            } else {
+                wing.portal_wait = 0.45 + i as f32 * 0.3;
+                wing.rejoining = true;
+                wing.position =
+                    exit.center + exit.right() * (i as f32 * 2.0 - 1.0) * exit.radius * 0.25;
+                wing.follow = wing.position;
+            }
             wing.yaw += rotation;
             wing.camera_yaw -= rotation;
             wing.trails.clear();
@@ -346,7 +370,8 @@ impl Flight {
             vec3(self.yaw.sin(), -self.yaw.cos(), 0.0)
         };
         let proposed = self.position + horizontal * self.speed * dt;
-        let (floor, ahead_climb) = flight_floor(world, self.position, horizontal, self.speed);
+        let (floor, ahead_climb) =
+            flight_floor(world, self.position, horizontal, self.speed, self.rate);
         let mut climb = if manual_attitude {
             forward.z * self.speed
         } else if controls.manual {
@@ -355,7 +380,14 @@ impl Flight {
             (110.0 - self.position.z) * 0.6
         };
         climb = climb.max(ahead_climb).clamp(-self.speed, self.speed);
-        let acceleration = 90.0;
+        if self.loop_remaining <= 0.0 {
+            climb = climb.clamp(-self.speed * 0.4, self.speed * 0.4);
+        }
+        let acceleration = if self.loop_remaining > 0.0 {
+            90.0
+        } else {
+            24.0
+        };
         self.vertical_speed +=
             (climb - self.vertical_speed).clamp(-acceleration * dt, acceleration * dt);
         let ceiling = world.flight_ceiling(self.position);
@@ -386,7 +418,8 @@ impl Flight {
             }
         }
         self.follow += (self.position - self.follow) * ease(4.5, dt);
-        self.camera_yaw += angle(-self.yaw * 0.6 - self.camera_yaw) * ease(1.5, dt);
+        self.camera_yaw +=
+            angle(-self.yaw * 0.6 + self.camera_offset - self.camera_yaw) * ease(1.5, dt);
         let camera_top = if self.demo && matches!((self.demo_time / 8.0) as usize % 7, 2 | 4) {
             (std::f32::consts::PI * (self.demo_time % 8.0) / 8.0)
                 .sin()
@@ -419,7 +452,17 @@ impl Flight {
                 + formation_right * side * (27.0 + split * 55.0)
                 + formation_forward * 70.0
                 + formation_up * (2.0 + (self.time * 1.3 + i as f32 * 2.0).sin());
-            wing.position += (goal - wing.position) * ease(4.5, dt);
+            if wing.portal_wait > 0.0 {
+                wing.portal_wait = (wing.portal_wait - dt).max(0.0);
+                continue;
+            }
+            if wing.rejoining {
+                let delta = goal - wing.position;
+                wing.position += delta.clamp_length_max(self.speed * 1.7 * dt);
+                wing.rejoining = delta.length() > 12.0;
+            } else {
+                wing.position += (goal - wing.position) * ease(4.5, dt);
+            }
             wing.position.z = wing.position.z.max(clearance_floor(world, wing.position));
             wing.yaw += angle(self.yaw - wing.yaw) * ease(4.0, dt);
             wing.bank += (self.bank - side * split * 0.7 - wing.bank) * ease(3.2, dt);

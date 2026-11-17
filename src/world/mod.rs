@@ -1,3 +1,4 @@
+pub mod airspace;
 pub use noise::{hash, index};
 pub mod celestial;
 mod city;
@@ -77,6 +78,7 @@ impl MapKind {
 
 #[derive(Clone)]
 pub struct World {
+    pub airspace: airspace::Airspace,
     pub heights: Vec<u8>,
     pub obstacles: Vec<u8>,
     pub ceiling: u8,
@@ -98,6 +100,7 @@ impl World {
     pub fn update_ceiling(&mut self) {
         self.ceiling = self.heights.iter().copied().max().unwrap_or(0);
         self.prepare_cloud_heights();
+        self.airspace = airspace::Airspace::build(self);
     }
     pub fn height(&self, x: f32, y: f32) -> f32 {
         if self.kind == MapKind::Space {

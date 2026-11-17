@@ -51,6 +51,42 @@ impl Camera {
         self.forward = forward * cp + Vec3::Z * sp;
         self.up = Vec3::Z * cp - forward * sp;
     }
+    pub fn portal_frame(
+        &self,
+        portal: crate::world::portal::Portal,
+    ) -> crate::world::portal::Portal {
+        let (eye, ray) = self.ray(self.center);
+        portal.facing(if self.q > 0.00001 {
+            eye
+        } else {
+            portal.center - ray * 100.0
+        })
+    }
+
+    pub fn enters_portal(
+        &self,
+        portal: crate::world::portal::Portal,
+        from: Vec3,
+        to: Vec3,
+    ) -> bool {
+        let movement = to - from;
+        if movement.length_squared() < 0.000001 || (from - portal.center).dot(movement) >= 0.0 {
+            return false;
+        }
+        let t = (-(from - portal.center).dot(movement) / movement.length_squared()).clamp(0.0, 1.0);
+        let nearest = from.lerp(to, t);
+        if nearest.distance_squared(portal.center) > (portal.radius * 1.6).powi(2) {
+            return false;
+        }
+        let Some((center, _, scale)) = self.project(portal.center) else {
+            return false;
+        };
+        let Some((point, _, _)) = self.project(nearest) else {
+            return false;
+        };
+        point.distance_squared(center) < (portal.radius * scale * 0.82).powi(2)
+    }
+
     pub fn project(&self, point: Vec3) -> Option<(Vec2, f32, f32)> {
         let delta = point - self.position;
         let depth = delta.dot(self.forward);

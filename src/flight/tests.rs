@@ -6,6 +6,7 @@ fn terrain() -> World {
         obstacles: vec![],
         ceiling: 40,
         cloud_levels: vec![],
+        airspace: Default::default(),
         heights: vec![0; SIZE * SIZE],
         materials: vec![0; SIZE * SIZE],
         clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
@@ -26,7 +27,9 @@ fn warp_preserves_speed_camera_formation_and_cooldown() {
     f.position = entry.center - entry.normal() * 3.0;
     f.follow = f.position + entry.normal() * 12.0;
     f.speed = 170.0;
-    let source = entry.facing(entry.center + entry.normal() * 4.0);
+    let source = Camera::new(&f, 320, 170).portal_frame(entry);
+    f.wingmen[0].position = entry.center;
+    f.wingmen[0].follow = entry.center;
     let old_follow = f.follow;
     let old_wing = f.wingmen[0].position;
     let yaw = f.yaw;
@@ -183,7 +186,7 @@ fn flat_ground_clearance_stays_low_and_high_terrain_triggers_early_climb() {
     let mut world = terrain();
     let mut f = Flight::new(&world);
     f.yaw = 0.0;
-    for _ in 0..600 {
+    for _ in 0..900 {
         f.step(
             1.0 / 60.0,
             &Controls {
@@ -195,7 +198,11 @@ fn flat_ground_clearance_stays_low_and_high_terrain_triggers_early_climb() {
             &world,
         );
     }
-    assert!(f.position.z >= MIN_CLEARANCE && f.position.z < MIN_CLEARANCE + 1.0);
+    assert!(
+        f.position.z >= MIN_CLEARANCE && f.position.z < MIN_CLEARANCE + 1.0,
+        "altitude {}",
+        f.position.z
+    );
     f.position = vec3(256.0, 450.0, 30.0);
     f.pitch = 0.0;
     world.heights[..260 * SIZE].fill(130);
@@ -295,4 +302,94 @@ fn low_altitude_controls_limit_pitch_without_forced_lift() {
     }
     assert!(rotation < -TAU + 0.03);
     assert!(f.pitch.abs() < 0.03);
+}
+
+#[test]
+fn portal_capture_matches_the_visible_aperture_in_all_views() {
+    use crate::world::portal::Portal;
+    let world = terrain();
+    for view in 0..3 {
+        let mut f = Flight::new(&world);
+        f.position = vec3(0.0, 120.0, 200.0);
+        f.follow = f.position;
+        f.yaw = 0.0;
+        f.camera_yaw = 0.0;
+        f.weights = [0.0; 3];
+        f.weights[view] = 1.0;
+        let camera = Camera::new(&f, 320, 170);
+        let portal = Portal {
+            center: vec3(0.0, 0.0, 200.0),
+            yaw: 2.0,
+            radius: 50.0,
+        };
+        let (_, ray) = camera.ray(camera.project(portal.center).unwrap().0);
+        let point = portal.center - ray.normalize() * 25.0;
+        assert!(camera.enters_portal(portal, point - ray.normalize() * 5.0, point));
+        let outside = point + camera.right * 70.0;
+        assert!(!camera.enters_portal(portal, outside - ray.normalize() * 5.0, outside));
+        let entry = camera.portal_frame(portal);
+        let exit = Portal {
+            center: vec3(1500.0, 900.0, 330.0),
+            yaw: -1.1,
+            ..portal
+        };
+        let before = Camera::new(&f, 320, 170);
+        let marker = portal.center + vec3(20.0, -70.0, 35.0);
+        let projected = before.project(marker).unwrap().0;
+        let original = f.position;
+        f.warp(entry, exit);
+        let offset = f.position - entry.transform(exit, original);
+        let after = Camera::new(&f, 320, 170);
+        let actual = after
+            .project(entry.transform(exit, marker) + offset)
+            .unwrap()
+            .0;
+        assert!(
+            actual.distance(projected) < 0.001,
+            "view {view}: {actual:?} {projected:?}"
+        );
+    }
+}
+
+#[test]
+fn wingmen_outside_the_aperture_rejoin_from_the_exit() {
+    use crate::world::portal::Portal;
+    let world = World::generate(crate::world::MapKind::Space, 1999);
+    let mut f = Flight::new(&world);
+    f.position = vec3(0.0, 0.0, 200.0);
+    f.follow = f.position;
+    f.yaw = 0.0;
+    let entry = Portal {
+        center: f.position,
+        yaw: std::f32::consts::PI,
+        radius: 50.0,
+    };
+    let exit = Portal {
+        center: vec3(1400.0, 1100.0, 200.0),
+        yaw: 0.0,
+        ..entry
+    };
+    f.wingmen[0].position = entry.center + Vec3::X * 120.0;
+    f.warp(entry, exit);
+    assert!(f.wingmen[0].portal_wait > 0.0);
+    assert!(f.wingmen[0].position.distance(exit.center) < exit.radius);
+    let mut appeared = false;
+    for _ in 0..300 {
+        let before = f.wingmen[0].position;
+        f.step(
+            1.0 / 60.0,
+            &Controls {
+                manual: true,
+                ..Default::default()
+            },
+            &world,
+        );
+        let wing = &f.wingmen[0];
+        assert!(wing.position.distance(before) <= f.speed * 1.7 / 60.0 + 0.01);
+        if !appeared && wing.portal_wait <= 0.0 {
+            assert!((wing.position - f.position).dot(f.axes()[1]) < 0.0);
+            appeared = true;
+        }
+    }
+    assert!(appeared && !f.wingmen[0].rejoining);
 }

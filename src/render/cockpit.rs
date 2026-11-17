@@ -401,7 +401,12 @@ fn instruments(
             p.put(71 + x, 126 + y, crt[0]);
         }
     }
-    for wing in f.wingmen.iter().take(f.wing_count) {
+    for wing in f
+        .wingmen
+        .iter()
+        .take(f.wing_count)
+        .filter(|wing| wing.portal_wait <= 0.0)
+    {
         let d = wing.position - f.position;
         p.rect(
             71 + ((d.x * cy + d.y * sy) / 15.0).round() as i32,

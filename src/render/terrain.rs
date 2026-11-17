@@ -117,7 +117,13 @@ impl Renderer {
                 .floor() as i32;
         }
         let shadows: Vec<_> = std::iter::once(flight)
-            .chain(flight.wingmen.iter().take(flight.wing_count))
+            .chain(
+                flight
+                    .wingmen
+                    .iter()
+                    .take(flight.wing_count)
+                    .filter(|wing| wing.portal_wait <= 0.0),
+            )
             .map(|f| {
                 let (js, jc) = f.yaw.sin_cos();
                 (

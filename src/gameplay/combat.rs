@@ -26,7 +26,12 @@ impl Mission {
         self.support_timer -= dt;
         if self.support > 0.0 && self.support_timer <= 0.0 {
             self.support_timer = 0.5;
-            for wing in flight.wingmen.iter().take(2) {
+            for wing in flight
+                .wingmen
+                .iter()
+                .take(2)
+                .filter(|wing| wing.portal_wait <= 0.0)
+            {
                 if let Some((id, target)) = self.aim(wing.position, flight.axes()[1], -0.2)
                     && self.shots.len() < 180
                 {
