@@ -25,16 +25,13 @@ pub(super) fn flight_floor(world: &World, position: Vec3, forward: Vec3, speed: 
     if world.kind == MapKind::Space {
         return (floor, climb);
     }
-    let right = vec3(-forward.y, forward.x, 0.0).normalize_or_zero();
     let steps = (speed * 3.0 / 8.0).ceil() as usize;
     for step in 1..=steps {
         let seconds = step as f32 * 3.0 / steps as f32;
-        for side in [-1.0, 0.0, 1.0] {
-            let probe = position + forward * speed * seconds + right * side * 12.0;
-            let target = world.flight_height(probe) + MIN_CLEARANCE;
-            if target > floor + 6.0 {
-                climb = climb.max((target + 12.0 - position.z) / (seconds - 0.45).max(0.25));
-            }
+        let probe = position + forward * speed * seconds;
+        let target = clearance_floor(world, probe);
+        if target > floor {
+            climb = climb.max((target + 12.0 - position.z) / (seconds - 0.45).max(0.25));
         }
     }
     (floor, climb)

@@ -215,6 +215,29 @@ fn flat_ground_clearance_stays_low_and_high_terrain_triggers_early_climb() {
         assert!(f.position.z >= world.height(f.position.x, f.position.y) + MIN_CLEARANCE);
     }
     assert!(rose_before_ridge);
+    world.heights.fill(0);
+    world.heights[..260 * SIZE].fill(5);
+    let mut f = Flight::new(&world);
+    f.position = vec3(256.0, 450.0, MIN_CLEARANCE);
+    f.yaw = 0.0;
+    let mut previous_speed = 0.0_f32;
+    for _ in 0..240 {
+        let before = f.position.z;
+        f.step(
+            1.0 / 60.0,
+            &Controls {
+                climb: -1.0,
+                manual: true,
+                aerobatic: true,
+                ..Default::default()
+            },
+            &world,
+        );
+        let speed = (f.position.z - before) * 60.0;
+        assert!((speed - previous_speed).abs() < 2.0);
+        previous_speed = speed;
+        assert!(f.position.z >= world.height(f.position.x, f.position.y) + MIN_CLEARANCE);
+    }
 }
 
 #[test]
