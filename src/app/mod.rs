@@ -3,6 +3,7 @@ pub(crate) mod chart;
 mod director;
 mod input;
 pub mod navigation;
+pub(crate) mod orbit;
 mod records;
 mod settings;
 pub mod telemetry;
@@ -37,6 +38,8 @@ pub enum Page {
 }
 
 pub struct App {
+    pub(crate) orbit: orbit::Orbit,
+    pub rendered_map: Option<crate::world::network::MapKey>,
     pub navigation: navigation::Navigation,
     pub(super) direction_tap: Option<(u16, Instant)>,
     pub telemetry: telemetry::Telemetry,
@@ -121,6 +124,8 @@ impl App {
         let settings = settings::Settings::load(settings_path.as_deref());
         flight.faceted = settings.faceted;
         Self {
+            orbit: orbit::Orbit::default(),
+            rendered_map: None,
             navigation: navigation::Navigation::default(),
             direction_tap: None,
             telemetry: telemetry::Telemetry::default(),
@@ -172,6 +177,7 @@ impl App {
         }
     }
     pub fn start(&mut self) {
+        self.orbit = orbit::Orbit::default();
         self.navigation = navigation::Navigation::default();
         self.direction_tap = None;
         self.director = director::Director::default();
@@ -242,6 +248,7 @@ impl App {
         }
     }
     pub fn home(&mut self) {
+        self.orbit = orbit::Orbit::default();
         self.page = Page::Menu;
         self.travel = None;
         self.flight.portal_transit = None;
@@ -265,6 +272,7 @@ impl App {
             }
         }
         if let Some(world) = self.loader.poll() {
+            self.orbit = orbit::Orbit::default();
             self.navigation = navigation::Navigation::default();
             self.flight.change_world(&world);
             self.world = std::sync::Arc::new(world);
@@ -310,12 +318,16 @@ impl App {
         if self.page != Page::Playing {
             return;
         }
-        let controls = self
+        let mut controls = self
             .navigation_controls()
             .unwrap_or_else(|| external.unwrap_or_else(|| self.controls()));
+        self.orbit_controls(&mut controls);
         let mut previous = self.flight.position;
         if self.mission.countdown <= 0.0 {
             self.flight.step(dt, &controls, &self.world);
+        }
+        if self.step_orbit(dt) {
+            return;
         }
         if self.cross_world(previous) {
             return;
@@ -336,6 +348,11 @@ impl App {
     pub fn prepare_scene(&mut self) {
         if (self.page == Page::Playing || self.flight.demo) && self.loader.pending.is_none() {
             self.network.active = true;
+            if let Some(key) = self.orbit_preload() {
+                self.network.ensure(&self.world);
+                self.network.request(key);
+                return;
+            }
             self.network
                 .preload(&self.world, self.flight.position, self.flight.axes()[1]);
         }

@@ -115,6 +115,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
 #[macroquad::main(configuration)]
 async fn main() {
     let mut app = App::new(World::new(7));
+    app.rendered_map = Some(rust_fly::world::network::MapKey::of(&app.world));
     let args: Vec<_> = std::env::args().collect();
     if let Some(i) = args.iter().position(|a| a == "--capture") {
         capture(
@@ -153,6 +154,7 @@ async fn main() {
         (KeyCode::RightShift, k::BOOST_RIGHT),
         (KeyCode::Space, k::VIEW),
         (KeyCode::M, k::CHART),
+        (KeyCode::B, k::ORBIT),
         (KeyCode::U, k::HUD),
         (KeyCode::P, k::PAUSE),
         (KeyCode::R, k::RETRY),
@@ -242,7 +244,9 @@ async fn main() {
         let scale = desktop::SCALES[quality];
         if let Some(frame) = drawing.poll()
             && frame.scale == scale
+            && frame.map == rust_fly::world::network::MapKey::of(&app.world)
         {
+            app.rendered_map = Some(frame.map);
             let (w, h) = (WIDTH * scale, HEIGHT * scale);
             if displayed_scale == scale {
                 texture.update_from_bytes(w as u32, h as u32, &frame.pixels);

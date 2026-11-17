@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) const HELP_PAGES: [[&str; 8]; 11] = [
+pub(super) const HELP_PAGES: [[&str; 8]; 12] = [
     [
         "FLIGHT",
         "UP PITCH UP",
@@ -110,6 +110,16 @@ pub(super) const HELP_PAGES: [[&str; 8]; 11] = [
         "HD SCALE : 1X / 2X / 4X / 8X",
         "ESC BACK / PAUSE / RESUME",
         "ESC HOLD 2S TO EXIT",
+    ],
+    [
+        "ORBIT / FREE FLIGHT",
+        "CLIMB ABOVE ALT 600",
+        "POINT NOSE TOWARD THE SKY",
+        "B ORBIT BOOST ON/OFF",
+        "ALT 1200 : ENTER SPACE",
+        "FOLLOW MOON BEARING IN SPACE",
+        "APPROACH MOON TO ENTER SURFACE",
+        "LUNAR ASCENT RETURNS TO SPACE",
     ],
 ];
 

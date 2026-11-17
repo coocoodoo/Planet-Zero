@@ -378,9 +378,13 @@ impl Renderer {
             self.world(world, flight, camera, theme);
         }
         if world.kind.vacuum() {
-            self.cosmos(world, camera, flight.time);
+            self.cosmos(world, camera, flight);
         } else {
             self.sky(camera, flight, theme, height);
+            let thin_air = crate::app::orbit::thin_air(flight.position.z);
+            if thin_air > 0.0 {
+                self.stars(camera, thin_air);
+            }
         }
         let started = std::time::Instant::now();
         self.scenery(world, camera, flight.time);

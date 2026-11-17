@@ -229,6 +229,6 @@ impl World {
             .filter_map(|c| c.roof(position.x, position.y))
             .filter(|roof| position.z < *roof - 6.0)
             .map(|roof| roof - 12.0)
-            .fold(900.0, f32::min)
+            .fold(2000.0, f32::min)
     }
 }

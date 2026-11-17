@@ -1,4 +1,14 @@
 use super::*;
+
+pub const MOON_RADIUS: f32 = 360.0;
+
+pub fn moon_center(position: Vec3) -> Vec3 {
+    let mut center = vec3(2800.0, 1400.0, 780.0);
+    for axis in 0..2 {
+        center[axis] += ((position[axis] - center[axis]) / SIZE as f32).round() * SIZE as f32;
+    }
+    center
+}
 use glam::{Vec3, vec3};
 use std::f32::consts::TAU;
 

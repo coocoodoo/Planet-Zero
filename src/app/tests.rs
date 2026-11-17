@@ -1,6 +1,153 @@
 use super::*;
 
 #[test]
+fn orbital_boost_requires_free_flight_altitude_and_respects_pause() {
+    use crate::keys::ORBIT;
+    let mut app = App::new(World::generate(crate::world::MapKind::Moon, 1999));
+    app.start();
+    app.auto = false;
+    app.flight.position.z = 599.0;
+    app.flight.pitch = 0.5;
+    app.key(ORBIT, 1);
+    app.key(ORBIT, 0);
+    assert!(!app.orbit.boost);
+    app.flight.position.z = 650.0;
+    app.flight.pitch = 0.0;
+    assert!(!app.orbit_ready());
+    app.flight.pitch = 0.5;
+    app.mode = Mode::Combat;
+    assert!(!app.orbit_ready());
+    app.mode = Mode::Free;
+    app.key(ORBIT, 1);
+    app.key(ORBIT, 0);
+    assert!(app.orbit.boost);
+    app.page = Page::Paused;
+    let position = app.flight.position;
+    app.step(0.1, None);
+    assert_eq!(app.flight.position, position);
+    app.page = Page::Playing;
+    app.step(0.1, None);
+    assert!(app.flight.orbital_thrust > 0.0);
+    app.key(ORBIT, 1);
+    app.key(ORBIT, 0);
+    assert!(!app.orbit.boost);
+    app.key(ORBIT, 1);
+    app.key(ORBIT, 0);
+    app.home();
+    assert!(!app.orbit.boost);
+    assert!(app.orbit.transition.is_none());
+}
+
+#[test]
+fn orbital_swap_preserves_camera_attitude_and_formation_in_all_views() {
+    use crate::world::MapKind;
+    use crate::world::network::MapKey;
+    use glam::vec3;
+    let moon = std::sync::Arc::new(World::generate(MapKind::Moon, MapKind::Moon.seed()));
+    for view in 0..3 {
+        let mut app = App::new(World::generate(MapKind::Space, MapKind::Space.seed()));
+        app.start();
+        app.auto = false;
+        app.flight.view = view;
+        app.flight.weights = std::array::from_fn(|i| f32::from(i == view));
+        app.flight.yaw = 0.7;
+        app.flight.pitch = -0.4;
+        app.flight.bank = 0.2;
+        app.flight.follow = app.flight.position + vec3(-8.0, 10.0, 12.0);
+        let camera = crate::flight::Camera::new(&app.flight, 320, 170);
+        let position = camera
+            .project(app.flight.position + app.flight.axes()[1] * 180.0)
+            .unwrap()
+            .0;
+        let wings: Vec<_> = app
+            .flight
+            .wingmen
+            .iter()
+            .map(|w| w.position - app.flight.position)
+            .collect();
+        let axes = app.flight.axes();
+        app.network.remember(moon.clone());
+        let target = MapKey::of(&moon);
+        assert!(app.orbit_arrive(target));
+        assert_eq!(app.world.kind, MapKind::Moon);
+        assert_eq!(app.flight.axes(), axes);
+        let after = crate::flight::Camera::new(&app.flight, 320, 170);
+        assert!(
+            position.distance(
+                after
+                    .project(app.flight.position + app.flight.axes()[1] * 180.0)
+                    .unwrap()
+                    .0
+            ) < 0.001
+        );
+        for (wing, expected) in app.flight.wingmen.iter().zip(wings) {
+            assert!((wing.position - app.flight.position - expected).length() < 0.001);
+        }
+        assert_eq!(app.flight.view, view);
+    }
+}
+
+#[test]
+fn orbital_ascent_and_lunar_approach_wait_for_preload_and_switch_once() {
+    use crate::world::MapKind;
+    use crate::world::celestial::{MOON_RADIUS, moon_center};
+    use glam::Vec3;
+    let moon = std::sync::Arc::new(World::generate(MapKind::Moon, MapKind::Moon.seed()));
+    let mut app = App::new((*moon).clone());
+    app.start();
+    app.auto = false;
+    app.flight.position.z = 1190.0;
+    app.flight.follow = app.flight.position;
+    app.flight.pitch = 0.5;
+    app.network
+        .remember(World::generate(MapKind::Space, MapKind::Space.seed()).into());
+    app.rendered_map = Some(crate::world::network::MapKey::of(&app.world));
+    app.key(crate::keys::ORBIT, 1);
+    app.key(crate::keys::ORBIT, 0);
+    for _ in 0..180 {
+        app.step(1.0 / 30.0, None);
+    }
+    assert_eq!(app.world.kind, MapKind::Space);
+    assert_eq!(app.orbit.transition.as_ref().unwrap().opacity(), 1.0);
+    app.page = Page::Paused;
+    let position = app.flight.position;
+    app.step(0.1, None);
+    assert_eq!(app.flight.position, position);
+    app.page = Page::Playing;
+    app.rendered_map = Some(crate::world::network::MapKey::of(&app.world));
+    for _ in 0..90 {
+        app.step(1.0 / 30.0, None);
+    }
+    assert!(app.orbit.transition.is_none());
+    assert!(!app.orbit.boost);
+    app.network.remember(moon);
+    let center = moon_center(app.flight.position);
+    app.flight
+        .translate(center + Vec3::Y * (MOON_RADIUS + 300.0) - app.flight.position);
+    app.flight.yaw = 0.0;
+    app.flight.pitch = 0.0;
+    app.rendered_map = None;
+    for _ in 0..420 {
+        app.step(1.0 / 30.0, None);
+    }
+    assert_eq!(app.world.kind, MapKind::Moon);
+    assert!(app.orbit.transition.is_none());
+    assert!(!app.orbit.boost);
+
+    app.world = World::generate(MapKind::Space, MapKind::Space.seed()).into();
+    app.network = crate::world::network::Network::new(7);
+    app.flight.change_world(&app.world);
+    let center = moon_center(app.flight.position);
+    app.flight
+        .translate(center + Vec3::Y * (MOON_RADIUS + 200.0) - app.flight.position);
+    app.flight.yaw = 0.0;
+    app.flight.pitch = 0.0;
+    app.step(1.0 / 30.0, None);
+    assert_eq!(app.world.kind, MapKind::Space);
+    assert!(app.orbit.transition.is_none());
+}
+
+#[test]
 fn menu_enter_moves_to_start_without_changing_options() {
     let mut app = App::new(World::new(7));
     for row in 0..START_ROW {

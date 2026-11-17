@@ -57,7 +57,7 @@ impl App {
                 } else {
                     1.0
                 },
-            boost: self.flight.boost,
+            boost: self.flight.boost.max(self.flight.orbital_thrust),
             danger,
             overdrive: self.mission.overdrive_time > 0.0,
             settings: self.audio_settings,

@@ -34,6 +34,7 @@ impl App {
         };
         let exit = self.network.exit(&destination, route.id);
         let before = self.flight.position;
+        self.orbit = orbit::Orbit::default();
         self.flight.warp(route.aperture, exit);
         self.flight.enter_region(&destination);
         self.flight.demo_target = None;

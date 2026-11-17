@@ -52,7 +52,7 @@ fn starfield() -> &'static Vec<u32> {
 }
 
 impl Renderer {
-    pub(super) fn cosmos(&mut self, world: &World, camera: &Camera, time: f32) {
+    pub(super) fn stars(&mut self, camera: &Camera, opacity: f32) {
         let texture = starfield();
         let mut sky_camera = *camera;
         sky_camera.q = camera.q.max(0.004);
@@ -61,7 +61,7 @@ impl Renderer {
             let step = sky_camera.up * (-sky_camera.q / sky_camera.scale);
             for y in self.visible[x].0..self.visible[x].1 {
                 let at = x * self.h + y as usize;
-                if self.pixels[at] == 0 && self.depth[at] == f32::INFINITY {
+                if self.depth[at] == f32::INFINITY {
                     let a = ray.abs();
                     let (face, u, v) = if a.x >= a.y && a.x >= a.z {
                         (usize::from(ray.x < 0.0), ray.y / a.x, ray.z / a.x)
@@ -72,11 +72,20 @@ impl Renderer {
                     };
                     let tx = ((u + 1.0) * 63.5).clamp(0.0, 127.0) as usize;
                     let ty = ((v + 1.0) * 63.5).clamp(0.0, 127.0) as usize;
-                    self.pixels[at] = texture[face * 16384 + ty * 128 + tx];
+                    let color = texture[face * 16384 + ty * 128 + tx];
+                    self.pixels[at] = if opacity >= 1.0 {
+                        color
+                    } else {
+                        mix(self.pixels[at], color, opacity)
+                    };
                 }
                 ray += step;
             }
         }
+    }
+    pub(super) fn cosmos(&mut self, world: &World, camera: &Camera, flight: &Flight) {
+        self.stars(camera, 1.0);
+        let time = flight.time;
         if camera.q > 0.0001 {
             let direction = if world.kind == MapKind::Moon {
                 vec3(0.08, -0.95, 0.32)
@@ -97,6 +106,49 @@ impl Renderer {
                 true,
                 time,
             );
+        }
+        if world.kind == MapKind::Space {
+            self.moon(
+                camera,
+                crate::world::celestial::moon_center(flight.position),
+            );
+        }
+    }
+
+    fn moon(&mut self, camera: &Camera, center: Vec3) {
+        let Some((p, depth, scale)) = camera.project(center) else {
+            return;
+        };
+        let radius = crate::world::celestial::MOON_RADIUS;
+        if camera.q > 0.0001 && depth < 0.0 {
+            return;
+        }
+        let r = radius * scale;
+        let min = (p - Vec2::splat(r)).max(Vec2::ZERO);
+        let max = (p + Vec2::splat(r)).min(vec2(self.w as f32 - 1.0, self.h as f32 - 1.0));
+        if min.x > max.x || min.y > max.y {
+            return;
+        }
+        let texture = lunar_texture();
+        for x in min.x as usize..=max.x as usize {
+            let y0 = (min.y as i32).max(self.visible[x].0);
+            let y1 = (max.y as i32 + 1).min(self.visible[x].1);
+            for y in y0..y1 {
+                let uv = (vec2(x as f32, y as f32) - p) / r;
+                let d = uv.length_squared();
+                if d > 1.0 {
+                    continue;
+                }
+                let at = x * self.h + y as usize;
+                let surface = depth - (1.0 - d).sqrt() * radius;
+                if surface >= self.depth[at] {
+                    continue;
+                }
+                let tx = ((uv.x + 1.0) * 127.5) as usize;
+                let ty = ((uv.y + 1.0) * 127.5) as usize;
+                self.pixels[at] = texture[ty * 256 + tx];
+                self.depth[at] = surface;
+            }
         }
     }
 
@@ -543,4 +595,48 @@ impl Renderer {
             );
         }
     }
+}
+
+fn lunar_texture() -> &'static Vec<u32> {
+    static MOON: OnceLock<Vec<u32>> = OnceLock::new();
+    MOON.get_or_init(|| {
+        let craters: Vec<_> = (0..32)
+            .map(|i| {
+                (
+                    vec2(
+                        hash(i * 7919) as f32 / 255.0 * 1.8 - 0.9,
+                        hash(i * 6719 + 1) as f32 / 255.0 * 1.8 - 0.9,
+                    ),
+                    0.025 + hash(i * 9311 + 2) as f32 / 255.0 * 0.13,
+                )
+            })
+            .collect();
+        let mut pixels = vec![0; 256 * 256];
+        for y in 0..256 {
+            for x in 0..256 {
+                let uv = vec2(x as f32, y as f32) / 127.5 - Vec2::ONE;
+                let d = uv.length_squared();
+                let z = (1.0 - d).max(0.0).sqrt();
+                let mut surface = 0.76
+                    + (uv.x * 10.0 + (uv.y * 7.0).sin()).sin()
+                        * (uv.y * 11.0 - uv.x * 4.0).cos()
+                        * 0.13;
+                for (center, radius) in &craters {
+                    let distance = uv.distance(*center) / radius;
+                    if distance < 1.2 {
+                        let rim = (1.0 - ((distance - 0.88) / 0.2).abs()).max(0.0);
+                        surface += rim * 0.26 - (1.0 - distance).max(0.0) * 0.32;
+                    }
+                }
+                surface += (hash((y * 256 + x) as u32) as f32 / 255.0 - 0.5) * 0.08;
+                let light = (-uv.x * 0.58 - uv.y * 0.35 + z * 0.74).max(0.045);
+                pixels[y * 256 + x] = mix(
+                    rgb(11, 14, 24),
+                    rgb(221, 222, 211),
+                    (surface * light).clamp(0.0, 1.0),
+                );
+            }
+        }
+        pixels
+    })
 }

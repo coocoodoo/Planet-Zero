@@ -15,6 +15,7 @@ impl App {
             turn: held(RIGHT) - held(LEFT),
             climb: held(UP) - held(DOWN),
             boost: self.keys.contains(&BOOST) || self.keys.contains(&BOOST_RIGHT),
+            orbital: false,
             manual: !self.auto,
         }
     }
@@ -159,6 +160,7 @@ impl App {
             return;
         }
         match code {
+            ORBIT if self.mode == Mode::Free => self.toggle_orbit(),
             OVERDRIVE if self.mode == Mode::Combat => self.mission.activate_overdrive(),
             VIEW => self.flight.view = (self.flight.view + 1) % 3,
             ROLL_LEFT | ROLL_RIGHT => {
@@ -203,6 +205,9 @@ impl App {
         }
     }
     fn free_flight_key(&mut self, code: u16) {
+        if matches!(code, AUTOPILOT | DEMO | MAP | SEED) {
+            self.orbit = orbit::Orbit::default();
+        }
         match code {
             WEATHER => self.flight.weather = self.flight.weather.next(),
             TIME => self.theme = (self.theme + 1) % 3,

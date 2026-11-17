@@ -34,6 +34,7 @@ pub struct Controls {
     pub turn: f32,
     pub climb: f32,
     pub boost: bool,
+    pub orbital: bool,
     pub manual: bool,
 }
 
@@ -66,6 +67,7 @@ pub struct Flight {
     pub pitch: f32,
     pub rate: f32,
     pub boost: f32,
+    pub orbital_thrust: f32,
     pub speed: f32,
     pub time: f32,
     pub spin: f32,
@@ -121,6 +123,7 @@ impl Flight {
             pitch: 0.0,
             rate: 0.0,
             boost: 0.0,
+            orbital_thrust: 0.0,
             speed: 92.0,
             time: 0.0,
             spin: 0.0,
@@ -177,6 +180,35 @@ impl Flight {
             .ceiling
             .max(world.obstacles.iter().copied().max().unwrap_or(0))
             as f32;
+    }
+    pub fn translate(&mut self, offset: Vec3) {
+        self.position += offset;
+        self.follow += offset;
+        self.director_anchor += offset;
+        for trail in &mut self.trails {
+            for point in trail {
+                *point += offset;
+            }
+        }
+        for wing in &mut self.wingmen {
+            wing.translate(offset);
+        }
+    }
+    pub fn enter_orbit_region(&mut self, world: &World, position: Vec3) {
+        self.translate(position - self.position);
+        self.enter_region(world);
+        self.portal_transit = None;
+        self.portal_exit = None;
+        self.portal_exit_pending = false;
+        self.portal_cooldown = 4.0;
+        self.warp_flash = 0.0;
+        self.trails.clear();
+        for wing in &mut self.wingmen {
+            wing.enter_region(world);
+            wing.trails.clear();
+            wing.portal_wait = 0.0;
+            wing.rejoining = false;
+        }
     }
     pub fn loop_altitude(&self) -> f32 {
         self.aerobatic_ground + self.vehicle.speed() * 1.8 * 2.0 / LOOP_RATE + 64.0
@@ -270,6 +302,7 @@ impl Flight {
             manual: true,
             bank: None,
             aerobatic: false,
+            orbital: false,
         }
     }
 
@@ -325,7 +358,8 @@ impl Flight {
         }
         let boost_goal = f32::from(controls.boost);
         self.boost += (boost_goal - self.boost) * ease(4.0, dt);
-        self.speed = self.vehicle.speed() * (1.0 + self.boost * 0.8);
+        self.orbital_thrust += (f32::from(controls.orbital) - self.orbital_thrust) * ease(1.5, dt);
+        self.speed = self.vehicle.speed() * (1.0 + self.boost * 0.8 + self.orbital_thrust * 3.0);
         let turn = if controls.manual {
             controls.turn
         } else {
@@ -345,7 +379,8 @@ impl Flight {
                 self.loop_direction * LOOP_RATE
             } else {
                 let neutral = (self.pitch / std::f32::consts::PI).round() * std::f32::consts::PI;
-                angle(neutral + input * NORMAL_PITCH - self.pitch) * 2.0
+                let pitch_limit = NORMAL_PITCH + self.orbital_thrust * 0.6;
+                angle(neutral + input * pitch_limit - self.pitch) * 2.0
             };
             self.pitch_rate += (target_rate - self.pitch_rate) * ease(5.0, dt);
             let mut rotation = self.pitch_rate * dt;
@@ -378,9 +413,10 @@ impl Flight {
         };
         climb = climb.max(ahead_climb).clamp(-self.speed, self.speed);
         if self.loop_remaining <= 0.0 {
-            climb = climb.clamp(-self.speed * 0.4, self.speed * 0.4);
+            let limit = self.speed * (0.4 + self.orbital_thrust * 0.55);
+            climb = climb.clamp(-limit, limit);
         }
-        let acceleration = if self.loop_remaining > 0.0 {
+        let acceleration = if self.loop_remaining > 0.0 || self.orbital_thrust > 0.0001 {
             90.0
         } else {
             24.0

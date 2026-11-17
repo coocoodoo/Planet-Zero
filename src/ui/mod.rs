@@ -5,6 +5,7 @@ mod fpv;
 mod hud;
 mod menus;
 mod navigation;
+mod orbit;
 mod osd;
 use crate::app::{App, Page};
 use crate::flight::angle;
@@ -28,6 +29,7 @@ pub fn draw(app: &mut App) {
     } else {
         menus::draw(app);
     }
+    orbit::draw(app);
 }
 
 fn portal_labels(app: &mut App) {
