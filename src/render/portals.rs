@@ -219,6 +219,7 @@ impl Renderer {
                 remote.workers = (0..3).map(|_| Self::single()).collect();
             }
             let mut remote_flight = flight.clone();
+            remote_flight.position = entry.transform(exit, flight.position);
             let remote_theme = if let Some(network) = network.filter(|n| n.active) {
                 let environment =
                     network.environment(crate::world::network::MapKey::of(destination));
