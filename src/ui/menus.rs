@@ -33,7 +33,7 @@ pub fn draw(app: &mut App) {
         c.shade(0, 0, 320, 32);
         c.text_scale(10, 7, "RUST / FLY", WHITE, 2);
         c.text(224, 8, "FLIGHT CLUB", CYAN);
-        c.text(224, 20, "ARCADE 0.9.1", MUTED);
+        c.text(224, 20, "ARCADE 0.9.2", MUTED);
         c.shade(8, 34, 304, 115);
         c.rect(8, 34, 2, 115, CYAN);
         let stage = format!(
@@ -138,8 +138,8 @@ pub fn draw(app: &mut App) {
                 "LOOP READY : HOLD PITCH TO LOOP",
                 "IMU HOLD LEFT/RIGHT 0.8S : ROLL",
                 "LOW FLIGHT : LIMITED PITCH / ROLL",
-                "GROUND GUARD : 28 WORLD UNITS",
-                "HIGH TERRAIN : EARLY PULL-UP",
+                "GROUND GUARD : REGIONAL BASELINE",
+                "CANYONS LOW / TOWERS SMOOTH CLIMB",
                 "H : REPLACE TWO MAP PORTALS",
                 "Z/C PAGE       ENTER RETURN",
             ],
