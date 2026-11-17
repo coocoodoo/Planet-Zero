@@ -1,7 +1,9 @@
 use glam::{Vec3, vec3};
 mod camera;
 mod director;
+mod orbit;
 mod portals;
+pub use orbit::CameraAdjustment;
 mod safety;
 pub use portals::PortalTransit;
 #[cfg(test)]
@@ -40,6 +42,11 @@ pub struct Controls {
 
 #[derive(Clone)]
 pub struct Flight {
+    pub orbit_quiet: bool,
+    pub surface: Option<crate::world::orbit::SurfaceWarp>,
+    pub planet_maps: [Option<std::sync::Arc<crate::world::orbit::SurfaceMap>>; 2],
+    pub sky_rotation: glam::Quat,
+    pub camera_adjustment: Option<CameraAdjustment>,
     pub wingmen: Vec<Flight>,
     pub space: bool,
     pub warp_flash: f32,
@@ -96,6 +103,11 @@ impl Flight {
             110.0_f32.max(world.height(world.spawn.0, world.spawn.1) + 70.0),
         );
         let mut flight = Self {
+            orbit_quiet: false,
+            surface: None,
+            planet_maps: [None, None],
+            sky_rotation: glam::Quat::IDENTITY,
+            camera_adjustment: None,
             wingmen: Vec::new(),
             space: world.kind == crate::world::MapKind::Space,
             warp_flash: 0.0,
@@ -175,7 +187,14 @@ impl Flight {
     }
 
     pub fn enter_region(&mut self, world: &World) {
+        self.orbit_quiet = false;
+        self.surface = None;
+        self.sky_rotation = glam::Quat::IDENTITY;
+        self.camera_adjustment = None;
         self.space = world.kind == crate::world::MapKind::Space;
+        for wing in &mut self.wingmen {
+            wing.enter_region(world);
+        }
         self.aerobatic_ground = world
             .ceiling
             .max(world.obstacles.iter().copied().max().unwrap_or(0))
@@ -192,22 +211,6 @@ impl Flight {
         }
         for wing in &mut self.wingmen {
             wing.translate(offset);
-        }
-    }
-    pub fn enter_orbit_region(&mut self, world: &World, position: Vec3) {
-        self.translate(position - self.position);
-        self.enter_region(world);
-        self.portal_transit = None;
-        self.portal_exit = None;
-        self.portal_exit_pending = false;
-        self.portal_cooldown = 4.0;
-        self.warp_flash = 0.0;
-        self.trails.clear();
-        for wing in &mut self.wingmen {
-            wing.enter_region(world);
-            wing.trails.clear();
-            wing.portal_wait = 0.0;
-            wing.rejoining = false;
         }
     }
     pub fn loop_altitude(&self) -> f32 {
@@ -343,6 +346,12 @@ impl Flight {
         };
         let controls = scripted.as_ref().unwrap_or(controls);
         self.time += dt;
+        if let Some(adjustment) = &mut self.camera_adjustment {
+            adjustment.weight *= (-dt * 0.8).exp();
+            if adjustment.weight < 0.0001 {
+                self.camera_adjustment = None;
+            }
+        }
         self.portal_cooldown = (self.portal_cooldown - dt).max(0.0);
         if let Some(transit) = &mut self.portal_transit {
             transit.elapsed += dt;
@@ -424,15 +433,16 @@ impl Flight {
         self.vertical_speed +=
             (climb - self.vertical_speed).clamp(-acceleration * dt, acceleration * dt);
         let old_altitude = self.position.z;
-        self.position = safety::advance(
-            world,
-            self.position,
-            vec3(
-                proposed.x,
-                proposed.y,
-                old_altitude + self.vertical_speed * dt,
-            ),
+        let target = vec3(
+            proposed.x,
+            proposed.y,
+            old_altitude + self.vertical_speed * dt,
         );
+        self.position = if self.surface.is_some_and(|surface| surface.bend > 0.0) {
+            target
+        } else {
+            safety::advance(world, self.position, target)
+        };
         let actual_climb = (self.position.z - old_altitude) / dt.max(0.001);
         if (actual_climb - self.vertical_speed).abs() > 0.01 {
             self.vertical_speed = actual_climb;
@@ -450,6 +460,9 @@ impl Flight {
                 self.spin = 0.0;
             }
         }
+        self.update_visuals(dt, world);
+    }
+    pub(crate) fn update_visuals(&mut self, dt: f32, world: &World) {
         self.follow += (self.position - self.follow) * ease(4.5, dt);
         self.camera_yaw +=
             angle(-self.yaw * 0.6 + self.camera_offset - self.camera_yaw) * ease(1.5, dt);
@@ -487,11 +500,14 @@ impl Flight {
             } else {
                 wing.position += (goal - wing.position) * ease(4.5, dt);
             }
-            wing.position.z = wing.position.z.max(clearance_floor(world, wing.position));
+            if self.surface.is_none_or(|surface| surface.bend <= 0.0) {
+                wing.position.z = wing.position.z.max(clearance_floor(world, wing.position));
+            }
             wing.yaw += angle(self.yaw - wing.yaw) * ease(4.0, dt);
             wing.bank += (self.bank - side * split * 0.7 - wing.bank) * ease(3.2, dt);
             wing.pitch += angle(self.pitch - wing.pitch) * ease(3.0, dt);
             wing.weather = self.weather;
+            wing.space = self.space;
             wing.vehicle = self.vehicle;
             wing.time = self.time + i as f32 * 0.17;
             wing.boost = self.boost;

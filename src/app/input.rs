@@ -160,10 +160,9 @@ impl App {
             return;
         }
         match code {
-            ORBIT if self.mode == Mode::Free => self.toggle_orbit(),
             OVERDRIVE if self.mode == Mode::Combat => self.mission.activate_overdrive(),
             VIEW => self.flight.view = (self.flight.view + 1) % 3,
-            ROLL_LEFT | ROLL_RIGHT => {
+            ROLL_LEFT | ROLL_RIGHT if self.orbit.transition.is_none() => {
                 let direction = if code == ROLL_LEFT { -1.0 } else { 1.0 };
                 if self.flight.roll_toward(direction) {
                     self.sounds.push(crate::audio::Sound::Roll);
@@ -178,7 +177,7 @@ impl App {
             WEAPON if self.mode == Mode::Combat => self.mission.cycle_weapon(),
             BOMB if self.mode == Mode::Combat => self.mission.bomb(),
             AUTOFIRE if self.mode == Mode::Combat => self.mission.autofire = !self.mission.autofire,
-            UP | LEFT | DOWN | RIGHT => {
+            UP | LEFT | DOWN | RIGHT if self.orbit.transition.is_none() => {
                 self.navigation.active = false;
                 self.auto = false;
                 self.flight.set_demo(false);
@@ -205,6 +204,9 @@ impl App {
         }
     }
     fn free_flight_key(&mut self, code: u16) {
+        if self.orbit.transition.is_some() {
+            return;
+        }
         if matches!(code, AUTOPILOT | DEMO | MAP | SEED) {
             self.orbit = orbit::Orbit::default();
         }

@@ -3,7 +3,7 @@ use crate::world::network::Route;
 
 impl App {
     pub(super) fn cross_world(&mut self, previous: glam::Vec3) -> bool {
-        if !self.network.active || !self.flight.can_warp() {
+        if !self.network.active || !self.flight.can_warp() || self.flight.orbit_quiet {
             return false;
         }
         for mut route in self.network.routes(&self.world) {

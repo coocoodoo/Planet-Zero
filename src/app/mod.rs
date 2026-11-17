@@ -39,7 +39,6 @@ pub enum Page {
 
 pub struct App {
     pub(crate) orbit: orbit::Orbit,
-    pub rendered_map: Option<crate::world::network::MapKey>,
     pub navigation: navigation::Navigation,
     pub(super) direction_tap: Option<(u16, Instant)>,
     pub telemetry: telemetry::Telemetry,
@@ -125,7 +124,6 @@ impl App {
         flight.faceted = settings.faceted;
         Self {
             orbit: orbit::Orbit::default(),
-            rendered_map: None,
             navigation: navigation::Navigation::default(),
             direction_tap: None,
             telemetry: telemetry::Telemetry::default(),
@@ -249,6 +247,10 @@ impl App {
     }
     pub fn home(&mut self) {
         self.orbit = orbit::Orbit::default();
+        self.flight.surface = None;
+        self.flight.sky_rotation = glam::Quat::IDENTITY;
+        self.flight.camera_adjustment = None;
+        self.flight.orbit_quiet = false;
         self.page = Page::Menu;
         self.travel = None;
         self.flight.portal_transit = None;
@@ -321,9 +323,9 @@ impl App {
         let mut controls = self
             .navigation_controls()
             .unwrap_or_else(|| external.unwrap_or_else(|| self.controls()));
-        self.orbit_controls(&mut controls);
+        self.orbit_controls(&mut controls, dt);
         let mut previous = self.flight.position;
-        if self.mission.countdown <= 0.0 {
+        if self.mission.countdown <= 0.0 && self.orbit.transition.is_none() {
             self.flight.step(dt, &controls, &self.world);
         }
         if self.step_orbit(dt) {
@@ -348,9 +350,8 @@ impl App {
     pub fn prepare_scene(&mut self) {
         if (self.page == Page::Playing || self.flight.demo) && self.loader.pending.is_none() {
             self.network.active = true;
-            if let Some(key) = self.orbit_preload() {
+            if self.prepare_orbit() {
                 self.network.ensure(&self.world);
-                self.network.request(key);
                 return;
             }
             self.network

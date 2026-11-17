@@ -3,11 +3,16 @@ use super::*;
 impl Renderer {
     pub(super) fn world(&mut self, world: &World, flight: &Flight, camera: &Camera, theme: usize) {
         let started = std::time::Instant::now();
-        self.pitched_terrain(world, flight, camera, theme);
+        self.pitched_terrain(
+            world,
+            flight.faceted,
+            camera,
+            crate::world::network::Environment {
+                weather: flight.weather,
+                theme,
+            },
+        );
         self.detail[0] = started.elapsed().as_secs_f64() * 1000.0;
-        let started = std::time::Instant::now();
-        self.draw_clouds(world, flight, camera, theme);
-        self.detail[1] = started.elapsed().as_secs_f64() * 1000.0;
     }
     pub(super) fn sky(&mut self, camera: &Camera, flight: &Flight, theme: usize, _height: usize) {
         let (low, high) = match theme {

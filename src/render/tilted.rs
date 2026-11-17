@@ -4,16 +4,17 @@ impl Renderer {
     pub(super) fn pitched_terrain(
         &mut self,
         world: &World,
-        flight: &Flight,
+        faceted: bool,
         camera: &Camera,
-        theme: usize,
+        environment: crate::world::network::Environment,
     ) {
+        let theme = environment.theme;
         let weather = if world.kind.vacuum() {
             Weather::Clear
         } else {
-            flight.weather
+            environment.weather
         };
-        let (fog_start, far) = if world.kind.vacuum() {
+        let (mut fog_start, far) = if world.kind.vacuum() {
             (2200.0, 2600.0)
         } else {
             {
@@ -21,6 +22,12 @@ impl Renderer {
                 (start.min(3900.0), end.min(4200.0))
             }
         };
+        let bend = self.warp.map_or(0.0, |warp| warp.bend);
+        let footprint_scale = self.warp.map_or(1.0, |warp| {
+            1.0 + (warp.body.radius() / crate::world::orbit::UV_SCALE - 1.0).max(0.0) * bend
+        });
+        fog_start += bend * 10000.0;
+        let fog_end = far + bend * 10000.0;
         let colors = TOP.map(|c| weather.shade(grade(rgb(c[0], c[1], c[2]), theme)));
         self.terrain_cache.colors(colors);
         let haze = if world.kind.vacuum() {
@@ -70,6 +77,13 @@ impl Renderer {
         let cx = (camera.position.x / 512.0).floor() as i32;
         let cy = (camera.position.y / 512.0).floor() as i32;
         let reach = (far / 512.0).ceil() as i32;
+        if let Some(warp) = self.warp {
+            self.terrain_cache.prepare_warp(
+                warp,
+                vec2(((cx - reach) * 512) as f32, ((cy - reach) * 512) as f32),
+                (reach * 2 + 1) * 512,
+            );
+        }
         let mut cells = Vec::with_capacity(200);
         for y in -reach..=reach {
             for x in -reach..=reach {
@@ -83,7 +97,28 @@ impl Renderer {
                 size as f32 * 0.5,
                 world.ceiling as f32 * 0.5,
             );
-            let center = vec3(x as f32 + half.x, y as f32 + half.y, half.z);
+            let mut center = vec3(x as f32 + half.x, y as f32 + half.y, half.z);
+            let mut half = half;
+            if let Some(warp) = self.warp {
+                if !warp.contains(center.truncate(), size as f32 * 0.6) {
+                    continue;
+                }
+                let mut low = Vec3::splat(f32::INFINITY);
+                let mut high = Vec3::splat(f32::NEG_INFINITY);
+                for dx in [-1.0, 0.0, 1.0] {
+                    for dy in [-1.0, 0.0, 1.0] {
+                        for dz in [-1.0, 1.0] {
+                            let point = self
+                                .terrain_cache
+                                .warped_point(warp, center + half * vec3(dx, dy, dz));
+                            low = low.min(point);
+                            high = high.max(point);
+                        }
+                    }
+                }
+                center = (low + high) * 0.5;
+                half = (high - low) * 0.5;
+            }
             let delta = center - camera.position;
             if delta.truncate().length() > far + size as f32 {
                 continue;
@@ -94,8 +129,8 @@ impl Renderer {
             {
                 continue;
             }
-            let footprint =
-                camera.scale * size as f32 / (1.0 + camera.q * delta.dot(camera.forward)).max(0.15);
+            let footprint = camera.scale * size as f32 * footprint_scale
+                / (1.0 + camera.q * delta.dot(camera.forward)).max(0.15);
             if size > 8 && footprint > 10.0 {
                 let h = size / 2;
                 cells.extend([(x, y, h), (x + h, y, h), (x, y + h, h), (x + h, y + h, h)]);
@@ -145,8 +180,8 @@ impl Renderer {
                         camera,
                         world,
                         indices.map(|i| boundary[i]),
-                        flight.faceted,
-                        (fog_start, far, haze),
+                        faceted,
+                        (fog_start, fog_end, haze),
                     );
                 }
                 continue;
@@ -156,8 +191,8 @@ impl Renderer {
                     camera,
                     world,
                     [center, boundary[i], boundary[(i + 1) % boundary.len()]],
-                    flight.faceted,
-                    (fog_start, far, haze),
+                    faceted,
+                    (fog_start, fog_end, haze),
                 );
             }
         }
@@ -170,29 +205,58 @@ impl Renderer {
         faceted: bool,
         fog: (f32, f32, u32),
     ) {
-        if vertices
+        let points = vertices.map(|p| {
+            self.warp
+                .map_or(p, |warp| self.terrain_cache.warped_point(warp, p))
+        });
+        self.ground_polygon(camera, world, vertices, points, faceted, fog);
+    }
+    fn ground_polygon(
+        &mut self,
+        camera: &Camera,
+        world: &World,
+        vertices: [Vec3; 3],
+        points: [Vec3; 3],
+        faceted: bool,
+        fog: (f32, f32, u32),
+    ) {
+        if self.warp.is_some() {
+            let normal = (points[1] - points[0]).cross(points[2] - points[0]);
+            let (eye, ray) = camera.ray(camera.center);
+            let towards = if camera.q > 0.00001 {
+                eye - points[0]
+            } else {
+                -ray
+            };
+            if normal.dot(towards) <= 0.0 {
+                return;
+            }
+        }
+        if points
             .iter()
             .any(|p| 1.0 + camera.q * (*p - camera.position).dot(camera.forward) < 0.121)
         {
             let near = camera.position - camera.forward * (0.878 / camera.q);
             let mut clipped = Vec::with_capacity(4);
             for i in 0..3 {
-                let a = vertices[i];
-                let b = vertices[(i + 1) % 3];
+                let a = points[i];
+                let b = points[(i + 1) % 3];
                 let da = (a - near).dot(camera.forward);
                 let db = (b - near).dot(camera.forward);
                 if da >= 0.0 {
-                    clipped.push(a);
+                    clipped.push((a, vertices[i]));
                 }
                 if (da >= 0.0) != (db >= 0.0) {
-                    clipped.push(a.lerp(b, da / (da - db)));
+                    let t = da / (da - db);
+                    clipped.push((a.lerp(b, t), vertices[i].lerp(vertices[(i + 1) % 3], t)));
                 }
             }
             for i in 1..clipped.len().saturating_sub(1) {
-                self.ground_triangle(
+                self.ground_polygon(
                     camera,
                     world,
-                    [clipped[0], clipped[i], clipped[i + 1]],
+                    [clipped[0].1, clipped[i].1, clipped[i + 1].1],
+                    [clipped[0].0, clipped[i].0, clipped[i + 1].0],
                     faceted,
                     fog,
                 );
@@ -200,7 +264,7 @@ impl Renderer {
             return;
         }
         let [Some((a, da, _)), Some((b, db, _)), Some((c, dc, _))] =
-            vertices.map(|p| camera.project(p))
+            points.map(|p| camera.project(p))
         else {
             return;
         };
@@ -224,14 +288,21 @@ impl Renderer {
             1.0 / (1.0 + camera.q * db),
             1.0 / (1.0 + camera.q * dc),
         ];
-        let normal = (vertices[1] - vertices[0])
-            .cross(vertices[2] - vertices[0])
+        let normal = (points[1] - points[0])
+            .cross(points[2] - points[0])
             .normalize_or_zero();
-        let shade = (normal.x * 0.3 + normal.y * 0.2 + normal.z.abs() * 0.9).clamp(0.45, 1.0);
+        let light = self.warp.map_or(vec3(0.3, 0.2, 0.9), |warp| {
+            vec3(0.3, 0.2, 0.9).lerp(warp.basis.transpose() * vec3(0.3, 0.2, 0.9), warp.bend)
+        });
+        let shade = if self.warp.is_some() {
+            normal.dot(light).abs().clamp(0.45, 1.0)
+        } else {
+            (normal.x * 0.3 + normal.y * 0.2 + normal.z.abs() * 0.9).clamp(0.45, 1.0)
+        };
         let inverse_area = 1.0 / area as f32;
         let columns = super::primitives::TriangleColumns::new([a, b, c]);
         let weighted = std::array::from_fn::<_, 3, _>(|i| vertices[i] * inverse[i]);
-        let vertex_shade = if faceted {
+        let vertex_shade = if faceted || self.warp.is_some() {
             [shade; 3]
         } else {
             vertices.map(|p| {
@@ -323,7 +394,16 @@ impl Renderer {
                         + vertex_shade[2] * inverse[2] * w)
                         * reciprocal
                 };
-                let color = self.terrain_cache.shade(material, shade * detail);
+                let mut color = self.terrain_cache.shade(material, shade * detail);
+                if let Some(warp) = self.warp {
+                    color = super::orbit::earth_color(
+                        warp,
+                        pos.truncate(),
+                        color,
+                        shade,
+                        camera.position.z,
+                    );
+                }
                 let amount = ((depth - fog.0) * inverse_fog).clamp(0.0, 1.0);
                 self.pixels[at] = mix(color, fog.2, amount);
                 self.depth[at] = depth;

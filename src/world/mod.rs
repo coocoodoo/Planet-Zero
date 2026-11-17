@@ -8,6 +8,7 @@ mod landmarks;
 mod loader;
 pub mod network;
 mod noise;
+pub mod orbit;
 pub mod portal;
 mod regions;
 pub mod regions_detail;

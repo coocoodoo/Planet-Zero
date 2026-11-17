@@ -113,13 +113,13 @@ pub(super) const HELP_PAGES: [[&str; 8]; 12] = [
     ],
     [
         "ORBIT / FREE FLIGHT",
-        "CLIMB ABOVE ALT 600",
-        "POINT NOSE TOWARD THE SKY",
-        "B ORBIT BOOST ON/OFF",
+        "SHIFT HOLD TO BOOST",
+        "UP HOLD TO CLIMB",
+        "ALT 500 : ORBIT ENGINE",
         "ALT 1200 : ENTER SPACE",
-        "FOLLOW MOON BEARING IN SPACE",
-        "APPROACH MOON TO ENTER SURFACE",
-        "LUNAR ASCENT RETURNS TO SPACE",
+        "FLY TOWARD EARTH OR MOON",
+        "APPROACH TO ENTER THE SURFACE",
+        "EARTH : RANDOM SURFACE MAP",
     ],
 ];
 

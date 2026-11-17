@@ -33,7 +33,7 @@ pub fn draw(app: &mut App) {
 }
 
 fn portal_labels(app: &mut App) {
-    if !app.network.active {
+    if !app.network.active || app.flight.orbit_quiet {
         return;
     }
     let camera = crate::flight::Camera::new(&app.flight, 320, 170);

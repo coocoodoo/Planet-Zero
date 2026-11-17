@@ -34,7 +34,9 @@ impl TriangleColumns {
 
 impl Renderer {
     pub(super) fn world_line(&mut self, camera: &Camera, a: Vec3, b: Vec3, color: u32) {
-        let (mut a, mut b) = (a, b);
+        let (mut a, mut b) = self
+            .warp
+            .map_or((a, b), |warp| (warp.point(a), warp.point(b)));
         if let Some((p, n)) = self.clip_plane {
             let da = (a - p).dot(n);
             let db = (b - p).dot(n);
@@ -68,6 +70,7 @@ impl Renderer {
         self.surface(camera, points, color, true);
     }
     fn surface(&mut self, camera: &Camera, points: [Vec3; 3], color: u32, stone: bool) {
+        let points = points.map(|point| self.warp.map_or(point, |warp| warp.point(point)));
         let forward = camera.forward;
         let near = camera.position
             + forward

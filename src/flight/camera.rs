@@ -56,6 +56,15 @@ impl Camera {
             camera.scale += (2.6 * w / 320.0 - camera.scale) * t;
             camera.center = camera.center.lerp(vec2(w * 0.5, h * 0.5), t);
         }
+        if let Some(adjustment) = flight.camera_adjustment {
+            let rotation = glam::Quat::IDENTITY.slerp(adjustment.rotation, adjustment.weight);
+            camera.position += adjustment.offset * adjustment.weight;
+            camera.right = rotation * camera.right;
+            camera.up = rotation * camera.up;
+            camera.forward = rotation * camera.forward;
+            camera.yaw = (-camera.forward.x).atan2(-camera.forward.y);
+            camera.pitch = camera.forward.z.clamp(-1.0, 1.0).asin();
+        }
         camera
     }
     pub fn orient(&mut self, yaw: f32, pitch: f32) {

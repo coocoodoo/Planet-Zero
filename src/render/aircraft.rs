@@ -19,7 +19,11 @@ impl Renderer {
                             theme,
                         )),
                         flight.weather.haze(theme),
-                        flight.weather.fog((da + db) * 0.5, flight.position.z),
+                        if flight.space {
+                            0.0
+                        } else {
+                            flight.weather.fog((da + db) * 0.5, flight.position.z)
+                        },
                     );
                     for step in 0..=steps {
                         let t = step as f32 / steps as f32;
@@ -120,17 +124,11 @@ impl Renderer {
         let [right, forward, up] = flight.axes();
         let shape = flight.vehicle.shape();
         let (right, forward, up) = (right * shape.x, forward * shape.y, up * shape.z);
-        let (s, c) = camera.yaw.sin_cos();
-        let up_depth = -(up.x * s + up.y * c);
+        let (camera_eye, ray) = camera.ray(camera.center);
         let eye = if camera.q < 0.00001 {
-            if camera.slope * up.z - up_depth >= 0.0 {
-                1e9
-            } else {
-                -1e9
-            }
+            -ray.dot(up).signum() * 1e9
         } else {
-            let eye = camera.position + vec3(s / camera.q, c / camera.q, camera.slope / camera.q);
-            (eye - flight.position).dot(up) / MODEL_SCALE
+            (camera_eye - flight.position).dot(up) / MODEL_SCALE
         };
         let mut order: Vec<usize> = (0..13).collect();
         order.sort_by(|a, b| {
@@ -150,7 +148,11 @@ impl Renderer {
             }
         }
         let jet_depth = camera.project(flight.position).map_or(0.0, |p| p.1);
-        let fog = flight.weather.fog(jet_depth, flight.position.z);
+        let fog = if flight.space {
+            0.0
+        } else {
+            flight.weather.fog(jet_depth, flight.position.z)
+        };
         for color in &mut palette {
             *color = mix(*color, flight.weather.haze(theme), fog);
         }
@@ -158,7 +160,10 @@ impl Renderer {
         let center_scale = camera.project(flight.position).map_or(1.0, |p| p.2);
         let samples = (center_scale * MODEL_SCALE * 1.7).ceil().clamp(2.0, 6.0) as usize;
         let view_axis = |a: glam::Vec3| {
-            vec2(a.x * c - a.y * s, -a.z + camera.slope * (a.x * s + a.y * c)) * MODEL_SCALE
+            vec2(
+                a.dot(camera.right),
+                -(a.dot(camera.up) + camera.slope * a.dot(camera.forward)),
+            ) * MODEL_SCALE
         };
         let r = view_axis(right);
         let f = view_axis(forward);

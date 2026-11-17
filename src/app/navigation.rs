@@ -44,7 +44,6 @@ impl App {
         self.sounds.push(crate::audio::Sound::Confirm);
     }
     pub(super) fn navigate_chart(&mut self) {
-        self.orbit = orbit::Orbit::default();
         if self
             .navigation
             .target

@@ -11,6 +11,11 @@ impl Renderer {
         if world.kind.vacuum() || crate::content::maps::definition(world.kind).cloud_clusters == 0 {
             return;
         }
+        let opacity = (1.0 - self.warp.map_or(0.0, |warp| warp.bend)).powi(4)
+            * (1.0 - crate::world::orbit::smooth((flight.position.z - 500.0) / 500.0));
+        if opacity < 0.001 {
+            return;
+        }
         let coverage = match flight.weather {
             Weather::Cloudy | Weather::Storm => 14,
             Weather::Rain | Weather::Snow => 11,
@@ -83,7 +88,12 @@ impl Renderer {
                 if p.z - ceiling < 12.0 {
                     continue;
                 }
-                self.pixels[at] = if ray.z < 0.0 { upper } else { lower };
+                let background = if self.pixels[at] == 0 {
+                    flight.weather.haze(theme)
+                } else {
+                    self.pixels[at]
+                };
+                self.pixels[at] = mix(background, if ray.z < 0.0 { upper } else { lower }, opacity);
                 self.depth[at] = depth;
             }
         }

@@ -43,6 +43,48 @@ pub struct Network {
     pub active: bool,
 }
 impl Network {
+    pub fn random_earth(&mut self) -> MapKey {
+        let kinds: Vec<_> = MapKind::ALL
+            .into_iter()
+            .filter(|kind| !kind.vacuum())
+            .collect();
+        let kind = kinds[(self.random.next() * kinds.len() as f32) as usize];
+        MapKey {
+            kind,
+            seed: kind.seed(),
+        }
+    }
+    pub fn park_portals(&mut self, world: &World, position: Vec3, forward: Vec3) {
+        self.ensure(world);
+        let direction = forward.normalize_or_zero();
+        let right = vec3(-direction.y, direction.x, 0.0).normalize_or_zero();
+        let key = MapKey::of(world);
+        for (i, link) in self
+            .links
+            .iter_mut()
+            .filter(|link| link.ends.contains(&key))
+            .enumerate()
+        {
+            let side = usize::from(link.ends[1] == key);
+            let mut center = position - direction * (3200.0 + i as f32 * 500.0)
+                + right * (i as f32 * 2.0 - 1.0) * 450.0;
+            if world.kind == MapKind::Space {
+                while super::orbit::Body::ALL
+                    .into_iter()
+                    .any(|body| body.altitude(center) < 2200.0)
+                {
+                    center -= direction * 1200.0;
+                }
+            }
+            let mut portal = Portal {
+                center,
+                yaw: forward.x.atan2(-forward.y),
+                radius: 48.0,
+            };
+            safe_aperture(world, &mut portal);
+            link.entrances[side] = Some(portal);
+        }
+    }
     pub fn new(seed: u32) -> Self {
         let mut random = Random(seed);
         let mut kinds = MapKind::ALL;
@@ -321,6 +363,13 @@ fn endpoint(world: &World, id: u32) -> Portal {
 }
 fn safe_aperture(world: &World, aperture: &mut Portal) {
     if world.kind == MapKind::Space {
+        for body in super::orbit::Body::ALL {
+            let delta = aperture.center - body.center();
+            if delta.length() < body.radius() + 2200.0 {
+                aperture.center = body.center()
+                    + delta.try_normalize().unwrap_or(Vec3::Y) * (body.radius() + 2200.0);
+            }
+        }
         return;
     }
     let mut floor = 0.0_f32;

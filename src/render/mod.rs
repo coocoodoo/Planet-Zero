@@ -5,6 +5,7 @@ mod cockpit;
 mod geology;
 mod landmarks;
 mod objects;
+mod orbit;
 mod palette;
 mod portals;
 mod primitives;
@@ -90,6 +91,7 @@ fn grade(c: u32, theme: usize) -> u32 {
 }
 
 pub struct Renderer {
+    warp: Option<crate::world::orbit::SurfaceWarp>,
     terrain_cache: terrain_cache::TerrainCache,
     workers: Vec<Renderer>,
     portal_view: Option<Box<Renderer>>,
@@ -159,6 +161,7 @@ impl Renderer {
             }
         }
         Self {
+            warp: None,
             terrain_cache: terrain_cache::TerrainCache::default(),
             workers: vec![],
             portal_view: None,
@@ -374,6 +377,7 @@ impl Renderer {
         height: usize,
     ) {
         self.detail = [0.0; 4];
+        self.warp = flight.surface.filter(|surface| surface.bend > 0.00001);
         if world.kind != crate::world::MapKind::Space {
             self.world(world, flight, camera, theme);
         }
@@ -381,13 +385,19 @@ impl Renderer {
             self.cosmos(world, camera, flight);
         } else {
             self.sky(camera, flight, theme, height);
-            let thin_air = crate::app::orbit::thin_air(flight.position.z);
+            let bend = self.warp.map_or(0.0, |warp| warp.bend);
+            let thin_air =
+                1.0 - (1.0 - crate::app::orbit::thin_air(flight.position.z)) * (1.0 - bend).powi(2);
             if thin_air > 0.0 {
-                self.stars(camera, thin_air);
+                self.stars(camera, thin_air, flight.sky_rotation);
             }
         }
         let started = std::time::Instant::now();
+        self.draw_clouds(world, flight, camera, theme);
+        self.detail[1] = started.elapsed().as_secs_f64() * 1000.0;
+        let started = std::time::Instant::now();
         self.scenery(world, camera, flight.time);
+        self.warp = None;
         self.detail[2] = started.elapsed().as_secs_f64() * 1000.0;
     }
 
@@ -459,6 +469,43 @@ impl Renderer {
 #[cfg(test)]
 mod parallel_tests {
     use super::*;
+    #[test]
+    fn curved_surface_matches_between_single_and_column_workers() {
+        use crate::world::orbit::{Body, SurfaceWarp};
+        let world = World::generate(crate::world::MapKind::Moon, 7);
+        let mut flight = Flight::new(&world);
+        flight.position.z = 900.0;
+        flight.follow = flight.position;
+        flight.pitch = -0.5;
+        flight.wing_count = 0;
+        for bend in [0.2, 0.7, 1.0] {
+            flight.surface = Some(SurfaceWarp::new(
+                Body::Moon,
+                flight.position.truncate(),
+                flight.position.truncate(),
+                bend,
+            ));
+            for view in 0..3 {
+                flight.weights = [0.0; 3];
+                flight.weights[view] = 1.0;
+                let mut single = Renderer::single();
+                let mut parallel = Renderer::single();
+                parallel.workers = (0..3).map(|_| Renderer::single()).collect();
+                single.render(&world, &flight, 320, 170, 0);
+                parallel.render(&world, &flight, 320, 170, 0);
+                let differences = single
+                    .rgba
+                    .chunks_exact(4)
+                    .zip(parallel.rgba.chunks_exact(4))
+                    .filter(|(a, b)| a.iter().zip(b.iter()).any(|(a, b)| a.abs_diff(*b) > 8))
+                    .count();
+                assert!(
+                    differences < 320 * 170 / 100,
+                    "bend {bend} view {view}: {differences}"
+                );
+            }
+        }
+    }
     #[test]
     fn column_workers_keep_scene_geometry_and_planets_consistent() {
         for kind in [

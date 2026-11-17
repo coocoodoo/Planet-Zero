@@ -23,7 +23,6 @@ pub const ROLL_LEFT: u16 = 32;
 pub const ROLL_RIGHT: u16 = 34;
 pub const CALIBRATE: u16 = 37;
 pub const BOOST: u16 = 42;
-pub const ORBIT: u16 = 48;
 pub const VIEW: u16 = 57;
 pub const CHART: u16 = 50;
 pub const BOOST_RIGHT: u16 = 54;

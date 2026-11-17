@@ -62,6 +62,9 @@ impl Renderer {
         camera: &Camera,
         network: Option<&crate::world::network::Network>,
     ) {
+        if flight.orbit_quiet {
+            return;
+        }
         for (entry, _, _, _) in portal_scenes(world, flight, network) {
             let Some(window) = self.aperture(entry, flight, camera) else {
                 continue;
@@ -99,6 +102,9 @@ impl Renderer {
         theme: usize,
         network: Option<&crate::world::network::Network>,
     ) {
+        if flight.orbit_quiet {
+            return;
+        }
         if let Some(network) = network.filter(|n| n.active) {
             for route in network.routes(world) {
                 if network.get(route.target).is_some() || flight.hides_portal(route.aperture) {

@@ -7,8 +7,37 @@ pub(super) struct TerrainCache {
     lod: Vec<u8>,
     side: i32,
     origin: (i32, i32),
+    warp_origin: Vec2,
+    warp_x: Vec<Vec3>,
+    warp_y: Vec<Vec3>,
 }
 impl TerrainCache {
+    pub fn prepare_warp(
+        &mut self,
+        warp: crate::world::orbit::SurfaceWarp,
+        origin: Vec2,
+        span: i32,
+    ) {
+        self.warp_origin = origin;
+        self.warp_x.clear();
+        self.warp_y.clear();
+        let scale = warp.angle_scale();
+        for i in 0..=span / 4 {
+            let angles = (origin + Vec2::splat((i * 4) as f32) - warp.anchor) * scale;
+            self.warp_x
+                .push(crate::world::orbit::SurfaceWarp::axis(angles.x));
+            self.warp_y
+                .push(crate::world::orbit::SurfaceWarp::axis(angles.y));
+        }
+    }
+    pub fn warped_point(&self, warp: crate::world::orbit::SurfaceWarp, point: Vec3) -> Vec3 {
+        let at = ((point.truncate() - self.warp_origin) * 0.25).as_ivec2();
+        warp.point_with_axes(
+            point,
+            self.warp_x[at.x as usize],
+            self.warp_y[at.y as usize],
+        )
+    }
     pub fn colors(&mut self, colors: [u32; MATERIAL_COUNT]) {
         if self.colors == Some(colors) {
             return;
