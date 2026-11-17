@@ -249,9 +249,13 @@ rust-fly-cardputer --mode combat --audio off --frames 450
 
 桌面高清倍率按宽、高同时增加，真实输出为 320×170、640×340、1280×680、2560×1360，保持相同视野。场景在独立线程绘制，菜单、输入和声音持续响应；HUD 保留像素字体。8 倍计算量较高，适合观景，默认从 1 倍启动。Cardputer Zero 固定使用原生 320×170 输出
 
-## 追尾 FPV HUD
+## FPV HUD
 
-追尾视角使用 FPV 风格的像素 OSD，信息围绕画面边缘排列，文字加黑色描边。俯视、座舱和固定追焦继续使用对应视角的界面
+追尾、俯瞰和座舱使用统一的 FPV 风格像素 OSD，信息围绕画面边缘排列，文字加黑色描边。正文使用 5×7 像素字体，速度与高度主数字使用 7×10 像素字体。固定追焦保留原有界面
+
+追尾保留滚动刻度、小地图、GPS 坐标、电压和信号数值。俯瞰保留航向、速度、高度、离地高度、计时、电量和信号格，地图与 GPS 由 M 航图提供。座舱将速度与高度放在风挡两侧，中央保留青色描边准星和俯仰标线，实体仪表盘继续显示动态仪表
+
+追尾视角的完整布局如下
 
 | 位置 | 显示内容 |
 | --- | --- |
@@ -267,7 +271,7 @@ GPS 使用当前地图内的 X/Y 坐标，按 4096 单位周期显示，跨地�
 
 追尾战斗界面的护盾、能量、武器、NOVA、超载、任务进度、护航或 Boss 耐久、僚机支援和分数集中在下沿。中央保留飞行视野，虫洞名称使用小号描边字体
 
-Cardputer Zero 通过 `/sys/class/power_supply/` 自动发现 BQ27220 电池，读取 `capacity`、`voltage_now` 和充电状态对应的 `uevent` 字段；电压从微伏转换为伏。Wi-Fi 信号读取 `/proc/net/wireless` 的 RSSI，显示单位为 dBm，代表设备无线网络信号
+Cardputer Zero 通过 `/sys/class/power_supply/` 自动发现 BQ27220 电池，读取 `capacity`、`voltage_now` 和充电状态对应的 `uevent` 字段；电压从微伏转换为伏。Wi-Fi 信号读取 `/proc/net/wireless` 的 RSSI，追尾视角在信号格右侧显示 dBm 数值，代表设备无线网络信号
 
 硬件数据在独立线程每秒采样一次，渲染线程读取缓存。单项读取失败或采样超过 3 秒未更新时显示占位符；桌面版使用占位符。飞行时间随任务推进，暂停和打开航图时停止计时。U 控制整套 HUD 的显示
 
@@ -345,12 +349,12 @@ bash scripts/build-cardputer.sh
 python3 scripts/package-cardputer.py
 ```
 
-构建生成 `dist/rust-fly-cardputer` 静态 AArch64 可执行文件和 `dist/rust-fly_0.12.0_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
+构建生成 `dist/rust-fly-cardputer` 静态 AArch64 可执行文件和 `dist/rust-fly_0.12.1_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
 
 将安装包复制到设备后执行：
 
 ```sh
-sudo apt install ./rust-fly_0.12.0_arm64.deb
+sudo apt install ./rust-fly_0.12.1_arm64.deb
 ```
 
 APPLaunch 中会出现带战机图标的 Rust Fly，选择即可进入主菜单。菜单操作与上方表格一致，操作说明按类别分为十页，每行对应一项操作
