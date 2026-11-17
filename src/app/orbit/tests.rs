@@ -221,3 +221,43 @@ fn surface_handoff_preserves_the_rendered_globe() {
         );
     }
 }
+
+#[test]
+fn ascent_handoff_preserves_space_scenery() {
+    for kind in [MapKind::Moon, MapKind::Islands] {
+        let mut app = app(kind);
+        let destination = Arc::new(World::generate(MapKind::Space, MapKind::Space.seed()));
+        let origin = app.flight.position.truncate();
+        let body = Body::of(kind);
+        let mut map = SurfaceMap::new(&app.world, app.network.environment(MapKey::of(&app.world)));
+        map.origin = origin;
+        app.flight.planet_maps[body.index()] = Some(Arc::new(map));
+        app.flight.position.z = 2300.0;
+        app.flight.follow = app.flight.position;
+        app.flight.pitch = 0.9;
+        app.flight.weights = [1.0, 0.0, 0.0];
+        app.flight.wing_count = 0;
+        let surface = SurfaceWarp::new(body, origin, origin, 1.0);
+        app.flight.surface = Some(surface);
+        app.flight.sky_rotation = Quat::from_mat3(&surface.basis);
+        app.flight.orbital_scenery = Some(destination.clone());
+        app.flight.orbit_quiet = true;
+        app.renderer
+            .render(&app.world, &app.flight, 320, 170, app.theme);
+        let before = app.renderer.rgba.clone();
+        app.finish_ascent(destination);
+        app.renderer
+            .render(&app.world, &app.flight, 320, 170, app.theme);
+        let error: u64 = before
+            .iter()
+            .zip(&app.renderer.rgba)
+            .map(|(a, b)| a.abs_diff(*b) as u64)
+            .sum();
+        assert!(
+            error as f32 / (320.0 * 170.0 * 4.0) < 3.0,
+            "{}: pixel error {}",
+            kind.name(),
+            error as f32 / (320.0 * 170.0 * 4.0)
+        );
+    }
+}

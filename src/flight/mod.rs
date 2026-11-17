@@ -350,7 +350,7 @@ impl Flight {
         let controls = scripted.as_ref().unwrap_or(controls);
         self.time += dt;
         if let Some(adjustment) = &mut self.camera_adjustment {
-            adjustment.weight *= (-dt * 0.8).exp();
+            adjustment.weight *= (-dt * 0.3).exp();
             if adjustment.weight < 0.0001 {
                 self.camera_adjustment = None;
             }
