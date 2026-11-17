@@ -249,7 +249,8 @@ fn safe_aperture(world: &World, aperture: &mut Portal) {
     aperture.center.z = aperture
         .center
         .z
-        .max(floor + aperture.radius + crate::flight::MIN_CLEARANCE);
+        .max(floor + aperture.radius + crate::flight::MIN_CLEARANCE)
+        .max(world.airspace.floor(world, aperture.center) + aperture.radius);
 }
 
 #[cfg(test)]

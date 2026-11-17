@@ -327,6 +327,14 @@ fn portal_capture_matches_the_visible_aperture_in_all_views() {
         assert!(camera.enters_portal(portal, point - ray.normalize() * 5.0, point));
         let outside = point + camera.right * 70.0;
         assert!(!camera.enters_portal(portal, outside - ray.normalize() * 5.0, outside));
+        let mut near = f.clone();
+        near.position = portal.center + Vec3::Y * 12.0;
+        near.follow = near.position;
+        assert!(Camera::new(&near, 320, 170).enters_portal(
+            portal,
+            near.position + Vec3::Y * 5.0,
+            near.position
+        ));
         let entry = camera.portal_frame(portal);
         let exit = Portal {
             center: vec3(1500.0, 900.0, 330.0),

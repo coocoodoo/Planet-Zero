@@ -75,6 +75,9 @@ impl Camera {
         }
         let t = (-(from - portal.center).dot(movement) / movement.length_squared()).clamp(0.0, 1.0);
         let nearest = from.lerp(to, t);
+        if nearest.distance_squared(portal.center) < (portal.radius * 0.7).powi(2) {
+            return true;
+        }
         if nearest.distance_squared(portal.center) > (portal.radius * 1.6).powi(2) {
             return false;
         }
