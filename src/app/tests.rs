@@ -128,16 +128,24 @@ fn teleport_does_not_collect_pickups_between_portal_endpoints() {
 }
 
 #[test]
-fn wormhole_hotkey_adds_links_on_every_map_without_pausing() {
+fn wormhole_hotkey_replaces_two_links_on_every_map_without_pausing() {
     for map in crate::world::MapKind::ALL {
         let mut app = App::new(World::generate(map, map.seed()));
         app.start();
-        let before = app.network.routes(&app.world).len();
+        app.network.ensure(&app.world);
+        let before: Vec<_> = app
+            .network
+            .routes(&app.world)
+            .iter()
+            .map(|r| r.id)
+            .collect();
         app.key(35, 1);
         app.key(35, 0);
         assert_eq!(app.page, Page::Playing);
         let routes = app.network.routes(&app.world);
-        assert_eq!(routes.len(), before + 1);
+        assert_eq!(routes.len(), 2);
+        assert!(routes.iter().all(|r| !before.contains(&r.id)));
+        let previous: Vec<_> = routes.iter().map(|r| r.id).collect();
         for route in routes {
             assert!(route.aperture.center.is_finite());
             assert_ne!(route.target.kind, map);
@@ -152,7 +160,9 @@ fn wormhole_hotkey_adds_links_on_every_map_without_pausing() {
             }
         }
         app.key(35, 1);
-        assert_eq!(app.network.routes(&app.world).len(), before + 2);
+        let routes = app.network.routes(&app.world);
+        assert_eq!(routes.len(), 2);
+        assert!(routes.iter().all(|r| !previous.contains(&r.id)));
     }
 }
 

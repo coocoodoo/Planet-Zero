@@ -253,7 +253,7 @@ impl App {
         if self.cross_world(previous) {
             return;
         }
-        if self.flight.traverse_portal(&self.world, previous) {
+        if !self.network.active && self.flight.traverse_portal(&self.world, previous) {
             previous = self.flight.position;
             self.sounds.push(crate::audio::Sound::Warp);
         }

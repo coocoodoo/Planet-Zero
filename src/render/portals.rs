@@ -207,7 +207,7 @@ fn portal_scenes<'a>(
     usize,
 )> {
     let mut scenes = vec![];
-    if world.portals.len() == 2 {
+    if world.portals.len() == 2 && network.is_none_or(|n| !n.active) {
         for i in 0..2 {
             scenes.push((world.portals[i], world.portals[1 - i], world, i));
         }

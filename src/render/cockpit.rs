@@ -77,7 +77,15 @@ impl Cockpit {
         }
     }
 
-    pub fn prepare(&mut self, flight: &Flight, world: &World, w: usize, h: usize, theme: usize) {
+    pub fn prepare(
+        &mut self,
+        flight: &Flight,
+        world: &World,
+        size: (usize, usize),
+        theme: usize,
+        network: Option<&crate::world::network::Network>,
+    ) {
+        let (w, h) = size;
         self.native.fill(0);
         let head = flight.rate * 2.2 + (flight.time * 9.0).sin() * flight.boost * 0.4;
         let lift = flight.pitch.sin() * 5.0;
@@ -135,7 +143,7 @@ impl Cockpit {
                 dy,
             };
             if layer == 1 {
-                instruments(&mut paint, flight, world);
+                instruments(&mut paint, flight, world, network);
             }
             if layer == 2 {
                 levers(&mut paint, flight);
@@ -308,7 +316,12 @@ impl Paint<'_> {
     }
 }
 
-fn instruments(p: &mut Paint<'_>, f: &Flight, world: &World) {
+fn instruments(
+    p: &mut Paint<'_>,
+    f: &Flight,
+    world: &World,
+    network: Option<&crate::world::network::Network>,
+) {
     let crt = [
         rgb(3, 16, 17),
         rgb(5, 27, 25),
@@ -369,14 +382,23 @@ fn instruments(p: &mut Paint<'_>, f: &Flight, world: &World) {
                 p.rect(71 + x, 126 + y, 2, 2, crt[4]);
             }
         }
-        for portal in &world.portals {
-            let d = portal.center - f.position;
-            let x = ((d.x * cy + d.y * sy) / 15.0).round() as i32;
-            let y = -((d.x * sy - d.y * cy) / 15.0).round() as i32;
-            if x.abs() < 22 && y.abs() < 12 {
-                p.rect(70 + x, 125 + y, 3, 3, rgb(105, 211, 242));
-                p.put(71 + x, 126 + y, crt[0]);
-            }
+    }
+    let connected = network.is_some_and(|network| network.active);
+    let routes = network
+        .filter(|network| network.active)
+        .map(|network| network.routes(world))
+        .unwrap_or_default();
+    for portal in routes
+        .iter()
+        .map(|route| &route.aperture)
+        .chain(world.portals.iter().filter(|_| !connected))
+    {
+        let d = portal.center - f.position;
+        let x = ((d.x * cy + d.y * sy) / 15.0).round() as i32;
+        let y = -((d.x * sy - d.y * cy) / 15.0).round() as i32;
+        if x.abs() < 22 && y.abs() < 12 {
+            p.rect(70 + x, 125 + y, 3, 3, rgb(105, 211, 242));
+            p.put(71 + x, 126 + y, crt[0]);
         }
     }
     for wing in f.wingmen.iter().take(f.wing_count) {

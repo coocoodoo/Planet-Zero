@@ -257,7 +257,7 @@ impl Renderer {
         let has_panel =
             cockpit > 0.55 && flight.vehicle != crate::content::vehicles::Vehicle::Paper;
         if has_panel {
-            self.cockpit.prepare(flight, world, width, height, theme);
+            self.cockpit.prepare(flight, world, size, theme, network);
         }
         self.visible.resize(self.w, (self.h as i32, 0));
         self.visible.fill((self.h as i32, 0));

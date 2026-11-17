@@ -258,7 +258,7 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
         capture_landmarks(game, path)?;
     }
     if game.world.kind == MapKind::Space {
-        benchmark_portals(options, game, frames)?;
+        scenarios::travel(options, game, 2)?;
     }
     if let Some(path) = &options.capture {
         game.home();
@@ -321,60 +321,6 @@ fn capture_landmarks(game: &mut Game, path: &Path) -> Result<(), Box<dyn Error>>
         capture(path, name, game)?;
     }
     game.flight.hud = true;
-    Ok(())
-}
-
-fn benchmark_portals(
-    options: &Options,
-    game: &mut Game,
-    frames: usize,
-) -> Result<(), Box<dyn Error>> {
-    use rust_fly::flight::Controls;
-    for entrance in 0..2 {
-        for view in [1, 2] {
-            game.mode = rust_fly::gameplay::Mode::Free;
-            game.start();
-            game.auto = false;
-            let entry = game.world.portals[entrance];
-            game.flight.position = entry.center + entry.normal() * 165.0;
-            game.flight.follow = game.flight.position;
-            game.flight.yaw = entry.yaw + std::f32::consts::PI;
-            game.flight.camera_yaw = -game.flight.yaw;
-            game.flight.view = view;
-            game.flight.weights = [0.0; 3];
-            game.flight.weights[view] = 1.0;
-            game.flight.wing_count = 0;
-            let name = format!("portal-{entrance}-{}", ["top", "chase", "cockpit"][view]);
-            let mut samples = Vec::with_capacity(frames.max(90));
-            let mut crossings = 0;
-            for frame in 0..frames.max(90) {
-                let previous = game.flight.position;
-                let start = Instant::now();
-                game.app.step(
-                    1.0 / 30.0,
-                    Some(Controls {
-                        manual: true,
-                        ..Default::default()
-                    }),
-                );
-                if previous.distance(game.flight.position) > 1000.0 {
-                    crossings += 1;
-                }
-                game.draw();
-                samples.push(start.elapsed().as_secs_f64() * 1000.0);
-                if let Some(path) = &options.capture
-                    && [10, 40, 65].contains(&frame)
-                {
-                    capture(path, &format!("{name}-{frame}"), game)?;
-                }
-            }
-            report(&name, 1, &mut samples);
-            println!("{{\"scene\":\"{name}\",\"crossings\":{crossings}}}");
-            if crossings != 1 {
-                return Err(format!("{name} 虫洞穿越次数异常：{crossings}").into());
-            }
-        }
-    }
     Ok(())
 }
 
@@ -486,7 +432,11 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
             maneuvers[0],
             maneuvers[1],
             maneuvers[2],
-            game.world.portals.len(),
+            if game.network.active {
+                game.network.routes(&game.world).len()
+            } else {
+                game.world.portals.len()
+            },
             game.network.routes(&game.world).len(),
             pitch_rotation.to_degrees()
         );

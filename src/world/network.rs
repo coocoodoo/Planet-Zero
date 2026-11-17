@@ -20,7 +20,7 @@ impl MapKey {
 struct Link {
     id: u32,
     ends: [MapKey; 2],
-    entrance: Option<Portal>,
+    entrances: [Option<Portal>; 2],
 }
 #[derive(Clone, Copy)]
 pub struct Route {
@@ -51,9 +51,6 @@ impl Network {
         };
         for i in 0..kinds.len() {
             network.connect(kinds[i], kinds[(i + 1) % kinds.len()]);
-            if i < kinds.len() / 2 {
-                network.connect(kinds[i], kinds[i + kinds.len() / 2]);
-            }
         }
         network
     }
@@ -66,10 +63,17 @@ impl Network {
             active: self.active,
         }
     }
-    fn connect(&mut self, a: MapKind, b: MapKind) {
+    fn add_link(&mut self, ends: [MapKey; 2], entrances: [Option<Portal>; 2]) {
         self.links.push(Link {
             id: self.random.0,
-            ends: [
+            ends,
+            entrances,
+        });
+        self.random.next();
+    }
+    fn connect(&mut self, a: MapKind, b: MapKind) {
+        self.add_link(
+            [
                 MapKey {
                     kind: a,
                     seed: a.seed(),
@@ -79,30 +83,28 @@ impl Network {
                     seed: b.seed(),
                 },
             ],
-            entrance: None,
-        });
-        self.random.next();
+            [None; 2],
+        );
     }
     pub fn ensure(&mut self, world: &World) {
         let key = MapKey::of(world);
         if self.links.iter().any(|l| l.ends.contains(&key)) {
             return;
         }
-        for offset in [1, 4, 7] {
-            let kind = MapKind::ALL[(world.kind as usize + offset) % MapKind::ALL.len()];
-            self.links.push(Link {
-                id: self.random.0,
-                ends: [
-                    key,
-                    MapKey {
-                        kind,
-                        seed: kind.seed(),
-                    },
-                ],
-                entrance: None,
-            });
-            self.random.next();
-        }
+        let at = self.random_link(world.kind);
+        let link = self.links.remove(at);
+        self.add_link([link.ends[0], key], [link.entrances[0], None]);
+        self.add_link([key, link.ends[1]], [None, link.entrances[1]]);
+    }
+    fn random_link(&mut self, exclude: MapKind) -> usize {
+        let choices: Vec<_> = self
+            .links
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.ends.iter().all(|k| k.kind != exclude))
+            .map(|(i, _)| i)
+            .collect();
+        choices[(self.random.next() * choices.len() as f32) as usize]
     }
     pub fn routes(&self, world: &World) -> Vec<Route> {
         let key = MapKey::of(world);
@@ -112,11 +114,7 @@ impl Network {
                 let side = link.ends.iter().position(|k| *k == key)?;
                 Some(Route {
                     id: link.id,
-                    aperture: if side == 0 {
-                        link.entrance.unwrap_or_else(|| endpoint(world, link.id))
-                    } else {
-                        endpoint(world, link.id)
-                    },
+                    aperture: link.entrances[side].unwrap_or_else(|| endpoint(world, link.id)),
                     target: link.ends[1 - side],
                 })
             })
@@ -125,47 +123,51 @@ impl Network {
     pub fn exit(&self, world: &World, id: u32) -> Portal {
         self.links
             .iter()
-            .find(|l| l.id == id && l.ends[0] == MapKey::of(world))
-            .and_then(|l| l.entrance)
+            .find(|link| link.id == id)
+            .and_then(|link| {
+                link.ends
+                    .iter()
+                    .position(|key| *key == MapKey::of(world))
+                    .and_then(|side| link.entrances[side])
+            })
             .unwrap_or_else(|| endpoint(world, id))
     }
     pub fn summon(&mut self, world: &World, position: Vec3, forward: Vec3) {
         self.ensure(world);
-        let offset = 1 + (self.random.next() * 11.0) as usize;
-        let kind = MapKind::ALL[(world.kind as usize + offset) % 12];
-        let mut aperture = Portal {
-            center: position + forward * 260.0 + Vec3::Z * (self.random.next() * 180.0 - 70.0),
-            yaw: forward.x.atan2(-forward.y) + std::f32::consts::PI,
-            radius: 42.0 + self.random.next() * 15.0,
-        };
-        safe_aperture(world, &mut aperture);
         let key = MapKey::of(world);
-        if self
+        let neighbors: Vec<_> = self
             .links
             .iter()
-            .filter(|l| l.ends[0] == key && l.entrance.is_some())
-            .count()
-            >= 3
-        {
-            let at = self
-                .links
-                .iter()
-                .position(|l| l.ends[0] == key && l.entrance.is_some())
-                .unwrap();
-            self.links.remove(at);
+            .filter_map(|link| {
+                let side = link.ends.iter().position(|k| *k == key)?;
+                Some((link.ends[1 - side], link.entrances[1 - side]))
+            })
+            .collect();
+        self.links.retain(|link| !link.ends.contains(&key));
+        self.add_link(
+            [neighbors[0].0, neighbors[1].0],
+            [neighbors[0].1, neighbors[1].1],
+        );
+        let at = self.random_link(world.kind);
+        let link = self.links.remove(at);
+        let yaw = forward.x.atan2(-forward.y);
+        let direction = vec3(yaw.sin(), -yaw.cos(), 0.0);
+        let right = vec3(yaw.cos(), yaw.sin(), 0.0);
+        for side in 0..2 {
+            let mut aperture = Portal {
+                center: position
+                    + direction * (260.0 + side as f32 * 65.0)
+                    + right * side as f32 * 155.0
+                    + Vec3::Z * (self.random.next() * 180.0 - 70.0),
+                yaw: yaw + std::f32::consts::PI,
+                radius: 42.0 + self.random.next() * 15.0,
+            };
+            safe_aperture(world, &mut aperture);
+            self.add_link(
+                [key, link.ends[side]],
+                [Some(aperture), link.entrances[side]],
+            );
         }
-        self.links.push(Link {
-            id: self.random.0,
-            ends: [
-                key,
-                MapKey {
-                    kind,
-                    seed: kind.seed(),
-                },
-            ],
-            entrance: Some(aperture),
-        });
-        self.random.next();
         self.active = true;
     }
     pub fn get(&self, key: MapKey) -> Option<&Arc<World>> {
@@ -248,4 +250,44 @@ fn safe_aperture(world: &World, aperture: &mut Portal) {
         .center
         .z
         .max(floor + aperture.radius + crate::flight::MIN_CLEARANCE);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn replacing_portals_preserves_a_connected_two_exit_network() {
+        let mut network = Network::new(7109);
+        let mut world = World::generate(MapKind::City, MapKind::City.seed());
+        for iteration in 0..60 {
+            if iteration % 10 == 0 {
+                world.seed += 1;
+                network.ensure(&world);
+            }
+            network.summon(&world, vec3(2200.0, 2700.0, 350.0), -Vec3::Y);
+            let keys: std::collections::HashSet<_> =
+                network.links.iter().flat_map(|l| l.ends).collect();
+            for key in &keys {
+                assert_eq!(
+                    network
+                        .links
+                        .iter()
+                        .filter(|l| l.ends.contains(key))
+                        .count(),
+                    2
+                );
+            }
+            let mut visited = std::collections::HashSet::new();
+            let mut pending = vec![MapKey::of(&world)];
+            while let Some(key) = pending.pop() {
+                if !visited.insert(key) {
+                    continue;
+                }
+                for link in network.links.iter().filter(|l| l.ends.contains(&key)) {
+                    pending.extend(link.ends);
+                }
+            }
+            assert_eq!(visited, keys);
+        }
+    }
 }

@@ -125,7 +125,7 @@ pub(super) fn maneuvers(
             game.mode = rust_fly::gameplay::Mode::Free;
             game.start();
             game.auto = false;
-            game.flight.position.z = game.world.ceiling as f32 + 330.0;
+            game.flight.position.z = game.flight.loop_altitude() + 25.0;
             game.flight.follow = game.flight.position;
             game.flight.view = view;
             game.flight.weights = [0.0; 3];
@@ -178,9 +178,12 @@ pub(super) fn maneuvers(
     game.start();
     game.auto = false;
     game.flight.position.z = (game.world.ceiling as f32 + 130.0).max(180.0);
-    let (position, forward) = (game.flight.position, game.flight.axes()[1]);
-    std::sync::Arc::make_mut(&mut game.app.world).spawn_portals(position, forward);
-    let entry = game.world.portals[0];
+    let world = game.world.clone();
+    game.network.ensure(&world);
+    let route = game.network.routes(&world)[0];
+    game.network
+        .remember(World::generate(route.target.kind, route.target.seed).into());
+    let entry = route.aperture;
     for orbit in [0.0_f32, 1.0, 2.0, 3.0] {
         game.flight.position =
             entry.center + Vec3::new(orbit.sin() * 140.0, orbit.cos() * 140.0, 30.0);
