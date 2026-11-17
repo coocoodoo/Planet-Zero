@@ -240,46 +240,90 @@ fn interplanetary_crossing_preserves_loadout_and_has_a_return_route() {
 }
 
 #[test]
-fn direction_double_taps_require_release_and_ignore_hold_repeat() {
+fn pitch_gesture_requires_three_seconds_then_two_fresh_presses() {
     use crate::keys::*;
-    let mut app = App::new(World::generate(crate::world::MapKind::Space, 1999));
+    let world = World::generate(crate::world::MapKind::Moon, 1999);
+    let mut app = App::new(world);
     app.start();
     app.auto = false;
-    app.flight.position.z = 700.0;
-    app.key(UP, 1);
-    for _ in 0..180 {
-        app.key(UP, 2);
-        app.step(1.0 / 60.0, None);
+    app.flight.position.z = 1800.0;
+    let tap = |app: &mut App, code| {
+        app.key(code, 1);
+        app.key(code, 0);
+    };
+    for code in [UP, DOWN] {
+        for (hold, interval, expected) in
+            [(2.99, 0.15, false), (3.01, 0.31, false), (3.01, 0.15, true)]
+        {
+            app.release_keys();
+            app.key(code, 1);
+            app.flight.time += hold;
+            app.key(code, 2);
+            assert!(app.flight.clone().loop_toward(1.0));
+            app.key(code, 0);
+            app.flight.time += interval * 0.5;
+            tap(&mut app, code);
+            assert!(app.flight.clone().loop_toward(1.0));
+            app.flight.time += interval * 0.5;
+            tap(&mut app, code);
+            assert_eq!(!app.flight.clone().loop_toward(1.0), expected);
+            app.flight = crate::flight::Flight::new(&app.world);
+            app.flight.position.z = 1800.0;
+        }
     }
-    assert!(app.flight.pitch.abs() < 0.6);
-    app.key(UP, 0);
-    app.direction_tap = Some((UP, Instant::now() - Duration::from_secs(1)));
-    app.key(UP, 1);
-    app.key(UP, 0);
-    app.key(UP, 1);
-    app.key(UP, 0);
-    let mut rotation = 0.0;
-    for _ in 0..360 {
-        let before = app.flight.attitude();
-        app.step(1.0 / 60.0, None);
-        rotation += 2.0
-            * before
-                .dot(app.flight.attitude())
-                .abs()
-                .clamp(0.0, 1.0)
-                .acos();
+    for interrupt in [DOWN, PAUSE, CHART, HELP, SETTINGS] {
+        app.page = Page::Playing;
+        app.release_keys();
+        app.key(UP, 1);
+        app.flight.time += 3.01;
+        app.key(UP, 0);
+        tap(&mut app, interrupt);
+        app.page = Page::Playing;
+        tap(&mut app, UP);
+        tap(&mut app, UP);
+        assert!(app.flight.clone().loop_toward(1.0));
     }
-    assert!(rotation > 5.5);
-    app.key(LEFT, 1);
-    app.key(LEFT, 0);
-    app.key(RIGHT, 1);
-    app.key(RIGHT, 0);
-    app.step(0.1, None);
-    assert_eq!(app.flight.spin, 0.0);
-    app.key(RIGHT, 1);
-    app.key(RIGHT, 0);
-    app.step(0.1, None);
-    assert!(app.flight.spin > 0.0);
+    for code in [LEFT, RIGHT] {
+        tap(&mut app, code);
+        tap(&mut app, code);
+        app.step(0.1, None);
+        assert_eq!(app.flight.spin, 0.0);
+    }
+    for (code, sign) in [(ROLL_LEFT, -1.0), (ROLL_RIGHT, 1.0)] {
+        tap(&mut app, code);
+        app.step(0.1, None);
+        assert!(app.flight.spin * sign > 0.0);
+        for _ in 0..12 {
+            app.step(0.1, None);
+        }
+    }
+}
+
+#[test]
+fn camera_keys_leave_aircraft_heading_unchanged_and_return_to_center() {
+    use crate::keys::*;
+    let mut app = App::new(World::generate(crate::world::MapKind::Moon, 1999));
+    app.start();
+    app.auto = false;
+    app.flight.position.z = 900.0;
+    app.flight.follow = app.flight.position;
+    let axes = app.flight.axes();
+    app.key(LOOK_UP, 1);
+    app.key(LOOK_RIGHT, 1);
+    for _ in 0..60 {
+        app.step(1.0 / 30.0, None);
+    }
+    assert!(app.flight.camera_look.length() <= 30.0_f32.to_radians() + 0.00001);
+    assert!(app.flight.camera_look.length() > 29.9_f32.to_radians());
+    for (before, after) in axes.into_iter().zip(app.flight.axes()) {
+        assert!(before.distance(after) < 0.0001);
+    }
+    app.key(LOOK_UP, 0);
+    app.key(LOOK_RIGHT, 0);
+    for _ in 0..60 {
+        app.step(1.0 / 30.0, None);
+    }
+    assert!(app.flight.camera_look.length() < 0.0001);
 }
 
 #[test]

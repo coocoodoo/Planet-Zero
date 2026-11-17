@@ -410,27 +410,42 @@ fn wingmen_outside_the_aperture_rejoin_from_the_exit() {
 #[test]
 fn held_pitch_never_starts_a_loop() {
     let world = terrain();
-    let mut f = Flight::new(&world);
-    for direction in [-1.0, 1.0] {
-        f.position.z = 2000.0;
-        f.pitch = 0.0;
-        for _ in 0..600 {
-            f.step(
-                1.0 / 60.0,
-                &Controls {
-                    manual: true,
-                    aerobatic: true,
-                    climb: direction,
-                    ..Default::default()
-                },
-                &world,
-            );
-            assert_eq!(f.loop_remaining, 0.0);
-            assert!(f.pitch.abs() <= NORMAL_PITCH + 0.02);
+    for orbit_flight in [false, true] {
+        for direction in [-1.0, 1.0] {
+            let mut f = Flight::new(&world);
+            f.position.z = 12000.0;
+            f.orbit_flight = orbit_flight;
+            for _ in 0..900 {
+                f.step(
+                    1.0 / 60.0,
+                    &Controls {
+                        manual: true,
+                        aerobatic: true,
+                        climb: direction,
+                        ..Default::default()
+                    },
+                    &world,
+                );
+                assert_eq!(f.loop_remaining, 0.0);
+                let limit = if orbit_flight {
+                    std::f32::consts::FRAC_PI_2
+                } else {
+                    NORMAL_PITCH
+                };
+                assert!(f.pitch.abs() <= limit + 0.02);
+            }
+            if orbit_flight {
+                assert!(
+                    f.pitch.abs() > 89.0_f32.to_radians(),
+                    "direction {direction}, pitch {}, altitude {}",
+                    f.pitch,
+                    f.position.z
+                );
+            }
+            f.position.z = MIN_CLEARANCE + 20.0;
+            assert!(!f.loop_toward(1.0));
         }
     }
-    f.position.z = MIN_CLEARANCE + 20.0;
-    assert!(!f.loop_toward(1.0));
 }
 
 #[test]

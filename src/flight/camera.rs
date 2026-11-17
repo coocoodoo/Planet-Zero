@@ -15,7 +15,7 @@ pub struct Camera {
     pub center: Vec2,
 }
 impl Camera {
-    pub fn new(flight: &Flight, width: usize, height: usize) -> Self {
+    fn tracked(flight: &Flight, width: usize, height: usize) -> Self {
         let [top, chase, cockpit] = flight.weights;
         let w = width as f32;
         let h = height as f32;
@@ -75,6 +75,24 @@ impl Camera {
             camera.slope *= 1.0 - t;
             camera.scale += (2.6 * w / 320.0 - camera.scale) * t;
             camera.center = camera.center.lerp(vec2(w * 0.5, h * 0.5), t);
+        }
+        camera
+    }
+    pub fn new(flight: &Flight, width: usize, height: usize) -> Self {
+        let mut camera = Self::tracked(flight, width, height);
+        if flight.camera_look.length_squared() > 0.0000001 {
+            let eye = camera.ray(camera.center).0;
+            let look = flight.camera_look.clamp_length_max(30.0_f32.to_radians());
+            let rotation = glam::Quat::from_axis_angle(camera.up, look.x)
+                * glam::Quat::from_axis_angle(camera.right, -look.y);
+            camera.right = rotation * camera.right;
+            camera.up = rotation * camera.up;
+            camera.forward = rotation * camera.forward;
+            if camera.q > 0.00001 {
+                camera.position = eye + (camera.forward - camera.up * camera.slope) / camera.q;
+            }
+            camera.yaw = (-camera.forward.x).atan2(-camera.forward.y);
+            camera.pitch = camera.forward.z.clamp(-1.0, 1.0).asin();
         }
         if let Some(adjustment) = flight.camera_adjustment {
             let rotation = glam::Quat::IDENTITY.slerp(adjustment.rotation, adjustment.weight);
@@ -176,6 +194,44 @@ impl Camera {
                 self.position + self.right * offset.x - self.up * offset.y,
                 self.forward - self.up * self.slope,
             )
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn look_preserves_the_eye_and_bounds_the_view_in_every_camera_mode() {
+        let world = World::generate(crate::world::MapKind::Moon, 7);
+        for view in 0..3 {
+            for look in [vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(-1.0, -1.0)] {
+                let mut flight = Flight::new(&world);
+                flight.weights = [0.0; 3];
+                flight.weights[view] = 1.0;
+                flight.pitch = 1.5;
+                let before = Camera::new(&flight, 320, 170);
+                flight.camera_look = look;
+                let after = Camera::new(&flight, 320, 170);
+                assert!(
+                    before
+                        .ray(before.center)
+                        .0
+                        .distance(after.ray(after.center).0)
+                        < 0.001
+                );
+                assert!(before.forward.dot(after.forward) >= 30.0_f32.to_radians().cos() - 0.001);
+                assert!(after.forward.dot(after.up).abs() < 0.001);
+                let (eye, ray) = after.ray(after.center);
+                assert!(
+                    after
+                        .project(eye + ray * 200.0)
+                        .unwrap()
+                        .0
+                        .distance(after.center)
+                        < 0.002
+                );
+            }
         }
     }
 }

@@ -61,7 +61,7 @@ impl Flight {
         let base = self.vehicle.speed() * (1.0 + self.boost * 0.8 + self.orbital_thrust * 3.0);
         let throttle = controls.throttle.unwrap_or(1.0).clamp(0.0, 1.0);
         self.speed += (base * throttle - self.speed) * ease(4.0, dt);
-        let velocity = self.axes()[1] * self.speed;
+        let velocity = self.axes()[1] * self.speed + self.frame_drift;
         self.vertical_speed = velocity.z;
         self.position += velocity * dt;
     }

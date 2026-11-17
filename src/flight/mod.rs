@@ -80,6 +80,7 @@ pub struct Flight {
     pub rate: f32,
     pub boost: f32,
     pub orbital_thrust: f32,
+    pub orbit_flight: bool,
     pub speed: f32,
     pub time: f32,
     pub spin: f32,
@@ -87,6 +88,7 @@ pub struct Flight {
     pub weights: [f32; 3],
     pub follow: Vec3,
     pub camera_yaw: f32,
+    pub camera_look: glam::Vec2,
     pub trails: VecDeque<[Vec3; 2]>,
     pub spread: f32,
     pub exploded: bool,
@@ -94,6 +96,7 @@ pub struct Flight {
     roll_direction: f32,
     pitch_rate: f32,
     vertical_speed: f32,
+    frame_drift: Vec3,
     loop_remaining: f32,
     loop_direction: f32,
     aerobatic_ground: f32,
@@ -143,6 +146,7 @@ impl Flight {
             rate: 0.0,
             boost: 0.0,
             orbital_thrust: 0.0,
+            orbit_flight: false,
             speed: 92.0,
             time: 0.0,
             spin: 0.0,
@@ -150,6 +154,7 @@ impl Flight {
             weights: [1.0, 0.0, 0.0],
             follow: position,
             camera_yaw: -0.33,
+            camera_look: glam::Vec2::ZERO,
             trails: VecDeque::with_capacity(160),
             spread: 1.0,
             exploded: false,
@@ -157,6 +162,7 @@ impl Flight {
             roll_direction: 1.0,
             pitch_rate: 0.0,
             vertical_speed: 0.0,
+            frame_drift: Vec3::ZERO,
             loop_remaining: 0.0,
             loop_direction: 1.0,
             aerobatic_ground: world
@@ -360,6 +366,7 @@ impl Flight {
         };
         let controls = scripted.as_ref().unwrap_or(controls);
         self.time += dt;
+        self.frame_drift *= (-dt * 3.0).exp();
         if let Some(adjustment) = &mut self.camera_adjustment {
             adjustment.weight *= (-dt * 0.3).exp();
             if adjustment.weight < 0.0001 {
@@ -389,7 +396,18 @@ impl Flight {
             return;
         }
         self.space_attitude = None;
-        self.speed = self.vehicle.speed() * (1.0 + self.boost * 0.8 + self.orbital_thrust * 3.0);
+        let high_altitude = if self.orbit_flight {
+            crate::world::orbit::smooth((self.position.z - 500.0) / 700.0)
+        } else {
+            0.0
+        };
+        let target_speed =
+            self.vehicle.speed() * (1.0 + self.boost * 0.8 + self.orbital_thrust * 3.0);
+        if self.orbit_flight {
+            self.speed += (target_speed - self.speed) * ease(3.0, dt);
+        } else {
+            self.speed = target_speed;
+        }
         let turn = if controls.manual {
             controls.turn
         } else {
@@ -405,13 +423,14 @@ impl Flight {
         let manual_attitude = controls.manual && controls.aerobatic;
         if manual_attitude {
             let input = controls.climb.clamp(-1.0, 1.0);
+            let pitch_limit = NORMAL_PITCH
+                + high_altitude.max(self.orbital_thrust)
+                    * (std::f32::consts::FRAC_PI_2 - NORMAL_PITCH);
+            let pitch_error = angle(input * pitch_limit - self.pitch);
             let target_rate = if self.loop_remaining > 0.0 {
                 self.loop_direction * LOOP_RATE
             } else {
-                let neutral = (self.pitch / std::f32::consts::PI).round() * std::f32::consts::PI;
-                let pitch_limit = NORMAL_PITCH
-                    + self.orbital_thrust * (std::f32::consts::FRAC_PI_2 - NORMAL_PITCH);
-                angle(neutral + input * pitch_limit - self.pitch) * 2.0
+                pitch_error * 2.0
             };
             self.pitch_rate += (target_rate - self.pitch_rate) * ease(5.0, dt);
             let mut rotation = self.pitch_rate * dt;
@@ -421,6 +440,9 @@ impl Flight {
                 if self.loop_remaining == 0.0 {
                     self.pitch_rate = 0.0;
                 }
+            } else if rotation * pitch_error > 0.0 && rotation.abs() > pitch_error.abs() {
+                rotation = pitch_error;
+                self.pitch_rate = 0.0;
             }
             self.pitch = angle(self.pitch + rotation);
         } else {
@@ -432,7 +454,7 @@ impl Flight {
         } else {
             vec3(self.yaw.sin(), -self.yaw.cos(), 0.0)
         };
-        let proposed = self.position + horizontal * self.speed * dt;
+        let proposed = self.position + (horizontal * self.speed + self.frame_drift) * dt;
         let (_, ahead_climb) =
             flight_floor(world, self.position, horizontal, self.speed, self.rate);
         let mut climb = if manual_attitude {
@@ -444,14 +466,15 @@ impl Flight {
         };
         climb = climb.max(ahead_climb).clamp(-self.speed, self.speed);
         if self.loop_remaining <= 0.0 {
-            let limit = self.speed * (0.4 + self.orbital_thrust * 0.55);
+            let limit = self.speed * (0.4 + high_altitude.max(self.orbital_thrust) * 0.6);
             climb = climb.clamp(-limit, limit);
         }
-        let acceleration = if self.loop_remaining > 0.0 || self.orbital_thrust > 0.0001 {
-            90.0
-        } else {
-            24.0
-        };
+        let acceleration =
+            if self.loop_remaining > 0.0 || self.orbital_thrust > 0.0001 || high_altitude > 0.0 {
+                90.0
+            } else {
+                24.0
+            };
         self.vertical_speed +=
             (climb - self.vertical_speed).clamp(-acceleration * dt, acceleration * dt);
         let old_altitude = self.position.z;

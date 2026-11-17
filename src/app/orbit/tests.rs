@@ -1,5 +1,4 @@
 use super::*;
-use glam::vec2;
 
 fn app(kind: MapKind) -> App {
     let mut app = App::new(World::generate(kind, kind.seed()));
@@ -9,13 +8,27 @@ fn app(kind: MapKind) -> App {
     app
 }
 
+fn ready_ascent(kind: MapKind) -> App {
+    let mut app = app(kind);
+    app.flight.position.z = 1210.0;
+    app.flight.follow = app.flight.position;
+    app.flight.pitch = 0.5;
+    app.flight.speed = 150.0;
+    app.orbit.boost = true;
+    assert!(!app.step_orbit(0.03));
+    app.network
+        .remember(World::generate(MapKind::Space, MapKind::Space.seed()).into());
+    assert!(app.step_orbit(0.03));
+    app
+}
+
 #[test]
-fn boost_requires_sustained_shift_climb_and_altitude() {
+fn high_altitude_climb_accelerates_with_or_without_shift() {
     let mut app = app(MapKind::Moon);
     app.flight.pitch = 0.5;
     for (height, boost, climb, expected) in [
         (450.0, true, 1.0, false),
-        (700.0, false, 1.0, false),
+        (700.0, false, 1.0, true),
         (700.0, true, 0.0, false),
         (700.0, true, 1.0, true),
     ] {
@@ -30,7 +43,7 @@ fn boost_requires_sustained_shift_climb_and_altitude() {
             app.orbit_controls(&mut controls, 0.1);
             assert_eq!(controls.orbital, expected && frame >= 5);
         }
-        controls.boost = false;
+        controls.climb = 0.0;
         app.orbit_controls(&mut controls, 0.1);
         assert!(!controls.orbital);
     }
@@ -45,50 +58,39 @@ fn boost_requires_sustained_shift_climb_and_altitude() {
 }
 
 #[test]
-fn ascent_waits_for_preload_and_can_return_to_both_surfaces() {
-    use crate::flight::Camera;
+fn ascent_and_descent_follow_manual_flight_and_preserve_velocity() {
     for kind in [MapKind::Moon, MapKind::Islands] {
-        let mut app = app(kind);
+        let mut app = ready_ascent(kind);
         let original = app.world.clone();
         let body = Body::of(kind);
-        app.flight.position.z = 1210.0;
-        app.flight.follow = app.flight.position;
-        app.flight.pitch = 0.5;
-        app.flight.speed = 150.0;
-        app.orbit.boost = true;
-        assert!(!app.step_orbit(0.03));
-        assert!(app.orbit.transition.is_none());
-        app.network
-            .remember(World::generate(MapKind::Space, MapKind::Space.seed()).into());
-        assert!(app.step_orbit(0.03));
-        assert_eq!(app.flight.surface.unwrap().bend, 0.0);
-        let mut switched = 0;
-        for _ in 0..100 {
-            let previous = app.world.kind;
-            app.step(0.1, Some(Controls::default()));
-            switched += usize::from(previous != app.world.kind);
-            if previous != app.world.kind {
-                assert!((body.altitude(app.flight.position) - ORBIT_ALTITUDE).abs() < 50.0);
-                assert!((app.flight.speed - app.flight.vehicle.speed()).abs() < 0.01);
-                assert_eq!(app.orbit.arrival_notice, 5.0);
-                if body == Body::Earth {
-                    assert_ne!(app.orbit.earth.unwrap().kind, kind);
-                }
+        let controls = Controls {
+            manual: true,
+            aerobatic: true,
+            climb: 1.0,
+            ..Default::default()
+        };
+        for _ in 0..1800 {
+            app.step(1.0 / 60.0, Some(Controls { ..controls }));
+            if app.world.kind == MapKind::Space {
+                break;
             }
         }
-        assert_eq!(switched, 1);
         assert_eq!(app.world.kind, MapKind::Space);
+        assert!((body.altitude(app.flight.position) - ORBIT_ALTITUDE).abs() < 100.0);
+        assert_eq!(app.orbit.arrival_notice, 5.0);
+        assert!(app.flight.speed > app.flight.vehicle.speed() * 3.0);
+        if body == Body::Earth {
+            assert_ne!(app.orbit.earth.unwrap().kind, kind);
+        }
         assert!(app.flight.surface.is_none());
         assert!(app.flight.warp_flash <= 0.0);
-        assert!(app.flight.position.is_finite());
-        let center = body.center();
-        let position = center + vec3(0.0, body.radius() + 1000.0, 300.0);
+        let position = body.center() + Vec3::Z * (body.radius() + 1000.0);
         app.flight.translate(position - app.flight.position);
-        app.flight.pitch = -0.2;
-        app.flight.yaw = 0.0;
-        app.flight.space_attitude = Some(Quat::from_rotation_x(0.2) * Quat::from_rotation_y(0.3));
+        app.flight.space_attitude = Some(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2));
         app.flight.camera_adjustment = None;
-        let camera = Camera::new(&app.flight, 320, 170);
+        app.flight.camera_look = glam::vec2(0.2, 0.1);
+        let camera = crate::flight::Camera::new(&app.flight, 320, 170);
+        let velocity = app.flight.velocity();
         app.network.remember(original);
         app.begin_descent(
             body,
@@ -98,11 +100,20 @@ fn ascent_waits_for_preload_and_can_return_to_both_surfaces() {
             },
         );
         let warp = app.flight.surface.unwrap();
-        let after = Camera::new(&app.flight, 320, 170);
+        let after = crate::flight::Camera::new(&app.flight, 320, 170);
         assert!((warp.basis * after.forward - camera.forward).length() < 0.001);
-        assert!(app.flight.warp_flash <= 0.0);
-        for _ in 0..100 {
-            app.step(0.1, Some(Controls::default()));
+        assert!((warp.basis * app.flight.velocity() - velocity).length() < 0.001);
+        for _ in 0..1800 {
+            app.step(
+                1.0 / 60.0,
+                Some(Controls {
+                    climb: -1.0,
+                    ..controls
+                }),
+            );
+            if app.orbit.transition.is_none() {
+                break;
+            }
         }
         assert_eq!(app.world.kind, kind);
         assert_eq!(app.flight.surface.unwrap().bend, 0.0);
@@ -113,48 +124,55 @@ fn ascent_waits_for_preload_and_can_return_to_both_surfaces() {
                     .world
                     .height(app.flight.position.x, app.flight.position.y)
         );
+        assert!(app.flight.warp_flash <= 0.0);
     }
 }
 
 #[test]
-fn transition_pauses_and_ignores_aerobatic_shortcuts() {
-    let mut app = app(MapKind::Moon);
-    app.flight.position.z = 1000.0;
-    app.flight.surface = Some(SurfaceWarp::new(
-        Body::Moon,
-        vec2(2048.0, 2048.0),
-        app.flight.position.truncate(),
-        0.7,
-    ));
-    app.begin_transition(
-        false,
-        MapKey::of(&app.world),
-        app.flight.position.with_z(300.0),
-    );
-    for code in [
-        crate::keys::UP,
-        crate::keys::DOWN,
-        crate::keys::ROLL_LEFT,
-        crate::keys::ROLL_RIGHT,
-    ] {
-        for _ in 0..2 {
-            app.key(code, 1);
-            app.key(code, 0);
-        }
+fn transition_holds_altitude_accepts_turns_reverses_and_pauses() {
+    let mut app = ready_ascent(MapKind::Moon);
+    app.flight.position.z = 1800.0;
+    app.flight.pitch = 0.0;
+    let controls = Controls {
+        manual: true,
+        aerobatic: true,
+        turn: 0.3,
+        ..Default::default()
+    };
+    let yaw = app.flight.yaw;
+    for _ in 0..900 {
+        app.step(1.0 / 60.0, Some(Controls { ..controls }));
     }
-    let mut check = app.flight.clone();
-    assert!(check.loop_toward(1.0));
-    assert!(check.roll_toward(1.0));
+    assert!(app.orbit.transition.is_some());
+    assert!((app.flight.position.z - 1800.0).abs() < 0.01);
+    assert!((app.flight.yaw - yaw).abs() > 1.0);
     app.help_return = Page::Playing;
     for page in [Page::Paused, Page::Chart, Page::Help] {
         app.page = page;
         let before = app.flight.position;
+        let bend = app.flight.surface.unwrap().bend;
         app.step(0.1, None);
         assert_eq!(app.flight.position, before);
-        assert_eq!(app.orbit.transition.as_ref().unwrap().elapsed, 0.0);
+        assert_eq!(app.flight.surface.unwrap().bend, bend);
     }
-    app.home();
+    app.page = Page::Playing;
+    for _ in 0..1800 {
+        app.step(
+            1.0 / 60.0,
+            Some(Controls {
+                climb: -1.0,
+                turn: 0.0,
+                ..controls
+            }),
+        );
+        if app.orbit.transition.is_none() {
+            break;
+        }
+    }
     assert!(app.orbit.transition.is_none());
+    assert_eq!(app.world.kind, MapKind::Moon);
+    assert_eq!(app.flight.surface.unwrap().bend, 0.0);
+    app.home();
     assert!(app.flight.surface.is_none());
     assert!(app.flight.camera_adjustment.is_none());
 }
@@ -233,18 +251,26 @@ fn surface_handoff_preserves_the_rendered_globe() {
 }
 
 #[test]
-fn transition_velocity_remains_continuous_at_and_after_the_endpoint() {
-    let mut app = app(MapKind::Moon);
-    app.begin_transition(
-        false,
-        MapKey::of(&app.world),
-        app.flight.position + Vec3::Y * 500.0,
+fn ascent_handoff_keeps_motion_and_manual_aerobatics() {
+    let mut app = ready_ascent(MapKind::Moon);
+    app.flight.position.z = ORBIT_ALTITUDE;
+    app.flight.pitch = 0.9;
+    app.flight.camera_look = glam::vec2(-0.2, 0.3);
+    assert!(app.flight.loop_toward(1.0));
+    let before = app.flight.velocity();
+    let rotation = app.flight.surface.unwrap().basis;
+    app.step_orbit(0.03);
+    assert!(app.flight.velocity().distance(rotation * before) < 0.001);
+    assert!(!app.flight.clone().loop_toward(1.0));
+    let before = app.flight.velocity();
+    app.step(
+        1.0 / 60.0,
+        Some(Controls {
+            manual: true,
+            ..Default::default()
+        }),
     );
-    let transition = app.orbit.transition.as_ref().unwrap();
-    assert!(transition.velocity(0.0).distance(transition.velocity) < 0.001);
-    for time in [transition.duration, transition.duration + 0.1] {
-        assert!(transition.velocity(time).distance(transition.exit_velocity) < 0.001);
-    }
+    assert!(app.flight.velocity().distance(before) < 15.0);
 }
 
 #[test]
@@ -297,5 +323,50 @@ fn ascent_handoff_preserves_space_scenery() {
             kind.name(),
             error as f32 / (320.0 * 170.0 * 4.0)
         );
+    }
+}
+
+#[test]
+fn descent_can_be_reversed_or_finished_by_navigation() {
+    for automatic in [false, true] {
+        let mut app = app(MapKind::Space);
+        let destination = Arc::new(World::generate(MapKind::Moon, MapKind::Moon.seed()));
+        let key = MapKey::of(&destination);
+        app.network.remember(destination);
+        app.flight.position = Body::Moon.center() + Vec3::Z * (Body::Moon.radius() + 1000.0);
+        app.flight.follow = app.flight.position;
+        app.flight.space_attitude = Some(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2));
+        app.navigation.active = automatic;
+        app.begin_descent(Body::Moon, key);
+        for _ in 0..5400 {
+            app.step(
+                1.0 / 60.0,
+                Some(Controls {
+                    manual: true,
+                    aerobatic: true,
+                    climb: 1.0,
+                    ..Default::default()
+                }),
+            );
+            if app.world.kind == MapKind::Space || app.navigation.arrived {
+                break;
+            }
+        }
+        if automatic {
+            assert_eq!(app.world.kind, MapKind::Moon);
+            assert!(
+                app.navigation.arrived,
+                "position {:?}, target {:?}",
+                app.flight.position,
+                app.navigation.target.unwrap().position
+            );
+            assert!(app.orbit.transition.is_none());
+        } else {
+            assert_eq!(app.world.kind, MapKind::Space);
+            assert!(
+                app.flight.axes()[1].dot((app.flight.position - Body::Moon.center()).normalize())
+                    > 0.9
+            );
+        }
     }
 }

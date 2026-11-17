@@ -11,18 +11,18 @@ pub struct CameraAdjustment {
 impl Flight {
     pub fn velocity(&self) -> Vec3 {
         if self.space_attitude.is_some() {
-            return self.axes()[1] * self.speed;
+            return self.axes()[1] * self.speed + self.frame_drift;
         }
         vec3(
             self.yaw.sin() * self.pitch.cos() * self.speed,
             -self.yaw.cos() * self.pitch.cos() * self.speed,
             self.vertical_speed,
-        )
+        ) + self.frame_drift
     }
-    pub fn transform_frame(&mut self, rotation: Mat3, offset: Vec3) {
+    pub fn transform_frame(&mut self, rotation: Mat3, offset: Vec3, space: bool) {
         let camera = Camera::new(self, 320, 170);
         let roll_before = self.screen_roll() * self.weights[2];
-        self.transform_pose(rotation, offset);
+        self.transform_pose(rotation, offset, space);
         self.preserve_camera(camera, rotation, offset, roll_before);
     }
     pub fn settle_surface_attitude(&mut self) {
@@ -57,14 +57,10 @@ impl Flight {
             slope: camera.slope - target.slope,
         });
     }
-    fn transform_pose(&mut self, rotation: Mat3, offset: Vec3) {
+    fn transform_pose(&mut self, rotation: Mat3, offset: Vec3, space: bool) {
         let [right, forward, _] = self.axes().map(|v| rotation * v);
-        let velocity = rotation
-            * vec3(
-                self.yaw.sin() * self.speed * self.pitch.cos(),
-                -self.yaw.cos() * self.speed * self.pitch.cos(),
-                self.vertical_speed,
-            );
+        let velocity = rotation * self.velocity();
+        self.space = space;
         self.position = rotation * self.position + offset;
         self.follow = rotation * self.follow + offset;
         self.director_anchor = rotation * self.director_anchor + offset;
@@ -72,22 +68,20 @@ impl Flight {
         self.pitch = forward.z.clamp(-1.0, 1.0).asin();
         let base_right = vec3(self.yaw.cos(), self.yaw.sin(), 0.0);
         let base_up = forward.cross(base_right);
-        self.bank = (-right.dot(base_up)).atan2(right.dot(base_right));
+        self.bank = angle((-right.dot(base_up)).atan2(right.dot(base_right)) - self.spin);
         self.space_attitude = if self.space {
             Some(
                 Quat::from_mat3(&Mat3::from_cols(right, -forward, forward.cross(right)))
-                    .normalize(),
+                    .normalize()
+                    * Quat::from_rotation_y(-self.spin),
             )
         } else {
             None
         };
-        self.spin = 0.0;
         self.camera_yaw = -self.yaw;
         self.vertical_speed = velocity.z;
-        self.rate = 0.0;
-        self.pitch_rate = 0.0;
-        self.loop_remaining = 0.0;
-        self.roll_time = -1.0;
+        self.frame_drift = Vec3::ZERO;
+        self.frame_drift = velocity - self.velocity();
         self.portal_transit = None;
         self.portal_exit = None;
         self.portal_cooldown = 5.0;
@@ -97,15 +91,8 @@ impl Flight {
             }
         }
         for wing in &mut self.wingmen {
-            wing.transform_pose(rotation, offset);
+            wing.transform_pose(rotation, offset, space);
         }
-    }
-    pub fn cinematic_position(&mut self, position: Vec3, pitch: f32, velocity: Vec3) {
-        self.position = position;
-        self.pitch = pitch;
-        self.pitch_rate = 0.0;
-        self.vertical_speed = velocity.z;
-        self.speed = velocity.length();
     }
 }
 
@@ -116,9 +103,13 @@ mod tests {
     #[test]
     fn frame_rotation_preserves_screen_projection_and_formation() {
         let world = World::generate(crate::world::MapKind::Space, 7);
-        for view in 0..3 {
+        for (view, look) in
+            (0..3).flat_map(|v| [glam::Vec2::ZERO, vec2(0.2, -0.3)].map(|look| (v, look)))
+        {
             let mut f = Flight::new(&world);
             f.view = view;
+            f.camera_look = look;
+            f.spin = 0.4;
             f.weights = [0.0; 3];
             f.weights[view] = 1.0;
             f.yaw = 0.7;
@@ -137,7 +128,7 @@ mod tests {
             let wing = f.wingmen[0].position - f.position;
             let rotation = Mat3::from_quat(Quat::from_rotation_x(1.2) * Quat::from_rotation_z(0.9));
             let offset = vec3(2000.0, 800.0, 600.0);
-            f.transform_frame(rotation, offset);
+            f.transform_frame(rotation, offset, true);
             assert!(
                 before.distance(projection(&f, rotation * point + offset)) < 0.003,
                 "view {view}"
@@ -152,7 +143,8 @@ mod tests {
             f.settle_surface_attitude();
             assert!(
                 before.distance(projection(&f, point)) < 0.003,
-                "surface view {view}"
+                "surface view {view}, look {look:?}, before {before:?}, after {:?}",
+                projection(&f, point)
             );
             assert!(f.space_attitude.is_none());
         }

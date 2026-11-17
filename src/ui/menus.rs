@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) const HELP_PAGES: [[&str; 8]; 13] = [
+pub(super) const HELP_PAGES: [[&str; 8]; 14] = [
     [
         "FLIGHT",
         "UP PITCH UP",
@@ -8,8 +8,8 @@ pub(super) const HELP_PAGES: [[&str; 8]; 13] = [
         "LEFT TURN LEFT",
         "RIGHT TURN RIGHT",
         "SHIFT HOLD TO BOOST",
-        "D ROLL LEFT",
-        "G ROLL RIGHT",
+        "Q ROLL LEFT",
+        "E ROLL RIGHT",
     ],
     [
         "INTERFACE",
@@ -93,13 +93,13 @@ pub(super) const HELP_PAGES: [[&str; 8]; 13] = [
     ],
     [
         "AEROBATICS / DESKTOP",
-        "UP DOUBLE TAP : INSIDE LOOP",
-        "DOWN DOUBLE TAP : OUTSIDE LOOP",
-        "LEFT DOUBLE TAP : LEFT ROLL",
-        "RIGHT DOUBLE TAP : RIGHT ROLL",
-        "TAP TWICE WITHIN 0.32 SECONDS",
+        "UP INSIDE LOOP",
+        "DOWN OUTSIDE LOOP",
+        "HOLD THE SAME DIRECTION 3S",
+        "RELEASE THEN TAP TWICE IN 0.3S",
         "HIGH ALTITUDE REQUIRED",
-        "HOLD DIRECTION : NORMAL FLIGHT",
+        "LONG HOLD : NORMAL PITCH",
+        "LOOP CONTINUES AFTER RELEASE",
     ],
     [
         "DESKTOP / DISPLAY / SOUND",
@@ -131,6 +131,16 @@ pub(super) const HELP_PAGES: [[&str; 8]; 13] = [
         "7 CHANGE LANDING ON CHART",
         "ENTER START AUTO LANDING",
     ],
+    [
+        "CAMERA LOOK",
+        "W LOOK UP",
+        "A LOOK LEFT",
+        "S LOOK DOWN",
+        "D LOOK RIGHT",
+        "MAX LOOK ANGLE : 30 DEGREES",
+        "RELEASE TO CENTER SMOOTHLY",
+        "AIRCRAFT HEADING STAYS THE SAME",
+    ],
 ];
 
 fn control_label(line: &str) -> String {
@@ -150,13 +160,13 @@ fn help_page(index: usize, device: bool) -> [&'static str; 8] {
     if device && index == 9 {
         [
             "AEROBATICS / CARDPUTER",
-            "UP DOUBLE TAP : INSIDE LOOP",
-            "DOWN DOUBLE TAP : OUTSIDE LOOP",
-            "LEFT DOUBLE TAP : LEFT ROLL",
-            "RIGHT DOUBLE TAP : RIGHT ROLL",
+            "UP INSIDE LOOP",
+            "DOWN OUTSIDE LOOP",
+            "HOLD THE SAME DIRECTION 3S",
+            "RELEASE THEN TAP TWICE IN 0.3S",
             "HIGH ALTITUDE REQUIRED",
             "IMU TILT : NORMAL FLIGHT",
-            "HOLD DIRECTION : NORMAL FLIGHT",
+            "LOOP CONTINUES AFTER RELEASE",
         ]
     } else if device && index == 10 {
         [

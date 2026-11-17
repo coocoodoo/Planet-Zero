@@ -1,10 +1,45 @@
 use super::*;
 use crate::keys::*;
 
+#[derive(Default)]
+pub(super) struct PitchGesture {
+    held: Option<(u16, f32)>,
+    armed: Option<(u16, f32, u8)>,
+}
+impl PitchGesture {
+    fn release(&mut self, code: u16, now: f32) {
+        if let Some((key, start)) = self.held
+            && key == code
+        {
+            if now - start >= 3.0 {
+                self.armed = Some((key, now, 0));
+            }
+            self.held = None;
+        }
+    }
+    fn press(&mut self, code: u16, now: f32) -> bool {
+        self.held = Some((code, now));
+        if let Some((key, released, taps)) = &mut self.armed
+            && *key == code
+            && now - *released <= 0.3
+        {
+            *taps += 1;
+            if *taps == 2 {
+                self.held = None;
+                self.armed = None;
+                return true;
+            }
+        } else {
+            self.armed = None;
+        }
+        false
+    }
+}
+
 impl App {
     pub fn release_keys(&mut self) {
         self.keys.clear();
-        self.direction_tap = None;
+        self.pitch_gesture = Default::default();
         self.escape_since = None;
     }
     pub fn controls(&self) -> Controls {
@@ -23,6 +58,9 @@ impl App {
     }
     pub fn key(&mut self, code: u16, value: i32) {
         if value == 0 {
+            if self.page == Page::Playing {
+                self.pitch_gesture.release(code, self.flight.time);
+            }
             self.keys.remove(&code);
             if code == ESC
                 && self
@@ -43,6 +81,7 @@ impl App {
         }
         match code {
             CHART if matches!(self.page, Page::Playing | Page::Paused | Page::Chart) => {
+                self.pitch_gesture = Default::default();
                 self.toggle_chart();
                 return;
             }
@@ -51,6 +90,7 @@ impl App {
                 return;
             }
             HELP if self.page != Page::Help => {
+                self.pitch_gesture = Default::default();
                 self.help();
                 return;
             }
@@ -59,6 +99,7 @@ impl App {
                     self.page = Page::Settings;
                     return;
                 }
+                self.pitch_gesture = Default::default();
                 self.open_settings();
                 return;
             }
@@ -173,7 +214,7 @@ impl App {
         match code {
             OVERDRIVE if self.mode == Mode::Combat => self.mission.activate_overdrive(),
             VIEW => self.flight.view = (self.flight.view + 1) % 3,
-            ROLL_LEFT | ROLL_RIGHT if self.orbit.transition.is_none() => {
+            ROLL_LEFT | ROLL_RIGHT => {
                 let direction = if code == ROLL_LEFT { -1.0 } else { 1.0 };
                 if self.flight.roll_toward(direction) {
                     self.sounds.push(crate::audio::Sound::Roll);
@@ -181,6 +222,7 @@ impl App {
                 }
             }
             PAUSE => {
+                self.pitch_gesture = Default::default();
                 self.page = Page::Paused;
                 self.selection = 0;
             }
@@ -188,25 +230,23 @@ impl App {
             WEAPON if self.mode == Mode::Combat => self.mission.cycle_weapon(),
             BOMB if self.mode == Mode::Combat => self.mission.bomb(),
             AUTOFIRE if self.mode == Mode::Combat => self.mission.autofire = !self.mission.autofire,
-            UP | LEFT | DOWN | RIGHT if self.orbit.transition.is_none() => {
+            UP | LEFT | DOWN | RIGHT => {
                 self.navigation.active = false;
                 self.navigation.arrived = false;
                 self.auto = false;
                 self.flight.set_demo(false);
-                let now = Instant::now();
-                let double = self.direction_tap.is_some_and(|(key, time)| {
-                    key == code && now.duration_since(time) <= Duration::from_millis(320)
-                });
-                self.direction_tap = if double { None } else { Some((code, now)) };
-                if double && self.mission.countdown <= 0.0 {
-                    let started = match code {
-                        UP => self.flight.loop_toward(1.0),
-                        DOWN => self.flight.loop_toward(-1.0),
-                        LEFT => self.flight.roll_toward(-1.0),
-                        RIGHT => self.flight.roll_toward(1.0),
-                        _ => false,
+                if matches!(code, UP | DOWN) {
+                    let opposite = if code == UP { DOWN } else { UP };
+                    let double = if self.keys.contains(&opposite) {
+                        self.pitch_gesture = Default::default();
+                        false
+                    } else {
+                        self.pitch_gesture.press(code, self.flight.time)
                     };
-                    if started {
+                    if double
+                        && self.mission.countdown <= 0.0
+                        && self.flight.loop_toward(if code == UP { 1.0 } else { -1.0 })
+                    {
                         self.sounds.push(crate::audio::Sound::Roll);
                         self.mission.dodge();
                     }
@@ -259,6 +299,7 @@ impl App {
         }
     }
     pub fn back(&mut self) {
+        self.pitch_gesture = Default::default();
         match self.page {
             Page::Chart => self.toggle_chart(),
             Page::Menu => {}

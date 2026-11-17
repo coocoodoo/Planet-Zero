@@ -40,7 +40,7 @@ pub enum Page {
 pub struct App {
     pub(crate) orbit: orbit::Orbit,
     pub navigation: navigation::Navigation,
-    pub(super) direction_tap: Option<(u16, Instant)>,
+    pitch_gesture: input::PitchGesture,
     pub telemetry: telemetry::Telemetry,
     pub(crate) minimap: chart::Chart,
     pub device_controls: bool,
@@ -125,7 +125,7 @@ impl App {
         Self {
             orbit: orbit::Orbit::default(),
             navigation: navigation::Navigation::default(),
-            direction_tap: None,
+            pitch_gesture: Default::default(),
             telemetry: telemetry::Telemetry::default(),
             minimap: chart::Chart::default(),
             device_controls: false,
@@ -177,7 +177,7 @@ impl App {
     pub fn start(&mut self) {
         self.orbit = orbit::Orbit::default();
         self.navigation = navigation::Navigation::default();
-        self.direction_tap = None;
+        self.pitch_gesture = Default::default();
         self.director = director::Director::default();
         if self.page == Page::Menu {
             self.loadout = Loadout::default();
@@ -289,6 +289,9 @@ impl App {
         {
             self.quit = true;
         }
+        if self.page != Page::Playing {
+            self.pitch_gesture = Default::default();
+        }
         if self.page == Page::Chart {
             let held = |key| f32::from(self.keys.contains(&key));
             let movement = glam::vec2(
@@ -325,12 +328,20 @@ impl App {
         if self.page != Page::Playing {
             return;
         }
+        let held = |key| f32::from(self.keys.contains(&key));
+        let look = glam::vec2(
+            held(crate::keys::LOOK_RIGHT) - held(crate::keys::LOOK_LEFT),
+            held(crate::keys::LOOK_UP) - held(crate::keys::LOOK_DOWN),
+        )
+        .clamp_length_max(1.0)
+            * 30.0_f32.to_radians();
+        self.flight.camera_look += (look - self.flight.camera_look) * crate::flight::ease(7.0, dt);
         let mut controls = self
             .navigation_controls()
             .unwrap_or_else(|| external.unwrap_or_else(|| self.controls()));
         self.orbit_controls(&mut controls, dt);
         let mut previous = self.flight.position;
-        if self.mission.countdown <= 0.0 && self.orbit.transition.is_none() {
+        if self.mission.countdown <= 0.0 {
             self.flight.step(dt, &controls, &self.world);
         }
         if self.step_orbit(dt) {
