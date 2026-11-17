@@ -172,7 +172,10 @@ impl Renderer {
         let mut bounds = [self.w as i32, self.h as i32, 0, 0];
         for z in order {
             for voxel in 0..self.voxels[z].len() {
-                let (a, b, color) = self.voxels[z][voxel];
+                let (a, b, color, exterior) = self.voxels[z][voxel];
+                if !exterior && flight.spread <= 1.1 {
+                    continue;
+                }
                 let center = flight.position
                     + (right * a + forward * b + up * ((z as f32 - 5.0) * flight.spread))
                         * MODEL_SCALE;

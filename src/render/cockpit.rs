@@ -38,6 +38,7 @@ pub struct Cockpit {
     lit: Vec<u32>,
     owner: Vec<u8>,
     base_key: Option<BaseKey>,
+    pub(super) revision: u64,
     hud: Vec<u32>,
 }
 
@@ -108,8 +109,13 @@ impl Cockpit {
             lit: Vec::new(),
             owner: Vec::new(),
             base_key: None,
+            revision: 0,
             hud: Vec::new(),
         }
+    }
+
+    pub(super) fn opaque(&self, x: usize, y: usize) -> bool {
+        self.base[y * 320 + x] != 0
     }
 
     pub fn prepare(
@@ -176,6 +182,7 @@ impl Cockpit {
                 }
             }
             self.base_key = Some(key);
+            self.revision += 1;
         }
         self.native.copy_from_slice(&self.base);
         if flight.weather == crate::content::weather::Weather::Clear && theme < 2 {

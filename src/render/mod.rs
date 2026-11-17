@@ -97,6 +97,7 @@ pub struct Renderer {
     cockpit: crate::render::cockpit::Cockpit,
     visible: Vec<(i32, i32)>,
     mapping: Vec<usize>,
+    mapping_key: Option<(usize, usize, usize, usize, u32, u64)>,
     occluded: Vec<bool>,
     pub stages: [f64; 3],
     x_origin: usize,
@@ -109,7 +110,7 @@ pub struct Renderer {
     column: Vec<i32>,
     pub rgba: Vec<u8>,
     output: Vec<u32>,
-    voxels: Vec<Vec<(f32, f32, usize)>>,
+    voxels: Vec<Vec<(f32, f32, usize, bool)>>,
     pub detail: [f64; 4],
 }
 
@@ -134,7 +135,23 @@ impl Renderer {
                 for x in 0..34 {
                     let color = MODEL[(z * 46 + y) * 34 + x] as usize;
                     if color != 0 {
-                        voxels[z].push((x as f32 - 16.5, 25.3 - y as f32, color));
+                        let exterior = x == 0
+                            || x == 33
+                            || y == 0
+                            || y == 45
+                            || z == 0
+                            || z == 12
+                            || [
+                                ((z * 46 + y) * 34 + x) - 1,
+                                ((z * 46 + y) * 34 + x) + 1,
+                                (z * 46 + y - 1) * 34 + x,
+                                (z * 46 + y + 1) * 34 + x,
+                                ((z - 1) * 46 + y) * 34 + x,
+                                ((z + 1) * 46 + y) * 34 + x,
+                            ]
+                            .iter()
+                            .any(|&i| MODEL[i] == 0);
+                        voxels[z].push((x as f32 - 16.5, 25.3 - y as f32, color, exterior));
                     }
                 }
             }
@@ -148,6 +165,7 @@ impl Renderer {
             cockpit: crate::render::cockpit::Cockpit::new(),
             visible: vec![],
             mapping: vec![],
+            mapping_key: None,
             occluded: vec![],
             stages: [0.0; 3],
             x_origin: 0,
@@ -208,13 +226,6 @@ impl Renderer {
         self.pixels.resize(self.w * self.h, 0);
         self.pixels.fill(0);
         self.depth.resize(self.pixels.len(), f32::INFINITY);
-        self.depth.fill(if rolled {
-            f32::NEG_INFINITY
-        } else {
-            f32::INFINITY
-        });
-        self.occluded.resize(self.pixels.len(), rolled);
-        self.occluded.fill(rolled);
         self.mask.resize(self.pixels.len(), 0);
         self.mask.fill(0);
         self.column.resize(self.w, self.h as i32);
@@ -232,37 +243,60 @@ impl Renderer {
             self.cockpit.prepare(flight, world, size, theme, network);
         }
         self.visible.resize(self.w, (self.h as i32, 0));
-        self.visible.fill((self.h as i32, 0));
         self.mapping.resize(width * height, 0);
         self.output.resize(width * height, 0);
         let roll = (flight.bank + flight.spin) * cockpit;
         let (s, c) = roll.sin_cos();
         let pivot = vec2(width as f32 * 0.5, height as f32 * 0.43);
-        if !rolled {
-            self.visible.fill((0, height as i32));
-            for y in 0..height {
-                for x in 0..width {
-                    self.mapping[y * width + x] = x * height + y;
+        let mapping_key = (
+            self.w,
+            self.h,
+            width,
+            height,
+            roll.to_bits(),
+            if has_panel { self.cockpit.revision } else { 0 },
+        );
+        if self.mapping_key != Some(mapping_key) {
+            self.visible.fill((self.h as i32, 0));
+            self.occluded.resize(self.pixels.len(), rolled);
+            self.occluded.fill(rolled);
+            if !rolled {
+                self.visible.fill((0, height as i32));
+                for y in 0..height {
+                    for x in 0..width {
+                        self.mapping[y * width + x] = x * height + y;
+                    }
                 }
+            } else {
+                for y in 0..height {
+                    let py = y as f32 - pivot.y;
+                    let mut q = vec2(-pivot.x * c - py * s, -pivot.x * s + py * c) + pivot + offset;
+                    for x in 0..width {
+                        let sx = (q.x.round() as usize).min(self.w - 1);
+                        let sy = (q.y.round() as usize).min(self.h - 1);
+                        self.mapping[y * width + x] = sx * self.h + sy;
+                        if !has_panel || !self.cockpit.opaque(x * 320 / width, y * 170 / height) {
+                            self.occluded[sx * self.h + sy] = false;
+                            self.visible[sx].0 = self.visible[sx].0.min(sy as i32);
+                            self.visible[sx].1 = self.visible[sx].1.max(sy as i32 + 1);
+                        }
+                        q.x += c;
+                        q.y += s;
+                    }
+                }
+            }
+            self.mapping_key = Some(mapping_key);
+        }
+        if rolled {
+            for (depth, &occluded) in self.depth.iter_mut().zip(&self.occluded) {
+                *depth = if occluded {
+                    f32::NEG_INFINITY
+                } else {
+                    f32::INFINITY
+                };
             }
         } else {
-            for y in 0..height {
-                let py = y as f32 - pivot.y;
-                let mut q = vec2(-pivot.x * c - py * s, -pivot.x * s + py * c) + pivot + offset;
-                for x in 0..width {
-                    let sx = (q.x.round() as usize).min(self.w - 1);
-                    let sy = (q.y.round() as usize).min(self.h - 1);
-                    self.mapping[y * width + x] = sx * self.h + sy;
-                    if !has_panel || self.cockpit.pixels[y * width + x] == 0 {
-                        self.depth[sx * self.h + sy] = f32::INFINITY;
-                        self.occluded[sx * self.h + sy] = false;
-                        self.visible[sx].0 = self.visible[sx].0.min(sy as i32);
-                        self.visible[sx].1 = self.visible[sx].1.max(sy as i32 + 1);
-                    }
-                    q.x += c;
-                    q.y += s;
-                }
-            }
+            self.depth.fill(f32::INFINITY);
         }
         for (column, visible) in self.column.iter_mut().zip(&self.visible) {
             *column = visible.1;
