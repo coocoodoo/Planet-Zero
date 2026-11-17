@@ -100,10 +100,11 @@ impl Renderer {
             leaves.push((x, y, size));
         }
         let lookup: std::collections::HashSet<_> = leaves.iter().copied().collect();
+        let mut boundary = Vec::with_capacity(16);
         for (x, y, size) in leaves {
             let sample = |x, y| vec3(x as f32, y as f32, world.heights[index(x, y, SIZE)] as f32);
             let center = sample(x + size / 2, y + size / 2);
-            let mut boundary = Vec::with_capacity(8);
+            boundary.clear();
             for edge in 0..4 {
                 let mut offset = 0;
                 while offset < size {
@@ -226,13 +227,29 @@ impl Renderer {
         } else {
             0.0
         };
+        let columns = super::primitives::TriangleColumns::new([a, b, c]);
+        let weighted = std::array::from_fn::<_, 3, _>(|i| vertices[i] * inverse[i]);
+        let position_step = (weighted[0] - weighted[2]) * du + (weighted[1] - weighted[2]) * dv;
+        let depth_step = (inverse[0] - inverse[2]) * du + (inverse[1] - inverse[2]) * dv;
         for x in min.x as i32..=max.x as i32 {
-            let y0 = (min.y as i32).max(self.visible[x as usize].0);
-            let y1 = (max.y as i32 + 1).min(self.visible[x as usize].1);
+            let (top, bottom) = columns.rows(x as f32);
+            let y0 = (min.y as i32).max(self.visible[x as usize].0).max(top);
+            let y1 = (max.y as i32 + 1)
+                .min(self.visible[x as usize].1)
+                .min(bottom);
             let start = vec2(x as f32, y0 as f32);
             let mut u_next = (b - start).perp_dot(c - start) * inverse_area;
             let mut v_next = (c - start).perp_dot(a - start) * inverse_area;
+            let mut position_next = weighted[2]
+                + (weighted[0] - weighted[2]) * u_next
+                + (weighted[1] - weighted[2]) * v_next;
+            let mut depth_next = inverse[2]
+                + (inverse[0] - inverse[2]) * u_next
+                + (inverse[1] - inverse[2]) * v_next;
             for y in y0..y1 {
+                let (numerator, denominator) = (position_next, depth_next);
+                position_next += position_step;
+                depth_next += depth_step;
                 let (u, v) = (u_next, v_next);
                 u_next += du;
                 v_next += dv;
@@ -240,17 +257,13 @@ impl Renderer {
                 if u < -0.00001 || v < -0.00001 || w < -0.00001 {
                     continue;
                 }
-                let weights = vec3(u * inverse[0], v * inverse[1], w * inverse[2]);
-                let denominator = weights.element_sum();
                 let reciprocal = 1.0 / denominator;
                 let depth = (reciprocal - 1.0) * inverse_q;
                 let at = x as usize * self.h + y as usize;
                 if depth >= self.depth[at] || self.clip_depth.get(at).is_some_and(|d| depth < *d) {
                     continue;
                 }
-                let pos =
-                    (vertices[0] * weights.x + vertices[1] * weights.y + vertices[2] * weights.z)
-                        * reciprocal;
+                let pos = numerator * reciprocal;
                 let material = world.materials
                     [index(pos.x.floor() as i32, pos.y.floor() as i32, SIZE)]
                     as usize;

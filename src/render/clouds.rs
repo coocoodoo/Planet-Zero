@@ -22,24 +22,42 @@ impl Renderer {
         };
         let upper = flight.weather.shade(grade(rgb(240, 248, 255), theme));
         let lower = flight.weather.shade(grade(rgb(153, 180, 214), theme));
-        for x in 0..self.w {
-            for y in self.visible[x].0..self.visible[x].1 {
-                let (origin, ray) = camera.ray(vec2(x as f32, y as f32));
-                if ray.z.abs() < 0.0001 {
-                    continue;
-                }
-                let at = x * self.h + y as usize;
+        let rows: Vec<_> = (0..self.h)
+            .map(|y| {
+                let (origin, ray) = camera.ray(vec2(0.0, y as f32));
+                let inverse_z = if ray.z.abs() >= 0.0001 {
+                    1.0 / ray.z
+                } else {
+                    0.0
+                };
                 let initial = (origin - camera.position).dot(camera.forward);
-                let step = ray.dot(camera.forward) / ray.z;
+                let step = ray.dot(camera.forward) * inverse_z;
                 let a = initial + (low - origin.z) * step;
                 let b = initial + (high - origin.z) * step;
-                if a.max(b) < near || a.min(b) >= far.min(self.depth[at]) {
+                (origin, ray, inverse_z, a.min(b), a.max(b))
+            })
+            .collect();
+        let perspective = camera.q > 0.00001;
+        for x in 0..self.w {
+            let horizontal = camera.right * (x as f32 / camera.scale);
+            let origin_shift = if perspective { Vec3::ZERO } else { horizontal };
+            let ray_shift = if perspective {
+                horizontal * camera.q
+            } else {
+                Vec3::ZERO
+            };
+            for y in self.visible[x].0..self.visible[x].1 {
+                let (origin, ray, inverse_z, low_depth, high_depth) = rows[y as usize];
+                let at = x * self.h + y as usize;
+                if inverse_z == 0.0 || high_depth < near || low_depth >= far.min(self.depth[at]) {
                     continue;
                 }
-                let mut t = (base + 4.0 - origin.z) / ray.z;
+                let origin = origin + origin_shift;
+                let ray = ray + ray_shift;
+                let mut t = (base + 4.0 - origin.z) * inverse_z;
                 for _ in 0..2 {
                     let p = origin + ray * t;
-                    t = (world.cloud_height(p.x, p.y) + 4.0 - origin.z) / ray.z;
+                    t = (world.cloud_height(p.x, p.y) + 4.0 - origin.z) * inverse_z;
                 }
                 let p = origin + ray * t;
                 let depth = (p - camera.position).dot(camera.forward);

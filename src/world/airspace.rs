@@ -20,10 +20,14 @@ impl Airspace {
         let mut histogram = [0_usize; 256];
         let mut floors = vec![0.0_f32; GRID * GRID];
         for (y, row) in world.heights.chunks_exact(SIZE).enumerate() {
-            for (x, &height) in row.iter().enumerate() {
-                histogram[height as usize] += 1;
-                let at = (y / 16) * GRID + x / 16;
-                floors[at] = floors[at].max(height as f32);
+            for (x, block) in row.chunks_exact(16).enumerate() {
+                let at = (y / 16) * GRID + x;
+                floors[at] = floors[at].max(*block.iter().max().unwrap() as f32);
+                if y.is_multiple_of(4) {
+                    for &height in block.iter().step_by(4) {
+                        histogram[height as usize] += 1;
+                    }
+                }
             }
         }
         let mut count = 0;
@@ -31,7 +35,7 @@ impl Airspace {
             .iter()
             .position(|&n| {
                 count += n;
-                count >= world.heights.len() * 3 / 5
+                count >= world.heights.len() / 16 * 3 / 5
             })
             .unwrap_or(0) as f32;
         let mut structures = (0.0, 0);

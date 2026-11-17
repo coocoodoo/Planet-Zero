@@ -101,13 +101,10 @@ pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
 }
 
 pub(crate) fn mix(a: u32, b: u32, amount: f32) -> u32 {
-    let a = a.to_le_bytes();
-    let b = b.to_le_bytes();
-    rgb(
-        (a[0] as f32 + (b[0] as f32 - a[0] as f32) * amount) as u8,
-        (a[1] as f32 + (b[1] as f32 - a[1] as f32) * amount) as u8,
-        (a[2] as f32 + (b[2] as f32 - a[2] as f32) * amount) as u8,
-    )
+    let t = (amount.clamp(0.0, 1.0) * 256.0) as u32;
+    let rb = ((a & 0x00ff00ff) * (256 - t) + (b & 0x00ff00ff) * t) >> 8;
+    let g = ((a & 0x0000ff00) * (256 - t) + (b & 0x0000ff00) * t) >> 8;
+    0xff000000 | (rb & 0x00ff00ff) | (g & 0x0000ff00)
 }
 
 fn grade(c: u32, theme: usize) -> u32 {
@@ -139,6 +136,7 @@ pub struct Renderer {
     mapping: Vec<usize>,
     pub stages: [f64; 3],
     x_origin: usize,
+    full_width: usize,
     w: usize,
     h: usize,
     pixels: Vec<u32>,
@@ -190,6 +188,7 @@ impl Renderer {
             mapping: vec![],
             stages: [0.0; 3],
             x_origin: 0,
+            full_width: 0,
             w: 0,
             h: 0,
             pixels: vec![],
@@ -232,12 +231,16 @@ impl Renderer {
         network: Option<&crate::world::network::Network>,
     ) {
         let (width, height) = size;
+        if width > 320 && self.workers.is_empty() {
+            self.workers = (0..3).map(|_| Self::single()).collect();
+        }
         let cockpit = flight.weights[2];
         let rolled = cockpit > 0.01;
         // 座舱围绕画面上方的视线中心旋转，外围画布覆盖完整翻滚
         let reach_y = height as f32 * 1.28;
         let side = ((width * width) as f32 + reach_y * reach_y).sqrt().ceil() as usize + 4;
         self.w = if rolled { side } else { width };
+        self.full_width = self.w;
         self.h = if rolled { side } else { height };
         self.pixels.resize(self.w * self.h, 0);
         self.pixels.fill(0);
@@ -297,7 +300,6 @@ impl Renderer {
         let started = std::time::Instant::now();
         self.portal_mask(world, &camera, network);
         self.background(world, flight, &camera, theme, height);
-        self.scenery(world, &camera, flight.time);
         self.portals(world, flight, &camera, mission, theme, network);
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
@@ -348,6 +350,25 @@ impl Renderer {
             dest.copy_from_slice(&color.to_le_bytes());
         }
     }
+    fn scene(
+        &mut self,
+        world: &World,
+        flight: &Flight,
+        camera: &Camera,
+        theme: usize,
+        height: usize,
+    ) {
+        if world.kind != crate::world::MapKind::Space {
+            self.world(world, flight, camera, theme);
+        }
+        if world.kind.vacuum() {
+            self.cosmos(world, camera, flight.time);
+        } else {
+            self.sky(camera, flight, theme, height);
+        }
+        self.scenery(world, camera, flight.time);
+    }
+
     fn background(
         &mut self,
         world: &World,
@@ -356,15 +377,8 @@ impl Renderer {
         theme: usize,
         height: usize,
     ) {
-        if world.kind == crate::world::MapKind::Space {
-            self.cosmos(world, camera, flight.time);
-        } else if self.workers.is_empty() {
-            self.world(world, flight, camera, theme);
-            if world.kind.vacuum() {
-                self.cosmos(world, camera, flight.time);
-            } else {
-                self.sky(camera, flight, theme, height);
-            }
+        if self.workers.is_empty() {
+            self.scene(world, flight, camera, theme, height);
         } else {
             let strip = self.w.div_ceil(self.workers.len());
             let w = self.w;
@@ -375,10 +389,21 @@ impl Renderer {
                     let start = i * strip;
                     let end = ((i + 1) * strip).min(w);
                     worker.x_origin = start;
+                    worker.full_width = self.w;
                     worker.w = end - start;
                     worker.h = h;
                     worker.pixels.resize(worker.w * h, 0);
                     worker.pixels.fill(0);
+                    worker.mask.resize(worker.w * h, 0);
+                    worker.mask.fill(0);
+                    worker.near_depth = self.near_depth;
+                    worker.clip_plane = self.clip_plane;
+                    worker.clip_depth.clear();
+                    if !self.clip_depth.is_empty() {
+                        worker
+                            .clip_depth
+                            .extend_from_slice(&self.clip_depth[start * h..end * h]);
+                    }
                     worker.depth.resize(worker.w * h, f32::INFINITY);
                     worker
                         .depth
@@ -392,12 +417,7 @@ impl Renderer {
                     let mut view = *camera;
                     view.center.x -= start as f32;
                     scope.spawn(move || {
-                        worker.world(world, flight, &view, theme);
-                        if world.kind.vacuum() {
-                            worker.cosmos(world, &view, flight.time);
-                        } else {
-                            worker.sky(&view, flight, theme, height);
-                        }
+                        worker.scene(world, flight, &view, theme, height);
                     });
                 }
             });
@@ -406,6 +426,48 @@ impl Renderer {
                 let end = start + worker.pixels.len();
                 self.pixels[start..end].copy_from_slice(&worker.pixels);
                 self.depth[start..end].copy_from_slice(&worker.depth);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod parallel_tests {
+    use super::*;
+    #[test]
+    fn column_workers_keep_scene_geometry_and_planets_consistent() {
+        for kind in [
+            crate::world::MapKind::City,
+            crate::world::MapKind::Canyon,
+            crate::world::MapKind::Space,
+        ] {
+            let world = World::generate(kind, kind.seed());
+            let mut flight = Flight::new(&world);
+            flight.position.z = 210.0;
+            flight.follow = flight.position;
+            flight.wing_count = 0;
+            for pitch in [0.0, -0.55] {
+                flight.pitch = pitch;
+                for view in [1, 2] {
+                    flight.weights = [0.0; 3];
+                    flight.weights[view] = 1.0;
+                    let mut single = Renderer::single();
+                    let mut parallel = Renderer::single();
+                    parallel.workers = (0..3).map(|_| Renderer::single()).collect();
+                    single.render(&world, &flight, 320, 170, 0);
+                    parallel.render(&world, &flight, 320, 170, 0);
+                    let differences = single
+                        .rgba
+                        .chunks_exact(4)
+                        .zip(parallel.rgba.chunks_exact(4))
+                        .filter(|(a, b)| a.iter().zip(b.iter()).any(|(a, b)| a.abs_diff(*b) > 8))
+                        .count();
+                    assert!(
+                        differences < 320 * 170 / 100,
+                        "{} view {view} pitch {pitch}: {differences}",
+                        kind.name()
+                    );
+                }
             }
         }
     }

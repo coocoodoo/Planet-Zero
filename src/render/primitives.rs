@@ -1,5 +1,37 @@
 use super::*;
 
+pub(super) struct TriangleColumns {
+    points: [Vec2; 3],
+    slopes: [f32; 3],
+}
+impl TriangleColumns {
+    pub fn new(mut points: [Vec2; 3]) -> Self {
+        points.sort_by(|a, b| a.x.total_cmp(&b.x));
+        let slopes = [(0, 2), (0, 1), (1, 2)].map(|(a, b)| {
+            let edge = points[b] - points[a];
+            if edge.x.abs() > 0.000001 {
+                edge.y / edge.x
+            } else {
+                0.0
+            }
+        });
+        Self { points, slopes }
+    }
+    pub fn rows(&self, x: f32) -> (i32, i32) {
+        let [a, b, _] = self.points;
+        let long = a.y + (x - a.x) * self.slopes[0];
+        let short = if x < b.x {
+            a.y + (x - a.x) * self.slopes[1]
+        } else {
+            b.y + (x - b.x) * self.slopes[2]
+        };
+        (
+            long.min(short).floor() as i32 - 1,
+            long.max(short).ceil() as i32 + 2,
+        )
+    }
+}
+
 impl Renderer {
     pub(super) fn world_line(&mut self, camera: &Camera, a: Vec3, b: Vec3, color: u32) {
         let (mut a, mut b) = (a, b);
@@ -16,13 +48,13 @@ impl Renderer {
             }
         }
         if let (Some((a, da, _)), Some((b, db, _))) = (camera.project(a), camera.project(b)) {
-            if a.distance(b) > self.w.max(1200) as f32 * 2.0 {
+            if a.distance(b) > self.full_width.max(1200) as f32 * 2.0 {
                 return;
             }
             let steps = a
                 .distance(b)
                 .ceil()
-                .clamp(1.0, self.w.max(400) as f32 * 2.0) as usize;
+                .clamp(1.0, self.full_width.max(400) as f32 * 2.0) as usize;
             for i in 0..=steps {
                 let t = i as f32 / steps as f32;
                 self.point(a.lerp(b, t), da + (db - da) * t, color, 0, 0);
@@ -118,9 +150,13 @@ impl Renderer {
         } else {
             [color; 16]
         };
+        let columns = TriangleColumns::new([a, b, c]);
         for x in min.x as i32..=max.x as i32 {
-            let y0 = (min.y as i32).max(self.visible[x as usize].0);
-            let y1 = (max.y as i32 + 1).min(self.visible[x as usize].1);
+            let (top, bottom) = columns.rows(x as f32);
+            let y0 = (min.y as i32).max(self.visible[x as usize].0).max(top);
+            let y1 = (max.y as i32 + 1)
+                .min(self.visible[x as usize].1)
+                .min(bottom);
             let start = vec2(x as f32, y0 as f32);
             let mut u_next = (b - start).perp_dot(c - start) * inverse_area;
             let mut v_next = (c - start).perp_dot(a - start) * inverse_area;
@@ -153,13 +189,18 @@ impl Renderer {
                     } else {
                         color
                     };
-                    self.point(vec2(x as f32, y as f32), depth, shaded, 0, 1);
+                    self.pixels[at] = shaded;
+                    self.mask[at] = 1;
+                    self.depth[at] = self.depth[at].min(depth);
                 }
             }
         }
     }
     pub(super) fn stroke(&mut self, a: Vec2, b: Vec2, depth: f32, color: u32) {
-        let steps = a.distance(b).ceil().clamp(1.0, self.w.max(48) as f32) as usize;
+        let steps = a
+            .distance(b)
+            .ceil()
+            .clamp(1.0, self.full_width.max(48) as f32) as usize;
         for step in 0..=steps {
             self.point(a.lerp(b, step as f32 / steps as f32), depth, color, 0, 0);
         }

@@ -77,6 +77,7 @@ impl Renderer {
             .take()
             .unwrap_or_else(|| Box::new(Self::single()));
         remote.w = self.w;
+        remote.full_width = self.w;
         remote.h = self.h;
         remote.pixels.resize(self.w * self.h, 0);
         remote.depth.resize(self.w * self.h, f32::INFINITY);
@@ -135,8 +136,13 @@ impl Renderer {
             for (column, visible) in remote.column.iter_mut().zip(&remote.visible) {
                 *column = visible.1;
             }
+            if samples.len() > 9000
+                && (cfg!(target_os = "linux") || self.w > 640)
+                && remote.workers.is_empty()
+            {
+                remote.workers = (0..3).map(|_| Self::single()).collect();
+            }
             remote.background(destination, flight, &view, theme, 170);
-            remote.scenery(destination, &view, flight.time);
             if let Some(mission) = mission.filter(|_| std::ptr::eq(world, destination)) {
                 remote.mission(mission, flight, &view);
             }

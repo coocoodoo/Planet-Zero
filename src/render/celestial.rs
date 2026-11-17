@@ -107,7 +107,7 @@ impl Renderer {
         if depth < 0.0 {
             return;
         }
-        let r = (radius * scale).min(self.w as f32);
+        let r = (radius * scale).min(self.full_width as f32);
         let extent = r * if star { 1.7 } else { 1.04 };
         let min = (p - Vec2::splat(extent)).max(Vec2::ZERO);
         let max = (p + Vec2::splat(extent)).min(vec2(self.w as f32 - 1.0, self.h as f32 - 1.0));
