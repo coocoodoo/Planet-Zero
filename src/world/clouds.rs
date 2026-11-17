@@ -56,8 +56,10 @@ impl World {
         if self.cloud_levels.is_empty() {
             return 110.0;
         }
-        let (gx, gy) = ((x / 128.0).floor() as i32, (y / 128.0).floor() as i32);
-        let (tx, ty) = ((x / 128.0).rem_euclid(1.0), (y / 128.0).rem_euclid(1.0));
+        let (x, y) = (x / 128.0, y / 128.0);
+        let (fx, fy) = (x.floor(), y.floor());
+        let (gx, gy) = (fx as i32, fy as i32);
+        let (tx, ty) = (x - fx, y - fy);
         let h = |dx, dy| self.cloud_levels[index(gx + dx, gy + dy, 32)] as f32;
         let (a, b, c, d) = (h(0, 0), h(1, 0), h(0, 1), h(1, 1));
         a + (b - a) * tx + (c - a + (d - c - b + a) * tx) * ty

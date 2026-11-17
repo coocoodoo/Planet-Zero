@@ -7,10 +7,17 @@ pub enum Vehicle {
     Dart,
     Atlas,
     Wasp,
+    Paper,
 }
 
 impl Vehicle {
-    pub const ALL: [Self; 4] = [Self::Falcon, Self::Dart, Self::Atlas, Self::Wasp];
+    pub const ALL: [Self; 5] = [
+        Self::Falcon,
+        Self::Dart,
+        Self::Atlas,
+        Self::Wasp,
+        Self::Paper,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -18,6 +25,7 @@ impl Vehicle {
             Self::Dart => "DART",
             Self::Atlas => "ATLAS",
             Self::Wasp => "WASP",
+            Self::Paper => "PAPER",
         }
     }
 
@@ -27,6 +35,7 @@ impl Vehicle {
             Self::Dart => "FAST / LIGHT INTERCEPTOR",
             Self::Atlas => "ARMORED / HEAVY BOMBER",
             Self::Wasp => "AGILE / TWIN ROTOR",
+            Self::Paper => "LIGHT / FOLDED PAPER GLIDER",
         }
     }
 
@@ -36,6 +45,7 @@ impl Vehicle {
             Self::Dart => 116.0,
             Self::Atlas => 78.0,
             Self::Wasp => 68.0,
+            Self::Paper => 62.0,
         }
     }
 
@@ -45,6 +55,7 @@ impl Vehicle {
             Self::Dart => 1.5,
             Self::Atlas => 0.95,
             Self::Wasp => 1.8,
+            Self::Paper => 1.65,
         }
     }
 
@@ -54,6 +65,7 @@ impl Vehicle {
             Self::Dart => 75.0,
             Self::Atlas => 150.0,
             Self::Wasp => 90.0,
+            Self::Paper => 65.0,
         }
     }
 
@@ -61,6 +73,7 @@ impl Vehicle {
         match self {
             Self::Atlas => 1.25,
             Self::Wasp => 0.9,
+            Self::Paper => 0.8,
             _ => 1.0,
         }
     }
@@ -71,6 +84,7 @@ impl Vehicle {
             Self::Dart => vec3(0.65, 1.18, 0.8),
             Self::Atlas => vec3(1.35, 0.9, 1.2),
             Self::Wasp => vec3(0.82, 0.65, 1.4),
+            Self::Paper => vec3(1.0, 1.0, 1.0),
         }
     }
 
@@ -80,6 +94,7 @@ impl Vehicle {
             Self::Dart => [80, 205, 245],
             Self::Atlas => [231, 176, 78],
             Self::Wasp => [131, 222, 116],
+            Self::Paper => [244, 241, 220],
         }
     }
 }

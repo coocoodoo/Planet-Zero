@@ -24,11 +24,23 @@ impl Renderer {
         } else {
             weather.haze(theme)
         };
+        let mut extent = [self.w as i32, 0, self.h as i32, 0];
+        for (x, &(y0, y1)) in self.visible.iter().enumerate() {
+            if y0 < y1 {
+                extent[0] = extent[0].min(x as i32);
+                extent[1] = extent[1].max(x as i32 + 1);
+                extent[2] = extent[2].min(y0);
+                extent[3] = extent[3].max(y1);
+            }
+        }
+        if extent[0] >= extent[1] {
+            return;
+        }
         let [left, right, top, bottom] = [
-            camera.center.x,
-            self.w as f32 - camera.center.x,
-            camera.center.y,
-            self.h as f32 - camera.center.y,
+            camera.center.x - extent[0] as f32,
+            extent[1] as f32 - camera.center.x,
+            camera.center.y - extent[2] as f32,
+            extent[3] as f32 - camera.center.y,
         ];
         let planes = [
             (
@@ -122,6 +134,18 @@ impl Renderer {
                         .unwrap_or(size);
                     offset += (neighbor - coordinate.rem_euclid(neighbor)).min(size - offset);
                 }
+            }
+            if boundary.len() == 4 {
+                for indices in [[0, 1, 2], [0, 2, 3]] {
+                    self.ground_triangle(
+                        camera,
+                        world,
+                        indices.map(|i| boundary[i]),
+                        &colors,
+                        (fog_start, far, haze),
+                    );
+                }
+                continue;
             }
             for i in 0..boundary.len() {
                 self.ground_triangle(
@@ -230,7 +254,12 @@ impl Renderer {
                 let material = world.materials
                     [index(pos.x.floor() as i32, pos.y.floor() as i32, SIZE)]
                     as usize;
-                let color = mix(rgb(17, 23, 35), colors[material], shade);
+                let detail = if matches!(material, 12..=14 | 19..=20) {
+                    0.65 + super::geology::stone_texel(pos) as f32 * 0.035
+                } else {
+                    1.0
+                };
+                let color = mix(rgb(17, 23, 35), colors[material], (shade * detail).min(1.0));
                 let amount = ((depth - fog.0) / (fog.1 - fog.0)).clamp(0.0, 1.0);
                 self.pixels[at] = mix(color, fog.2, amount);
                 self.depth[at] = depth;

@@ -13,12 +13,27 @@ impl Renderer {
         }
         let far = flight.weather.visibility(camera.position.z).1;
         let base = world.cloud_height(camera.position.x, camera.position.y);
+        let low = world.cloud_levels.iter().copied().min().unwrap_or(110) as f32 + 4.0;
+        let high = world.cloud_levels.iter().copied().max().unwrap_or(210) as f32 + 4.0;
+        let near = if camera.q > 0.00001 {
+            -0.88 / camera.q
+        } else {
+            -1e8
+        };
         let upper = flight.weather.shade(grade(rgb(240, 248, 255), theme));
         let lower = flight.weather.shade(grade(rgb(153, 180, 214), theme));
         for x in 0..self.w {
             for y in self.visible[x].0..self.visible[x].1 {
                 let (origin, ray) = camera.ray(vec2(x as f32, y as f32));
                 if ray.z.abs() < 0.0001 {
+                    continue;
+                }
+                let at = x * self.h + y as usize;
+                let initial = (origin - camera.position).dot(camera.forward);
+                let step = ray.dot(camera.forward) / ray.z;
+                let a = initial + (low - origin.z) * step;
+                let b = initial + (high - origin.z) * step;
+                if a.max(b) < near || a.min(b) >= far.min(self.depth[at]) {
                     continue;
                 }
                 let mut t = (base + 4.0 - origin.z) / ray.z;
@@ -28,7 +43,6 @@ impl Renderer {
                 }
                 let p = origin + ray * t;
                 let depth = (p - camera.position).dot(camera.forward);
-                let at = x * self.h + y as usize;
                 if 1.0 + camera.q * depth < 0.12
                     || depth > far
                     || depth >= self.depth[at]

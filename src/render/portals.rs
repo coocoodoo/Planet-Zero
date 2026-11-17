@@ -1,6 +1,35 @@
 use super::*;
 
 impl Renderer {
+    pub(super) fn portal_mask(
+        &mut self,
+        world: &World,
+        camera: &Camera,
+        network: Option<&crate::world::network::Network>,
+    ) {
+        for (entry, _, _, _) in portal_scenes(world, network) {
+            let Some((center, depth, scale)) = camera.project(entry.center) else {
+                continue;
+            };
+            if entry.center.distance_squared(camera.position) > 2400.0_f32.powi(2) {
+                continue;
+            }
+            let radius = entry.radius * scale * 0.81;
+            let x0 = ((center.x - radius).ceil() as i32).max(0);
+            let x1 = ((center.x + radius).floor() as i32).min(self.w as i32 - 1);
+            for x in x0..=x1 {
+                let half = (radius * radius - (x as f32 - center.x).powi(2))
+                    .max(0.0)
+                    .sqrt();
+                let y0 = ((center.y - half).ceil() as i32).max(self.visible[x as usize].0);
+                let y1 = ((center.y + half).floor() as i32 + 1).min(self.visible[x as usize].1);
+                for y in y0..y1 {
+                    let at = x as usize * self.h + y as usize;
+                    self.depth[at] = self.depth[at].min(depth);
+                }
+            }
+        }
+    }
     pub(super) fn portals(
         &mut self,
         world: &World,
@@ -8,10 +37,41 @@ impl Renderer {
         camera: &Camera,
         mission: Option<&Mission>,
         theme: usize,
+        network: Option<&crate::world::network::Network>,
     ) {
-        if world.portals.len() != 2 {
+        if let Some(network) = network.filter(|n| n.active) {
+            for route in network.routes(world) {
+                if network.get(route.target).is_some() {
+                    continue;
+                }
+                let Some((p, d, scale)) = camera.project(route.aperture.center) else {
+                    continue;
+                };
+                let r = route.aperture.radius * scale;
+                for i in 0..40 {
+                    let a = i as f32 * std::f32::consts::TAU / 40.0;
+                    let b = (i + 1) as f32 * std::f32::consts::TAU / 40.0;
+                    if ((i as f32 + flight.time * 12.0) as usize % 10) < 7 {
+                        self.stroke(
+                            p + vec2(a.cos(), a.sin()) * r,
+                            p + vec2(b.cos(), b.sin()) * r,
+                            d,
+                            rgb(109, 161, 194),
+                        );
+                    }
+                }
+            }
+        }
+        let mut scenes = portal_scenes(world, network);
+        if scenes.is_empty() {
             return;
         }
+        scenes.sort_by(|a, b| {
+            let depth = |p: &crate::world::portal::Portal| {
+                camera.project(p.center).map_or(f32::INFINITY, |p| p.1)
+            };
+            depth(&b.0).total_cmp(&depth(&a.0))
+        });
         let mut remote = self
             .portal_view
             .take()
@@ -22,8 +82,7 @@ impl Renderer {
         remote.depth.resize(self.w * self.h, f32::INFINITY);
         remote.mask.resize(self.w * self.h, 0);
         remote.visible.resize(self.w, (0, 0));
-        for (i, original) in world.portals.iter().enumerate() {
-            let exit = world.portals[1 - i];
+        for (original, exit, destination, i) in scenes {
             let (eye, _) = camera.ray(camera.center);
             let entry = original.facing(eye);
             let Some((center, depth, scale)) = camera.project(entry.center) else {
@@ -45,7 +104,7 @@ impl Renderer {
                 let y1 = ((center.y + half).floor() as i32 + 1).min(self.visible[x as usize].1);
                 for y in y0..y1 {
                     let at = x as usize * self.h + y as usize;
-                    if depth >= self.depth[at] {
+                    if depth > self.depth[at] + 0.01 {
                         continue;
                     }
                     let ny = (y as f32 - center.y) / radius;
@@ -77,9 +136,9 @@ impl Renderer {
             for (column, visible) in remote.column.iter_mut().zip(&remote.visible) {
                 *column = visible.1;
             }
-            remote.background(world, flight, &view, theme, 170);
-            remote.scenery(world, &view, flight.time);
-            if let Some(mission) = mission {
+            remote.background(destination, flight, &view, theme, 170);
+            remote.scenery(destination, &view, flight.time);
+            if let Some(mission) = mission.filter(|_| std::ptr::eq(world, destination)) {
                 remote.mission(mission, flight, &view);
             }
             let base = self.pixels.clone();
@@ -136,6 +195,36 @@ impl Renderer {
         }
         self.portal_view = Some(remote);
     }
+}
+
+fn portal_scenes<'a>(
+    world: &'a World,
+    network: Option<&'a crate::world::network::Network>,
+) -> Vec<(
+    crate::world::portal::Portal,
+    crate::world::portal::Portal,
+    &'a World,
+    usize,
+)> {
+    let mut scenes = vec![];
+    if world.portals.len() == 2 {
+        for i in 0..2 {
+            scenes.push((world.portals[i], world.portals[1 - i], world, i));
+        }
+    }
+    if let Some(network) = network.filter(|n| n.active) {
+        for route in network.routes(world) {
+            if let Some(target) = network.get(route.target) {
+                scenes.push((
+                    route.aperture,
+                    network.exit(target, route.id),
+                    target,
+                    route.target.kind as usize,
+                ));
+            }
+        }
+    }
+    scenes
 }
 
 fn portal_waves() -> &'static [f32; 256] {

@@ -139,28 +139,39 @@ impl Flight {
             if entry.crossed(previous, self.position) {
                 let entry = entry.facing(previous);
                 let exit = world.portals[1 - i];
-                let rotation = entry.rotation_to(exit);
-                self.position = entry.transform(exit, self.position);
-                let distance = (self.position - exit.center).dot(exit.normal());
-                let offset = exit.normal() * (exit.radius * 0.8 + 8.0 - distance).max(0.0);
-                self.position += offset;
-                self.follow = entry.transform(exit, self.follow) + offset;
-                self.yaw += rotation;
-                self.camera_yaw -= rotation;
-                self.trails.clear();
-                for wing in &mut self.wingmen {
-                    wing.position = entry.transform(exit, wing.position) + offset;
-                    wing.follow = entry.transform(exit, wing.follow) + offset;
-                    wing.yaw += rotation;
-                    wing.camera_yaw -= rotation;
-                    wing.trails.clear();
-                }
-                self.portal_cooldown = 0.8;
-                self.warp_flash = 0.45;
+                self.warp(entry, exit);
                 return true;
             }
         }
         false
+    }
+
+    pub fn can_warp(&self) -> bool {
+        self.portal_cooldown <= 0.0
+    }
+    pub fn warp(
+        &mut self,
+        entry: crate::world::portal::Portal,
+        exit: crate::world::portal::Portal,
+    ) {
+        let rotation = entry.rotation_to(exit);
+        self.position = entry.transform(exit, self.position);
+        let distance = (self.position - exit.center).dot(exit.normal());
+        let offset = exit.normal() * (exit.radius * 0.8 + 8.0 - distance).max(0.0);
+        self.position += offset;
+        self.follow = entry.transform(exit, self.follow) + offset;
+        self.yaw += rotation;
+        self.camera_yaw -= rotation;
+        self.trails.clear();
+        for wing in &mut self.wingmen {
+            wing.position = entry.transform(exit, wing.position) + offset;
+            wing.follow = entry.transform(exit, wing.follow) + offset;
+            wing.yaw += rotation;
+            wing.camera_yaw -= rotation;
+            wing.trails.clear();
+        }
+        self.portal_cooldown = 0.8;
+        self.warp_flash = 0.45;
     }
 
     pub fn set_demo(&mut self, enabled: bool) {
@@ -308,11 +319,16 @@ impl Flight {
             (110.0 - self.position.z) * 0.6
         };
         climb = climb.max(ahead_climb).clamp(-self.speed, self.speed);
+        let ceiling = world.flight_ceiling(self.position);
         let old_altitude = self.position.z;
         self.position.x = proposed.x;
         self.position.y = proposed.y;
-        self.position.z = (old_altitude + climb * dt)
-            .clamp(floor.max(clearance_floor(world, self.position)), 900.0);
+        self.position.z = (old_altitude + climb * dt).clamp(
+            floor
+                .max(clearance_floor(world, self.position))
+                .min(ceiling),
+            ceiling,
+        );
         let actual_climb = (self.position.z - old_altitude) / dt.max(0.001);
         if !manual_attitude {
             self.pitch += angle((actual_climb / self.speed).clamp(-0.7, 0.9).asin() - self.pitch)

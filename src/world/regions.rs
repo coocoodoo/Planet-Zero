@@ -63,6 +63,7 @@ impl World {
             kind,
             seed,
             scenery: vec![],
+            caverns: vec![],
             portals: vec![],
         };
         for y in 0..SIZE {
@@ -110,21 +111,16 @@ impl World {
                             }
                         }
                         MapKind::City => {
-                            let xx = x % 192;
-                            let yy = y % 192;
-                            let road = xx < 12 || yy < 12;
-                            if road {
-                                if (xx == 5 && y % 24 < 12) || (yy == 5 && x % 24 < 12) {
-                                    31
-                                } else {
-                                    30
-                                }
-                            } else if xx < 20 || yy < 20 {
-                                32
-                            } else if (x / 192 + y / 192) % 5 != 0 {
-                                33
+                            let distance = (x as f32 - super::city::river_x(y as f32)).abs();
+                            if distance < 65.0 {
+                                world.heights[at] = 0;
+                                1
+                            } else if distance < 78.0 {
+                                4
+                            } else if (x / 300 + y / 170) % 4 == 0 {
+                                8
                             } else {
-                                6
+                                6 + u8::from(n < 60)
                             }
                         }
                         _ => unreachable!(),
@@ -136,6 +132,10 @@ impl World {
             &mut random,
             crate::content::maps::definition(kind).cloud_clusters,
         );
+        if kind == MapKind::City {
+            world.city_layout();
+        }
+        world.enrich_region();
         world.add_landmarks();
         world.update_ceiling();
         world

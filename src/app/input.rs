@@ -120,8 +120,8 @@ impl App {
             }
             51 | 8 | 20 => self.theme = (self.theme + 1) % 3,
             35 => {
-                self.world
-                    .spawn_portals(self.flight.position, self.flight.axes()[1]);
+                self.network
+                    .summon(&self.world, self.flight.position, self.flight.axes()[1]);
                 self.sounds.push(crate::audio::Sound::Warp);
             }
             52 | 9 | 25 => {
@@ -199,7 +199,10 @@ impl App {
         let next = |i: usize, len: usize| (i as i32 + direction).rem_euclid(len as i32) as usize;
         match self.selection {
             0 => self.mode = Mode::ALL[next(self.mode as usize, 4)],
-            1 => self.flight.vehicle = Vehicle::ALL[next(self.flight.vehicle as usize, 4)],
+            1 => {
+                self.flight.vehicle =
+                    Vehicle::ALL[next(self.flight.vehicle as usize, Vehicle::ALL.len())]
+            }
             2 => {
                 let current = self.loader.pending.unwrap_or(self.world.kind);
                 let kind = crate::world::MapKind::ALL

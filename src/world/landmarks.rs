@@ -1,6 +1,6 @@
 use super::*;
 use celestial::{Scenery, Structure};
-use glam::{Vec3, vec3};
+use glam::Vec3;
 
 impl World {
     pub(super) fn add_landmarks(&mut self) {
@@ -14,33 +14,14 @@ impl World {
                 kind: landmark.kind,
             });
         }
-        if self.kind == MapKind::City {
-            for y in 4..18 {
-                for x in 4..18 {
-                    let n = hash((x * 131 + y * 977) as u32 ^ self.seed);
-                    if n < 30 {
-                        continue;
-                    }
-                    let (wx, wy) = (x as f32 * 192.0 + 96.0, y as f32 * 192.0 + 96.0);
-                    let scale = if (x - 11_i32).abs() + (y - 11_i32).abs() < 3 {
-                        2.4 + n as f32 / 340.0
-                    } else {
-                        0.45 + n as f32 / 160.0
-                    };
-                    let position = vec3(wx, wy, self.height(wx, wy));
-                    self.place_landmark(Scenery {
-                        position,
-                        scale,
-                        yaw: 0.0,
-                        kind: Structure::Building,
-                    });
-                }
-            }
-        }
     }
-    fn place_landmark(&mut self, object: Scenery) {
+    pub(super) fn place_landmark(&mut self, object: Scenery) {
         let (rx, ry, height) = match object.kind {
-            Structure::Building => (11.0, 14.0, 76.0),
+            Structure::Building => (11.0, 14.0, 91.0),
+            Structure::House => (10.0, 12.0, 16.0),
+            Structure::Warehouse => (20.0, 28.0, 20.0),
+            Structure::IceSpire => (10.0, 10.0, 45.0),
+            Structure::Boulder => (9.0, 7.0, 10.0),
             Structure::Windmill => (3.0, 3.0, 70.0),
             Structure::Lighthouse => (6.0, 6.0, 36.0),
             Structure::RockStack => (10.0, 10.0, 50.0),
@@ -52,8 +33,11 @@ impl World {
         if self.obstacles.is_empty() {
             self.obstacles = vec![0; 256 * 256];
         }
-        let rx = rx * object.scale;
-        let ry = ry * object.scale;
+        let (s, c) = object.yaw.sin_cos();
+        let (rx, ry) = (
+            (c.abs() * rx + s.abs() * ry) * object.scale,
+            (s.abs() * rx + c.abs() * ry) * object.scale,
+        );
         let x0 = ((object.position.x - rx) / 16.0).floor() as i32;
         let x1 = ((object.position.x + rx) / 16.0).floor() as i32;
         let y0 = ((object.position.y - ry) / 16.0).floor() as i32;

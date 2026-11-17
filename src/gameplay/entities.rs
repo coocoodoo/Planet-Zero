@@ -18,6 +18,7 @@ pub enum PickupKind {
     Time,
 }
 
+#[derive(Clone)]
 pub struct Pickup {
     pub position: Vec3,
     pub kind: PickupKind,
@@ -25,6 +26,7 @@ pub struct Pickup {
     pub collected: bool,
 }
 
+#[derive(Clone)]
 pub struct Enemy {
     pub id: u32,
     pub position: Vec3,
@@ -65,6 +67,7 @@ impl Enemy {
     }
 }
 
+#[derive(Clone)]
 pub struct Shot {
     pub position: Vec3,
     pub previous: Vec3,
@@ -78,6 +81,7 @@ pub struct Shot {
     pub radius: f32,
 }
 
+#[derive(Clone)]
 pub struct Effect {
     pub position: Vec3,
     pub life: f32,
@@ -86,6 +90,7 @@ pub struct Effect {
     pub color: [u8; 3],
 }
 
+#[derive(Clone)]
 pub struct Convoy {
     pub position: Vec3,
     pub previous: Vec3,

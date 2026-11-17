@@ -1,12 +1,15 @@
 pub use noise::{hash, index};
 pub mod celestial;
+mod city;
 mod clouds;
 mod generation;
 mod landmarks;
 mod loader;
+pub mod network;
 mod noise;
 pub mod portal;
 mod regions;
+pub mod regions_detail;
 #[cfg(test)]
 mod tests;
 pub use loader::WorldLoader;
@@ -20,7 +23,7 @@ pub const MATERIAL_COUNT: usize = 35;
 const NOISE_SIZE: usize = 1024;
 const CELL: usize = SIZE / NOISE_SIZE;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MapKind {
     #[default]
@@ -72,6 +75,7 @@ impl MapKind {
     }
 }
 
+#[derive(Clone)]
 pub struct World {
     pub heights: Vec<u8>,
     pub obstacles: Vec<u8>,
@@ -83,6 +87,7 @@ pub struct World {
     pub kind: MapKind,
     pub seed: u32,
     pub scenery: Vec<celestial::Scenery>,
+    pub caverns: Vec<regions_detail::Cavern>,
     pub portals: Vec<portal::Portal>,
 }
 
@@ -104,10 +109,14 @@ impl World {
         } else {
             self.obstacles[index((x / 16.0).floor() as i32, (y / 16.0).floor() as i32, 256)]
         };
-        ground.max(obstacle) as f32
+        self.caverns
+            .iter()
+            .filter_map(|c| c.roof(x, y))
+            .map(|h| h + 12.0)
+            .fold(ground.max(obstacle) as f32, f32::max)
     }
     pub fn cloud(&self, x: f32, y: f32, time: f32) -> usize {
-        if self.kind.vacuum() || self.height(x, y) + 12.0 >= self.cloud_height(x, y) {
+        if self.kind.vacuum() {
             return 0;
         }
         let cell = self.clouds[index(
@@ -115,10 +124,12 @@ impl World {
             (y - time * 3.0).floor() as i32,
             CLOUD_SIZE,
         )];
-        if cell >> 4 < 7 {
-            (cell & 15) as usize
-        } else {
-            0
+        if cell & 15 == 0 || cell >> 4 >= 7 {
+            return 0;
         }
+        if self.height(x, y) + 12.0 >= self.cloud_height(x, y) {
+            return 0;
+        }
+        (cell & 15) as usize
     }
 }

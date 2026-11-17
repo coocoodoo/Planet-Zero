@@ -8,7 +8,7 @@ pub(super) fn clearance_floor(world: &World, position: Vec3) -> f32 {
     let mut height = 0.0_f32;
     for y in [-8.0, 0.0, 8.0] {
         for x in [-8.0, 0.0, 8.0] {
-            height = height.max(world.height(position.x + x, position.y + y));
+            height = height.max(world.flight_height(position + vec3(x, y, 0.0)));
         }
     }
     height + MIN_CLEARANCE

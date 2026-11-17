@@ -48,7 +48,12 @@ impl App {
         Frame {
             cue,
             paused: matches!(self.page, Page::Paused | Page::Help),
-            engine: f32::from(flying),
+            engine: f32::from(flying)
+                * if self.flight.vehicle == crate::content::vehicles::Vehicle::Paper {
+                    0.18
+                } else {
+                    1.0
+                },
             boost: self.flight.boost,
             danger,
             overdrive: self.mission.overdrive_time > 0.0,

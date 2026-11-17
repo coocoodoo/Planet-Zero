@@ -8,7 +8,7 @@ impl Renderer {
                     camera.project(flight.trails[i - 1][side]),
                     camera.project(flight.trails[i][side]),
                 ) {
-                    let steps = a.distance(b).ceil().clamp(1.0, 100.0) as usize;
+                    let steps = a.distance(b).ceil().clamp(1.0, self.w.max(100) as f32) as usize;
                     let age = i as f32 / flight.trails.len() as f32;
                     if age > 0.7 && i % 2 == 0 {
                         continue;
@@ -29,7 +29,94 @@ impl Renderer {
             }
         }
     }
+    fn voxel_faces(
+        &mut self,
+        camera: &Camera,
+        flight: &Flight,
+        voxel: (f32, f32, usize),
+        color: u32,
+    ) {
+        let (a, b, z) = voxel;
+        let center = vec3(a, b, (z as f32 - 5.0) * flight.spread);
+        let x = (a + 16.5).round() as i32;
+        let y = (25.3 - b).round() as i32;
+        let occupied = |x: i32, y: i32, z: i32| {
+            (0..34).contains(&x)
+                && (0..46).contains(&y)
+                && (0..13).contains(&z)
+                && MODEL[((z * 46 + y) * 34 + x) as usize] != 0
+        };
+        let (eye, ray) = camera.ray(camera.center);
+        for (axis, u, v, delta) in [
+            (Vec3::X, Vec3::Y, Vec3::Z, (1, 0, 0)),
+            (Vec3::Y, Vec3::X, Vec3::Z, (0, -1, 0)),
+            (Vec3::Z, Vec3::X, Vec3::Y, (0, 0, 1)),
+        ] {
+            for sign in [-1, 1] {
+                if occupied(
+                    x + sign * delta.0,
+                    y + sign * delta.1,
+                    z as i32 + sign * delta.2,
+                ) && !(delta.2 != 0 && flight.spread > 1.1)
+                {
+                    continue;
+                }
+                let c = center + axis * sign as f32 * 0.5;
+                let normal = flight.local(c + axis * sign as f32) - flight.local(c);
+                let toward = if camera.q > 0.00001 {
+                    eye - flight.local(c)
+                } else {
+                    -ray
+                };
+                if normal.dot(toward) <= 0.0 {
+                    continue;
+                }
+                let corners = [
+                    c - u * 0.5 - v * 0.5,
+                    c + u * 0.5 - v * 0.5,
+                    c + u * 0.5 + v * 0.5,
+                    c - u * 0.5 + v * 0.5,
+                ]
+                .map(|p| flight.local(p));
+                self.triangle(camera, [corners[0], corners[1], corners[2]], color);
+                self.triangle(camera, [corners[0], corners[2], corners[3]], color);
+            }
+        }
+    }
+    fn paper_plane(&mut self, flight: &Flight, camera: &Camera, theme: usize) {
+        let points = [
+            vec3(0.0, 32.0, 0.0),
+            vec3(-25.0, -19.0, 0.5),
+            vec3(-3.0, -16.0, 5.0),
+            vec3(0.0, -22.0, -6.0),
+            vec3(3.0, -16.0, 5.0),
+            vec3(25.0, -19.0, 0.5),
+        ]
+        .map(|p| flight.local(p));
+        for (face, color) in [
+            ([0, 1, 2], rgb(249, 245, 222)),
+            ([0, 2, 3], rgb(181, 187, 183)),
+            ([0, 3, 4], rgb(222, 227, 212)),
+            ([0, 4, 5], rgb(255, 252, 238)),
+            ([1, 3, 2], rgb(141, 153, 161)),
+            ([3, 5, 4], rgb(203, 212, 211)),
+        ] {
+            self.triangle(camera, face.map(|i| points[i]), grade(color, theme));
+        }
+        for (a, b) in [(0, 1), (0, 2), (0, 4), (0, 5), (2, 3), (3, 4)] {
+            self.world_line(
+                camera,
+                points[a],
+                points[b],
+                grade(rgb(104, 123, 138), theme),
+            );
+        }
+    }
     pub(super) fn jet(&mut self, flight: &Flight, camera: &Camera, theme: usize) {
+        if flight.vehicle == crate::content::vehicles::Vehicle::Paper {
+            self.paper_plane(flight, camera, theme);
+            return;
+        }
         let [right, forward, up] = flight.axes();
         let shape = flight.vehicle.shape();
         let (right, forward, up) = (right * shape.x, forward * shape.y, up * shape.z);
@@ -94,8 +181,12 @@ impl Renderer {
                     bounds[1] = bounds[1].min(p.y as i32 - 4);
                     bounds[2] = bounds[2].max(p.x as i32 + 4);
                     bounds[3] = bounds[3].max(p.y as i32 + 4);
-                    for offset in &offsets[..samples * samples] {
-                        self.point(p + *offset * scale, depth, palette[color], 0, 1);
+                    if center_scale * MODEL_SCALE > 3.0 {
+                        self.voxel_faces(camera, flight, (a, b, z), palette[color]);
+                    } else {
+                        for offset in &offsets[..samples * samples] {
+                            self.point(p + *offset * scale, depth, palette[color], 0, 1);
+                        }
                     }
                 }
             }

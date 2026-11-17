@@ -19,7 +19,7 @@ impl Camera {
         let [top, chase, cockpit] = flight.weights;
         let w = width as f32;
         let h = height as f32;
-        let zoom = (0.19 * w / (34.0 * 0.6)).max(1.0);
+        let zoom = (0.19_f32 * 320.0 / (34.0 * 0.6)).max(1.0);
         let q = chase / (2.6 * 46.0 * 0.6 * (1.0 - 0.16 * flight.boost)) + cockpit / 64.0;
         let mut camera = Self {
             position: flight.follow,
@@ -29,7 +29,7 @@ impl Camera {
             right: Vec3::ZERO,
             up: Vec3::ZERO,
             q,
-            scale: (chase * zoom.ln() + cockpit * ((w * 0.6) / 64.0).ln()).exp() * VIEW_SCALE,
+            scale: (chase * zoom.ln() + cockpit * 3.0_f32.ln()).exp() * VIEW_SCALE * w / 320.0,
             slope: (45.0 * top + 12.0 * chase).to_radians().tan(),
             center: vec2(w * 0.5, h * (0.5 * top + 0.64 * chase + 0.43 * cockpit)),
         };

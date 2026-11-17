@@ -18,6 +18,8 @@ struct Options {
     vehicle: usize,
     benchmark: Option<usize>,
     maneuvers: Option<usize>,
+    travel: Option<usize>,
+    hd: Option<usize>,
     frames: Option<usize>,
     capture: Option<PathBuf>,
     scale: usize,
@@ -41,6 +43,8 @@ fn options() -> Result<Options, Box<dyn Error>> {
         vehicle: 0,
         benchmark: None,
         maneuvers: None,
+        travel: None,
+        hd: None,
         frames: None,
         capture: None,
         scale: 1,
@@ -60,7 +64,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
     while let Some(arg) = args.next() {
         if arg == "--help" {
             println!(
-                "rust-fly-cardputer [--audio on|off] [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..3] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--maneuvers N] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic|moon|space|fjords|icebergs|city|highlands] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
+                "rust-fly-cardputer [--audio on|off] [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..4] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--maneuvers N] [--travel N] [--hd 1|2|4|8] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic|moon|space|fjords|icebergs|city|highlands] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
             );
             std::process::exit(0);
         }
@@ -108,6 +112,8 @@ fn options() -> Result<Options, Box<dyn Error>> {
                     _ => return Err("imu 支持 on 或 off".into()),
                 }
             }
+            "--travel" => result.travel = Some(value.parse()?),
+            "--hd" => result.hd = Some(value.parse()?),
             "--maneuvers" => result.maneuvers = Some(value.parse()?),
             "--benchmark" => result.benchmark = Some(value.parse()?),
             "--frames" => result.frames = Some(value.parse()?),
@@ -135,7 +141,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
     if !weather_explicit {
         result.weather = operation.weather;
     }
-    if result.vehicle > 3
+    if result.vehicle >= rust_fly::content::vehicles::Vehicle::ALL.len()
         || result.scale != 1
         || !(1..=60).contains(&result.fps)
         || result.maneuvers.is_some_and(|n| n < 180)
@@ -144,6 +150,9 @@ fn options() -> Result<Options, Box<dyn Error>> {
         || result.imu_test.is_some_and(|s| !s.is_finite() || s <= 0.0)
     {
         return Err("全像素模式的 scale 为 1，fps 范围为 1–60，帧数需要大于零".into());
+    }
+    if result.hd.is_some_and(|n| ![1, 2, 4, 8].contains(&n)) || result.travel == Some(0) {
+        return Err("高清倍率支持 1、2、4、8，穿越次数需要大于零".into());
     }
     Ok(result)
 }
@@ -267,6 +276,25 @@ fn capture_landmarks(game: &mut Game, path: &Path) -> Result<(), Box<dyn Error>>
             ("lunar-crater", vec3(2210.0, 3080.0, 240.0), 0.10, 1),
         ],
         MapKind::Space => vec![("stellar-sun", vec3(2048.0, 2900.0, 150.0), -0.6, 1)],
+        MapKind::Canyon => vec![
+            (
+                "canyon-floor",
+                vec3(
+                    rust_fly::world::regions_detail::canyon_center(2870.0),
+                    2870.0,
+                    38.0,
+                ),
+                0.0,
+                1,
+            ),
+            (
+                "canyon-cave",
+                vec3(2120.0, 2320.0, 31.0),
+                std::f32::consts::FRAC_PI_2,
+                1,
+            ),
+        ],
+        MapKind::Icebergs => vec![("ice-channel", vec3(1760.0, 3040.0, 78.0), 0.1, 1)],
         MapKind::City => vec![("city-skyline", vec3(2112.0, 2670.0, 205.0), 0.0, 1)],
         MapKind::Highlands => vec![(
             "wind-farm",
@@ -408,7 +436,7 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
                 maneuvers[2] += 1;
             }
             let p = game.flight.position;
-            minimum_clearance = minimum_clearance.min(p.z - game.world.height(p.x, p.y));
+            minimum_clearance = minimum_clearance.min(p.z - game.world.flight_height(p));
         }
         if let Some(audio) = &audio {
             audio.update(&mut game.app);
@@ -454,11 +482,12 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
         report("render", 1, &mut rendering);
         report("present", 1, &mut presenting);
         println!(
-            "{{\"roll_left\":{},\"roll_right\":{},\"warps\":{},\"portals\":{},\"pitch_rotation_degrees\":{:.1},\"minimum_clearance\":{minimum_clearance:.2}}}",
+            "{{\"roll_left\":{},\"roll_right\":{},\"warps\":{},\"portals\":{},\"routes\":{},\"pitch_rotation_degrees\":{:.1},\"minimum_clearance\":{minimum_clearance:.2}}}",
             maneuvers[0],
             maneuvers[1],
             maneuvers[2],
             game.world.portals.len(),
+            game.network.routes(&game.world).len(),
             pitch_rotation.to_degrees()
         );
     }
@@ -537,6 +566,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .wrapping_add((options.level - 1) / 6 * 7919)
         }),
     ));
+    if options.benchmark.is_some() || options.travel.is_some() || options.maneuvers.is_some() {
+        game.network = rust_fly::world::network::Network::new(7109);
+    }
     eprintln!("地形生成：{:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
     game.level = options.level;
     game.flight.vehicle = rust_fly::content::vehicles::Vehicle::ALL[options.vehicle];
@@ -554,6 +586,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     game.flight.weights = [0.0; 3];
     let view = game.flight.view;
     game.flight.weights[view] = 1.0;
+    if let Some(scale) = options.hd {
+        return scenarios::high_resolution(&options, &mut game, scale);
+    }
+    if let Some(hops) = options.travel {
+        return scenarios::travel(&options, &mut game, hops);
+    }
     if let Some(frames) = options.maneuvers {
         return scenarios::maneuvers(&options, &mut game, frames);
     }

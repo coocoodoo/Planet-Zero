@@ -3,6 +3,7 @@ mod input;
 mod records;
 #[cfg(test)]
 mod tests;
+mod travel;
 use crate::content::vehicles::Vehicle;
 use crate::flight::{Controls, Flight};
 use crate::gameplay::progression::{self as campaign, Loadout, Upgrade};
@@ -37,7 +38,9 @@ pub struct App {
     loadout: Loadout,
     pending_start: bool,
 
-    pub world: World,
+    pub world: std::sync::Arc<World>,
+    pub network: crate::world::network::Network,
+    pub travel: Option<crate::world::network::Route>,
     pub loader: WorldLoader,
     pub flight: Flight,
     pub renderer: Renderer,
@@ -97,7 +100,13 @@ impl App {
             run_score: 0,
             loadout: Loadout::default(),
             pending_start: false,
-            world,
+            network: crate::world::network::Network::new(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(world.seed, |time| time.subsec_nanos() ^ world.seed),
+            ),
+            world: std::sync::Arc::new(world),
+            travel: None,
             loader: WorldLoader::default(),
             flight,
             renderer: Renderer::new(),
@@ -191,6 +200,7 @@ impl App {
     }
     pub fn home(&mut self) {
         self.page = Page::Menu;
+        self.travel = None;
         self.selection = START_ROW;
         self.pending_start = false;
         self.flight.wing_count = 2;
@@ -200,9 +210,19 @@ impl App {
     }
     pub fn step(&mut self, dt: f32, external: Option<Controls>) {
         let dt = dt.clamp(0.0, 0.1);
+        self.network.poll();
+        if let Some(route) = self.travel {
+            if self.arrive(route) {
+                self.travel = None;
+                self.page = Page::Playing;
+            } else {
+                self.network.request(route.target);
+                return;
+            }
+        }
         if let Some(world) = self.loader.poll() {
             self.flight.change_world(&world);
-            self.world = world;
+            self.world = std::sync::Arc::new(world);
             if self.pending_start {
                 self.start();
             }
@@ -230,6 +250,9 @@ impl App {
         if self.mission.countdown <= 0.0 {
             self.flight.step(dt, &controls, &self.world);
         }
+        if self.cross_world(previous) {
+            return;
+        }
         if self.flight.traverse_portal(&self.world, previous) {
             previous = self.flight.position;
             self.sounds.push(crate::audio::Sound::Warp);
@@ -243,16 +266,32 @@ impl App {
             self.save_record();
         }
     }
-    pub fn draw(&mut self) {
-        let menu = self.page == Page::Loading
+    pub fn prepare_scene(&mut self) {
+        if self.page == Page::Playing && !self.flight.demo {
+            self.network.active = true;
+            self.network
+                .preload(&self.world, self.flight.position, self.flight.axes()[1]);
+        }
+    }
+    pub fn scene_is_menu(&self) -> bool {
+        self.page == Page::Loading
             || self.page == Page::Menu
-            || (self.page == Page::Help && self.help_return == Page::Menu);
-        self.renderer.render_mission(
+            || (self.page == Page::Help && self.help_return == Page::Menu)
+    }
+    pub fn draw_overlay(&mut self) {
+        self.screen.fill(0);
+        crate::ui::draw(self);
+    }
+    pub fn draw(&mut self) {
+        self.prepare_scene();
+        let menu = self.scene_is_menu();
+        self.renderer.render_connected(
             &self.world,
             &self.flight,
             (WIDTH, HEIGHT),
             self.theme,
             if menu { None } else { Some(&self.mission) },
+            if menu { None } else { Some(&self.network) },
         );
         self.screen.copy_from_slice(&self.renderer.rgba);
         crate::ui::draw(self);

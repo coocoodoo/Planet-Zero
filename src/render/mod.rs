@@ -2,11 +2,13 @@ mod aircraft;
 mod celestial;
 mod clouds;
 mod cockpit;
+mod geology;
 mod landmarks;
 mod objects;
 mod palette;
 mod portals;
 mod primitives;
+mod settlements;
 mod terrain;
 mod tilted;
 mod weather;
@@ -218,6 +220,17 @@ impl Renderer {
         theme: usize,
         mission: Option<&Mission>,
     ) {
+        self.render_connected(world, flight, size, theme, mission, None);
+    }
+    pub fn render_connected(
+        &mut self,
+        world: &World,
+        flight: &Flight,
+        size: (usize, usize),
+        theme: usize,
+        mission: Option<&Mission>,
+        network: Option<&crate::world::network::Network>,
+    ) {
         let (width, height) = size;
         let cockpit = flight.weights[2];
         let rolled = cockpit > 0.01;
@@ -241,7 +254,8 @@ impl Renderer {
         let mut camera = Camera::new(flight, width, height);
         camera.center += offset;
         let started = std::time::Instant::now();
-        let has_panel = cockpit > 0.55;
+        let has_panel =
+            cockpit > 0.55 && flight.vehicle != crate::content::vehicles::Vehicle::Paper;
         if has_panel {
             self.cockpit.prepare(flight, world, width, height, theme);
         }
@@ -281,9 +295,10 @@ impl Renderer {
         }
         self.stages[0] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
+        self.portal_mask(world, &camera, network);
         self.background(world, flight, &camera, theme, height);
         self.scenery(world, &camera, flight.time);
-        self.portals(world, flight, &camera, mission, theme);
+        self.portals(world, flight, &camera, mission, theme, network);
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
         let mut jets: Vec<&Flight> = flight.wingmen.iter().take(flight.wing_count).collect();
@@ -360,7 +375,9 @@ impl Renderer {
                     worker.pixels.resize(worker.w * h, 0);
                     worker.pixels.fill(0);
                     worker.depth.resize(worker.w * h, f32::INFINITY);
-                    worker.depth.fill(f32::INFINITY);
+                    worker
+                        .depth
+                        .copy_from_slice(&self.depth[start * h..end * h]);
                     worker.visible.clear();
                     worker.visible.extend_from_slice(&visible[start..end]);
                     worker.column.clear();

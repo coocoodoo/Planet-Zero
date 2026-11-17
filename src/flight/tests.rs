@@ -13,6 +13,7 @@ fn terrain() -> World {
         kind: crate::world::MapKind::Islands,
         seed: 7,
         scenery: vec![],
+        caverns: vec![],
         portals: vec![],
     }
 }

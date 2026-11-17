@@ -1,3 +1,4 @@
+mod desktop;
 use macroquad::prelude::*;
 use rust_fly::app::{App, HEIGHT, Page, WIDTH};
 use rust_fly::gameplay::Mode;
@@ -15,7 +16,6 @@ fn configuration() -> Conf {
 }
 
 fn draw_frame(texture: &Texture2D) {
-    clear_background(BLACK);
     let scale = (screen_width() / WIDTH as f32).min(screen_height() / HEIGHT as f32);
     let width = WIDTH as f32 * scale;
     let height = HEIGHT as f32 * scale;
@@ -86,7 +86,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
     for level in [2, 3, 6] {
         app.level = level;
         let profile = rust_fly::content::levels::operation(level);
-        app.world = World::generate(profile.map, profile.map.seed());
+        app.world = World::generate(profile.map, profile.map.seed()).into();
         app.mode = Mode::Combat;
         app.flight.weather = profile.weather;
         app.start();
@@ -126,8 +126,16 @@ async fn main() {
     let audio = rust_fly::audio::Output::start()
         .map_err(|error| eprintln!("音频暂不可用：{error}"))
         .ok();
-    let texture = Texture2D::from_rgba8(WIDTH as u16, HEIGHT as u16, &app.screen);
+    app.draw();
+    let mut texture = Texture2D::from_rgba8(WIDTH as u16, HEIGHT as u16, &app.screen);
     texture.set_filter(FilterMode::Nearest);
+    let overlay = Texture2D::from_rgba8(WIDTH as u16, HEIGHT as u16, &app.screen);
+    overlay.set_filter(FilterMode::Nearest);
+    let mut drawing = desktop::Drawing::new();
+    let mut quality = 0_usize;
+    let mut displayed_scale = 1;
+    let mut frame_ms = 0.0;
+    let mut quality_notice = 0.0_f32;
     let mut fullscreen = false;
     let mut pointer = mouse_position();
     let mut pointer_idle = 10.0_f32;
@@ -180,6 +188,13 @@ async fn main() {
     ];
     loop {
         let dt = get_frame_time().min(0.1);
+        quality_notice = (quality_notice - dt).max(0.0);
+        if is_key_pressed(KeyCode::F2) {
+            let count = desktop::SCALES.len();
+            let reverse = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
+            quality = (quality + if reverse { count - 1 } else { 1 }) % count;
+            quality_notice = 5.0;
+        }
         for (key, code) in mapping {
             if is_key_pressed(key) {
                 app.key(code, 1);
@@ -241,9 +256,47 @@ async fn main() {
         if let Some(audio) = &audio {
             audio.update(&mut app);
         }
-        app.draw();
-        texture.update_from_bytes(WIDTH as u32, HEIGHT as u32, &app.screen);
+        app.prepare_scene();
+        let scale = desktop::SCALES[quality];
+        if let Some(frame) = drawing.poll()
+            && frame.scale == scale
+        {
+            let (w, h) = (WIDTH * scale, HEIGHT * scale);
+            if displayed_scale == scale {
+                texture.update_from_bytes(w as u32, h as u32, &frame.pixels);
+            } else {
+                texture = Texture2D::from_rgba8(w as u16, h as u16, &frame.pixels);
+                texture.set_filter(FilterMode::Nearest);
+                displayed_scale = scale;
+            }
+            frame_ms = frame.milliseconds;
+        }
+        drawing.submit(&app, scale);
+        app.draw_overlay();
+        overlay.update_from_bytes(WIDTH as u32, HEIGHT as u32, &app.screen);
+        clear_background(BLACK);
         draw_frame(&texture);
+        draw_frame(&overlay);
+        if quality_notice > 0.0 || displayed_scale != scale {
+            let status = if displayed_scale == scale {
+                format!("{frame_ms:.0} ms")
+            } else {
+                "RENDERING".into()
+            };
+            let text = format!(
+                "F2  {scale}x  {} x {}  {status}",
+                WIDTH * scale,
+                HEIGHT * scale
+            );
+            draw_rectangle(
+                12.0,
+                screen_height() - 40.0,
+                380.0,
+                28.0,
+                Color::new(0.02, 0.05, 0.09, 0.85),
+            );
+            draw_text(&text, 22.0, screen_height() - 20.0, 20.0, WHITE);
+        }
         if app.quit {
             break;
         }

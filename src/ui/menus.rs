@@ -7,13 +7,23 @@ pub fn draw(app: &mut App) {
     let f = &app.flight;
     if app.page == Page::Loading {
         c.shade(30, 48, 260, 72);
-        c.text(46, 57, &format!("STAGE {:02} / PREPARING", app.level), GOLD);
+        let heading = if app.travel.is_some() {
+            "WORMHOLE / CONNECTING".into()
+        } else {
+            format!("STAGE {:02} / PREPARING", app.level)
+        };
+        c.text(46, 57, &heading, GOLD);
         c.text(
             46,
             78,
-            crate::gameplay::progression::operation(app.level)
-                .name
-                .as_str(),
+            app.travel.map_or_else(
+                || {
+                    crate::gameplay::progression::operation(app.level)
+                        .name
+                        .as_str()
+                },
+                |route| route.target.kind.name(),
+            ),
             WHITE,
         );
         c.text(46, 100, "ESC MAIN MENU", MUTED);

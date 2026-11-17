@@ -15,6 +15,7 @@ impl Canvas<'_> {
         if x >= 0 && y >= 0 && x < WIDTH as i32 && y < HEIGHT as i32 {
             let i = (y as usize * WIDTH + x as usize) * 4;
             self.pixels[i..i + 3].copy_from_slice(&c);
+            self.pixels[i + 3] = 255;
         }
     }
     pub(super) fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, c: [u8; 3]) {
@@ -28,9 +29,20 @@ impl Canvas<'_> {
         for yy in y..(y + h).min(HEIGHT) {
             for xx in x..(x + w).min(WIDTH) {
                 let i = (yy * WIDTH + xx) * 4;
-                for c in 0..3 {
-                    self.pixels[i + c] = (self.pixels[i + c] as u16 / 4 + [7, 13, 22][c]) as u8;
+                let alpha = self.pixels[i + 3] as u32;
+                if alpha == 255 {
+                    for c in 0..3 {
+                        self.pixels[i + c] = (self.pixels[i + c] as u16 / 4 + [7, 13, 22][c]) as u8;
+                    }
+                    continue;
                 }
+                let combined = 765 + alpha;
+                for c in 0..3 {
+                    self.pixels[i + c] = ((self.pixels[i + c] as u32 * alpha
+                        + [7, 13, 22][c] * 1020)
+                        / combined) as u8;
+                }
+                self.pixels[i + 3] = (combined / 4) as u8;
             }
         }
     }

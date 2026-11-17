@@ -13,6 +13,13 @@ pub enum Structure {
     Windmill,
     Lighthouse,
     RockStack,
+    House,
+    Warehouse,
+    Arch,
+    Cave,
+    Stairs,
+    IceSpire,
+    Boulder,
 }
 
 #[derive(Clone, Copy)]
@@ -46,6 +53,7 @@ impl World {
             kind,
             seed,
             scenery: vec![],
+            caverns: vec![],
             portals: vec![],
         };
         let mut rng = Random(seed);

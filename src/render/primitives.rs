@@ -16,10 +16,13 @@ impl Renderer {
             }
         }
         if let (Some((a, da, _)), Some((b, db, _))) = (camera.project(a), camera.project(b)) {
-            if a.distance(b) > 1200.0 {
+            if a.distance(b) > self.w.max(1200) as f32 * 2.0 {
                 return;
             }
-            let steps = a.distance(b).ceil().clamp(1.0, 400.0) as usize;
+            let steps = a
+                .distance(b)
+                .ceil()
+                .clamp(1.0, self.w.max(400) as f32 * 2.0) as usize;
             for i in 0..=steps {
                 let t = i as f32 / steps as f32;
                 self.point(a.lerp(b, t), da + (db - da) * t, color, 0, 0);
@@ -27,6 +30,12 @@ impl Renderer {
         }
     }
     pub(super) fn triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32) {
+        self.surface(camera, points, color, false);
+    }
+    pub(super) fn rock_triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32) {
+        self.surface(camera, points, color, true);
+    }
+    fn surface(&mut self, camera: &Camera, points: [Vec3; 3], color: u32, stone: bool) {
         let forward = camera.forward;
         let near = camera.position
             + forward
@@ -41,7 +50,7 @@ impl Renderer {
                     .clip_plane
                     .is_none_or(|(origin, normal)| (*p - origin).dot(normal) >= 0.0)
         }) {
-            self.raster_triangle(camera, points, color);
+            self.raster_triangle(camera, points, color, stone);
             return;
         }
         let mut polygon = points.to_vec();
@@ -62,10 +71,15 @@ impl Renderer {
             polygon = clipped;
         }
         for i in 1..polygon.len().saturating_sub(1) {
-            self.raster_triangle(camera, [polygon[0], polygon[i], polygon[i + 1]], color);
+            self.raster_triangle(
+                camera,
+                [polygon[0], polygon[i], polygon[i + 1]],
+                color,
+                stone,
+            );
         }
     }
-    fn raster_triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32) {
+    fn raster_triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32, stone: bool) {
         let [Some((a, da, _)), Some((b, db, _)), Some((c, dc, _))] =
             points.map(|p| camera.project(p))
         else {
@@ -89,6 +103,21 @@ impl Renderer {
         } else {
             0.0
         };
+        let stone_colors: [u32; 16] = if stone {
+            std::array::from_fn(|i| {
+                mix(
+                    color,
+                    if i < 8 {
+                        rgb(20, 26, 29)
+                    } else {
+                        rgb(206, 184, 144)
+                    },
+                    (i as f32 - 7.0).abs() * 0.055,
+                )
+            })
+        } else {
+            [color; 16]
+        };
         for x in min.x as i32..=max.x as i32 {
             let y0 = (min.y as i32).max(self.visible[x as usize].0);
             let y1 = (max.y as i32 + 1).min(self.visible[x as usize].1);
@@ -106,13 +135,22 @@ impl Renderer {
                     } else {
                         u * da + v * db + w * dc
                     };
-                    self.point(vec2(x as f32, y as f32), depth, color, 0, 1);
+                    let shaded = if stone {
+                        let weights = vec3(u * inverse[0], v * inverse[1], w * inverse[2]);
+                        let p =
+                            (points[0] * weights.x + points[1] * weights.y + points[2] * weights.z)
+                                / weights.element_sum();
+                        stone_colors[super::geology::stone_texel(p)]
+                    } else {
+                        color
+                    };
+                    self.point(vec2(x as f32, y as f32), depth, shaded, 0, 1);
                 }
             }
         }
     }
     pub(super) fn stroke(&mut self, a: Vec2, b: Vec2, depth: f32, color: u32) {
-        let steps = a.distance(b).ceil().clamp(1.0, 48.0) as usize;
+        let steps = a.distance(b).ceil().clamp(1.0, self.w.max(48) as f32) as usize;
         for step in 0..=steps {
             self.point(a.lerp(b, step as f32 / steps as f32), depth, color, 0, 0);
         }

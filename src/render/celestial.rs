@@ -61,7 +61,7 @@ impl Renderer {
             let step = sky_camera.up * (-sky_camera.q / sky_camera.scale);
             for y in self.visible[x].0..self.visible[x].1 {
                 let at = x * self.h + y as usize;
-                if self.pixels[at] == 0 {
+                if self.pixels[at] == 0 && self.depth[at].is_infinite() {
                     let a = ray.abs();
                     let (face, u, v) = if a.x >= a.y && a.x >= a.z {
                         (usize::from(ray.x < 0.0), ray.y / a.x, ray.z / a.x)
@@ -164,8 +164,14 @@ impl Renderer {
             if object.position.distance_squared(camera.position) > 2100.0_f32.powi(2) {
                 continue;
             }
-            if object.kind == Structure::Building {
-                let half = vec3(18.0, 18.0, 47.0) * object.scale;
+            if let Some(bounds) = match object.kind {
+                Structure::Building => Some(vec3(20.0, 20.0, 47.0)),
+                Structure::House => Some(vec3(22.0, 22.0, 10.0)),
+                Structure::Warehouse => Some(vec3(40.0, 40.0, 12.0)),
+                Structure::IceSpire | Structure::Boulder => Some(vec3(12.0, 12.0, 24.0)),
+                _ => None,
+            } {
+                let half = bounds * object.scale;
                 let delta = object.position + Vec3::Z * half.z - camera.position;
                 let bounds = [
                     (camera.right * camera.scale, camera.center.x),
@@ -212,6 +218,12 @@ impl Renderer {
         let panel = rgb(37, 73, 137);
         let light = rgb(118, 232, 248);
         match object.kind {
+            Structure::House | Structure::Warehouse => self.settlement(camera, object),
+            Structure::Arch
+            | Structure::Cave
+            | Structure::Stairs
+            | Structure::IceSpire
+            | Structure::Boulder => self.geological_structure(camera, object),
             Structure::Building
             | Structure::Windmill
             | Structure::Lighthouse

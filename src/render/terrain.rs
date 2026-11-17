@@ -13,6 +13,7 @@ impl Renderer {
         for y in y0.max(self.visible[x].0)..y1.min(self.visible[x].1) {
             let i = x * self.h + y as usize;
             if self.pixels[i] == 0
+                && depth < self.depth[i]
                 && self.clip_depth.get(i).is_none_or(|near| depth >= *near)
                 && !(checker && (x + self.x_origin + y as usize) & 1 == 0)
             {
@@ -130,6 +131,13 @@ impl Renderer {
                 )
             })
             .collect();
+        let far_columns: Vec<f32> = (0..self.w)
+            .map(|x| {
+                (self.visible[x].0..self.visible[x].1)
+                    .map(|y| self.depth[x * self.h + y as usize])
+                    .fold(f32::NEG_INFINITY, f32::max)
+            })
+            .collect();
         for _ in 0..4000 {
             if distance >= end {
                 break;
@@ -157,8 +165,11 @@ impl Renderer {
                 0.0
             };
             let fog_index = ((fog * 10.0) as usize).min(10);
-            for x in 0..self.w {
-                if self.visible[x].0 >= self.visible[x].1 || self.column[x] <= self.visible[x].0 {
+            for (x, &column_far) in far_columns.iter().enumerate() {
+                if distance >= column_far
+                    || self.visible[x].0 >= self.visible[x].1
+                    || self.column[x] <= self.visible[x].0
+                {
                     wx += ax;
                     wy += ay;
                     continue;
@@ -196,7 +207,27 @@ impl Renderer {
                     }
                     let [color, side] = colors[fog_index][usize::from(shade)][material];
                     if previous[h] < highest {
-                        self.span(x, previous[h], highest, side, distance, false);
+                        if matches!(material, 12..=14 | 19..=20) {
+                            let palette: [u32; 16] = std::array::from_fn(|i| {
+                                mix(side, rgb(38, 31, 28), (15 - i) as f32 * 0.025)
+                            });
+                            for y in
+                                previous[h].max(self.visible[x].0)..highest.min(self.visible[x].1)
+                            {
+                                let at = x * self.h + y as usize;
+                                if self.pixels[at] == 0
+                                    && distance < self.depth[at]
+                                    && self.clip_depth.get(at).is_none_or(|near| distance >= *near)
+                                {
+                                    let z = (cy - y as f32) / m - slope * distance + altitude;
+                                    self.pixels[at] =
+                                        palette[super::geology::stone_texel(vec3(wx, wy, z))];
+                                    self.depth[at] = distance;
+                                }
+                            }
+                        } else {
+                            self.span(x, previous[h], highest, side, distance, false);
+                        }
                         highest = previous[h].max(self.visible[x].0);
                     }
                     if rows[h] < highest {
@@ -256,6 +287,7 @@ impl Renderer {
                 if (y as i32) >= self.visible[x].0
                     && (y as i32) < self.visible[x].1
                     && self.pixels[at] == 0
+                    && self.depth[at].is_infinite()
                 {
                     self.pixels[at] = if theme == 2
                         && weather == Weather::Clear

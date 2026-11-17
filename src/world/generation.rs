@@ -104,6 +104,7 @@ impl World {
             kind,
             seed,
             scenery: vec![],
+            caverns: vec![],
             portals: vec![],
         };
         for y in 0..SIZE {
@@ -277,6 +278,7 @@ impl World {
             world.spawn = (532.0 * CELL as f32 - 180.0, 508.0 * CELL as f32 + 630.0);
         }
         world.generate_clouds(&mut random, profile.cloud_clusters);
+        world.enrich_region();
         world.add_landmarks();
         world.update_ceiling();
         world

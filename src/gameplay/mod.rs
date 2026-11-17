@@ -74,6 +74,7 @@ mod weapons;
 pub use entities::*;
 pub use weapons::Weapon;
 
+#[derive(Clone)]
 pub struct Mission {
     pub sounds: crate::audio::Events,
     pub level: u32,
@@ -419,5 +420,49 @@ impl Mission {
             self.outcome = Some(self.mode == Mode::Coins && self.score >= self.coin_goal());
             self.announce("TIME COMPLETE");
         }
+    }
+}
+
+impl Mission {
+    pub fn relocate(
+        &mut self,
+        entry: crate::world::portal::Portal,
+        exit: crate::world::portal::Portal,
+        offset: Vec3,
+        world: &World,
+    ) {
+        let move_point = |p: &mut Vec3, clearance: f32| {
+            *p = entry.transform(exit, *p) + offset;
+            if world.kind != crate::world::MapKind::Space {
+                p.z = p.z.max(world.height(p.x, p.y) + clearance);
+            }
+        };
+        let (s, c) = entry.rotation_to(exit).sin_cos();
+        for gate in &mut self.gates {
+            gate.normal = Vec3::new(
+                c * gate.normal.x - s * gate.normal.y,
+                s * gate.normal.x + c * gate.normal.y,
+                gate.normal.z,
+            );
+            move_point(&mut gate.position, gate.radius + 20.0);
+        }
+        for pickup in &mut self.pickups {
+            move_point(&mut pickup.position, 30.0);
+        }
+        for enemy in &mut self.enemies {
+            move_point(&mut enemy.position, 30.0);
+            enemy.aim_point = entry.transform(exit, enemy.aim_point) + offset;
+            enemy.yaw += entry.rotation_to(exit);
+            if enemy.is_ground() {
+                enemy.position.z = world.height(enemy.position.x, enemy.position.y) + 5.0;
+            }
+        }
+        if let Some(convoy) = &mut self.convoy {
+            move_point(&mut convoy.position, 45.0);
+            convoy.previous = convoy.position;
+        }
+        self.shots.clear();
+        self.effects.clear();
+        self.invulnerable = self.invulnerable.max(1.2);
     }
 }

@@ -128,27 +128,61 @@ fn teleport_does_not_collect_pickups_between_portal_endpoints() {
 }
 
 #[test]
-fn wormhole_hotkey_creates_safe_pairs_on_every_map_without_pausing() {
+fn wormhole_hotkey_adds_links_on_every_map_without_pausing() {
     for map in crate::world::MapKind::ALL {
         let mut app = App::new(World::generate(map, map.seed()));
         app.start();
+        let before = app.network.routes(&app.world).len();
         app.key(35, 1);
         app.key(35, 0);
         assert_eq!(app.page, Page::Playing);
-        assert_eq!(app.world.portals.len(), 2);
-        for portal in &app.world.portals {
-            assert!(portal.center.is_finite());
+        let routes = app.network.routes(&app.world);
+        assert_eq!(routes.len(), before + 1);
+        for route in routes {
+            assert!(route.aperture.center.is_finite());
+            assert_ne!(route.target.kind, map);
             if !map.eq(&crate::world::MapKind::Space) {
                 assert!(
-                    portal.center.z - portal.radius
-                        >= app.world.height(portal.center.x, portal.center.y)
+                    route.aperture.center.z - route.aperture.radius
+                        >= app
+                            .world
+                            .height(route.aperture.center.x, route.aperture.center.y)
                             + crate::flight::MIN_CLEARANCE
                 );
             }
         }
-        let center = app.world.portals[0].center;
-        app.flight.position.x += 600.0;
         app.key(35, 1);
-        assert!(app.world.portals[0].center.distance(center) > 500.0);
+        assert_eq!(app.network.routes(&app.world).len(), before + 2);
     }
+}
+
+#[test]
+fn interplanetary_crossing_preserves_loadout_and_has_a_return_route() {
+    let mut app = App::new(World::generate(crate::world::MapKind::City, 2049));
+    app.start();
+    app.network.ensure(&app.world);
+    app.network.active = true;
+    let source = app.world.clone();
+    let route = app.network.routes(&source)[0];
+    app.network
+        .remember(World::generate(route.target.kind, route.target.seed).into());
+    app.flight.position = route.aperture.center + route.aperture.normal() * 12.0;
+    app.flight.speed = 145.0;
+    app.mission.bombs = 4;
+    app.mission.score = 321;
+    assert!(app.cross_world(route.aperture.center + route.aperture.normal() * 30.0));
+    assert_eq!(app.world.kind, route.target.kind);
+    assert_eq!(app.mission.bombs, 4);
+    assert_eq!(app.mission.score, 321);
+    assert_eq!(app.flight.speed, 145.0);
+    let back = app
+        .network
+        .routes(&app.world)
+        .into_iter()
+        .find(|r| r.id == route.id)
+        .unwrap();
+    assert_eq!(back.target.kind, source.kind);
+    assert!(app.arrive(back));
+    assert_eq!(app.world.kind, source.kind);
+    assert!(std::sync::Arc::ptr_eq(&app.world, &source));
 }
