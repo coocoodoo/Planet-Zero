@@ -10,7 +10,7 @@ impl WorldLoader {
     pub fn start(&mut self, kind: MapKind, seed: u32) {
         self.pending = Some(kind);
         if self.job.is_none() {
-            self.job = Some(std::thread::spawn(move || World::generate(kind, seed)));
+            self.job = Some(spawn_world(kind, seed));
         } else {
             self.queued = Some((kind, seed));
         }
@@ -30,4 +30,14 @@ impl WorldLoader {
         self.pending = None;
         Some(world)
     }
+}
+
+pub(super) fn spawn_world(kind: MapKind, seed: u32) -> JoinHandle<World> {
+    std::thread::spawn(move || {
+        #[cfg(all(target_os = "linux", feature = "cardputer"))]
+        unsafe {
+            libc::nice(10);
+        }
+        World::generate(kind, seed)
+    })
 }

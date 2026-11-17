@@ -187,10 +187,7 @@ impl Network {
     }
     pub fn request(&mut self, key: MapKey) {
         if self.get(key).is_none() && self.job.is_none() {
-            self.job = Some((
-                key,
-                std::thread::spawn(move || World::generate(key.kind, key.seed)),
-            ));
+            self.job = Some((key, super::loader::spawn_world(key.kind, key.seed)));
         }
     }
     pub fn preload(&mut self, world: &World, position: Vec3, forward: Vec3) {

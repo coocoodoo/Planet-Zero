@@ -167,27 +167,39 @@ impl Renderer {
 }
 
 pub(super) fn stone_texel(p: Vec3) -> usize {
-    let sample = |scale: f32| {
-        let cell = (p * scale).floor().as_ivec3();
-        hash(
-            (cell.x as u32).wrapping_mul(73856093)
-                ^ (cell.y as u32).wrapping_mul(19349663)
-                ^ (cell.z as u32).wrapping_mul(83492791),
-        ) as i32
-    };
-    let broad = sample(0.08);
-    let grain = sample(1.4);
-    let layer = (p.z * 0.23 + (broad / 64) as f32 * 0.13).rem_euclid(1.0);
-    let fissure = (p.x * 0.071 + p.y * 0.057 + (p.z * 0.12).floor() * 0.17).rem_euclid(1.0);
-    let mut shade = 5 + broad / 48 + grain / 65;
-    if layer < 0.09 {
-        shade -= 4;
-    }
-    if fissure < 0.035 && broad < 155 {
-        shade -= 6;
-    }
-    if p.z.rem_euclid(80.0) < 15.0 && broad < 95 {
-        shade -= 2;
-    }
-    shade.clamp(0, 15) as usize
+    static TEXTURE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    let texture = TEXTURE.get_or_init(|| {
+        let noise = |x: f32, y: f32, cell: i32| {
+            let u = x / cell as f32;
+            let v = y / cell as f32;
+            let (ix, iy) = (u.floor() as i32, v.floor() as i32);
+            let (tx, ty) = (u - u.floor(), v - v.floor());
+            let (tx, ty) = (tx * tx * (3.0 - 2.0 * tx), ty * ty * (3.0 - 2.0 * ty));
+            let sample =
+                |dx, dy| hash(index(ix + dx, iy + dy, (256 / cell) as usize) as u32) as f32 / 255.0;
+            let (a, b, c, d) = (sample(0, 0), sample(1, 0), sample(0, 1), sample(1, 1));
+            a + (b - a) * tx + (c - a + (d - c - b + a) * tx) * ty
+        };
+        (0..256 * 256)
+            .map(|i| {
+                let (x, y) = ((i % 256) as f32, (i / 256) as f32);
+                let broad = noise(x, y, 32);
+                let veins = noise(x + broad * 5.0, y, 8);
+                let grain = hash(i as u32) as f32 / 255.0;
+                let layer = (y * 0.125 + broad * 1.4 + veins * 0.2).fract();
+                let fissure = (x * 0.0625 + broad * 2.0 + veins * 0.5).fract();
+                let mut shade = 4.0 + broad * 5.0 + veins * 3.0 + grain * 2.0;
+                if layer < 0.075 {
+                    shade -= 3.0;
+                }
+                if fissure < 0.04 && veins < 0.65 {
+                    shade -= 5.0;
+                }
+                shade.clamp(0.0, 15.0) as u8
+            })
+            .collect()
+    });
+    let u = (p.x * 0.8 + p.y * 0.6).floor() as i32;
+    let v = (p.z * 1.2 + p.y * 0.3).floor() as i32;
+    texture[index(u, v, 256)] as usize
 }
