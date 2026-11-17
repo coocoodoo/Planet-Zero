@@ -1,4 +1,5 @@
 mod canvas;
+mod chart;
 mod combat;
 mod hud;
 mod menus;
@@ -11,7 +12,9 @@ use combat::combat_hud;
 pub(crate) const HELP_PAGE_COUNT: usize = menus::HELP_PAGES.len();
 
 pub fn draw(app: &mut App) {
-    if app.page == Page::Playing {
+    if app.page == Page::Chart {
+        chart::draw(app);
+    } else if app.page == Page::Playing {
         hud::draw(app);
         if app.flight.hud && app.portal_labels {
             portal_labels(app);

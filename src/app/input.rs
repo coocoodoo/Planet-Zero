@@ -11,9 +11,9 @@ impl App {
         Controls {
             bank: None,
             aerobatic: true,
-            turn: held(D) - held(A),
-            climb: held(W) - held(S),
-            boost: self.keys.contains(&BOOST),
+            turn: held(RIGHT) - held(LEFT),
+            climb: held(UP) - held(DOWN),
+            boost: self.keys.contains(&BOOST) || self.keys.contains(&BOOST_RIGHT),
             manual: !self.auto,
         }
     }
@@ -38,6 +38,10 @@ impl App {
             return;
         }
         match code {
+            CHART if matches!(self.page, Page::Playing | Page::Paused | Page::Chart) => {
+                self.toggle_chart();
+                return;
+            }
             HUD => {
                 self.flight.hud = !self.flight.hud;
                 return;
@@ -66,17 +70,27 @@ impl App {
         ) {
             if code == ENTER {
                 self.sounds.push(crate::audio::Sound::Confirm);
-            } else if matches!(code, W | A | S | D | UP | LEFT | DOWN | RIGHT) {
+            } else if matches!(code, UP | LEFT | DOWN | RIGHT) {
                 self.sounds.push(crate::audio::Sound::Navigate);
             }
         }
         match self.page {
+            Page::Chart => {
+                match code {
+                    UP => self.chart.zoom = (self.chart.zoom + 1).min(2),
+                    DOWN => self.chart.zoom = self.chart.zoom.saturating_sub(1),
+                    LEFT | RIGHT => self.chart.selected ^= 1,
+                    ENTER => self.toggle_chart(),
+                    _ => {}
+                }
+                return;
+            }
             Page::Settings => {
                 match code {
-                    UP | W => self.selection = (self.selection + 5) % 6,
-                    DOWN | S => self.selection = (self.selection + 1) % 6,
-                    LEFT | A => self.adjust_setting(-1),
-                    RIGHT | D | ENTER => self.adjust_setting(1),
+                    UP => self.selection = (self.selection + 5) % 6,
+                    DOWN => self.selection = (self.selection + 1) % 6,
+                    LEFT => self.adjust_setting(-1),
+                    RIGHT | ENTER => self.adjust_setting(1),
                     SETTINGS => self.close_settings(),
                     _ => {}
                 }
@@ -84,11 +98,11 @@ impl App {
             }
             Page::Help => {
                 match code {
-                    LEFT | A => {
+                    LEFT => {
                         self.help_page = (self.help_page + crate::ui::HELP_PAGE_COUNT - 1)
                             % crate::ui::HELP_PAGE_COUNT;
                     }
-                    RIGHT | D => {
+                    RIGHT => {
                         self.help_page = (self.help_page + 1) % crate::ui::HELP_PAGE_COUNT;
                     }
                     ENTER | HELP => self.page = self.help_return,
@@ -98,10 +112,10 @@ impl App {
             }
             Page::Menu => {
                 match code {
-                    W | UP => self.selection = (self.selection + MENU_ROWS - 1) % MENU_ROWS,
-                    S | DOWN => self.selection = (self.selection + 1) % MENU_ROWS,
-                    A | LEFT => self.adjust(-1),
-                    D | RIGHT => self.adjust(1),
+                    UP => self.selection = (self.selection + MENU_ROWS - 1) % MENU_ROWS,
+                    DOWN => self.selection = (self.selection + 1) % MENU_ROWS,
+                    LEFT => self.adjust(-1),
+                    RIGHT => self.adjust(1),
                     ENTER => self.activate(),
                     _ => {}
                 }
@@ -109,8 +123,8 @@ impl App {
             }
             Page::Paused => {
                 match code {
-                    W | UP => self.selection = (self.selection + 5) % 6,
-                    S | DOWN => self.selection = (self.selection + 1) % 6,
+                    UP => self.selection = (self.selection + 5) % 6,
+                    DOWN => self.selection = (self.selection + 1) % 6,
                     ENTER => self.activate(),
                     PAUSE => self.page = Page::Playing,
                     _ => {}
@@ -121,8 +135,8 @@ impl App {
                 match code {
                     RETRY => self.start(),
                     ENTER => self.result_action(),
-                    A | LEFT => self.reward = (self.reward + 2) % 3,
-                    D | RIGHT => self.reward = (self.reward + 1) % 3,
+                    LEFT => self.reward = (self.reward + 2) % 3,
+                    RIGHT => self.reward = (self.reward + 1) % 3,
                     _ => {}
                 }
                 return;
@@ -130,56 +144,71 @@ impl App {
             Page::Loading => return,
             Page::Playing => {}
         }
+        if self.mode == Mode::Free && (WEATHER..=SEED).contains(&code) {
+            self.free_flight_key(code);
+            return;
+        }
         match code {
-            OVERDRIVE => self.mission.activate_overdrive(),
+            OVERDRIVE if self.mode == Mode::Combat => self.mission.activate_overdrive(),
             VIEW => self.flight.view = (self.flight.view + 1) % 3,
-            ROLL => {
-                if self.flight.roll() {
+            ROLL_LEFT | ROLL_RIGHT => {
+                let direction = if code == ROLL_LEFT { -1.0 } else { 1.0 };
+                if self.flight.roll_toward(direction) {
                     self.sounds.push(crate::audio::Sound::Roll);
                     self.mission.dodge();
                 }
-            }
-            PORTAL => {
-                self.network
-                    .summon(&self.world, self.flight.position, self.flight.axes()[1]);
-                self.flight.portal_transit = None;
-                self.sounds.push(crate::audio::Sound::Warp);
             }
             PAUSE => {
                 self.page = Page::Paused;
                 self.selection = 0;
             }
             RETRY => self.start(),
-            WEAPON => self.mission.cycle_weapon(),
-            BOMB => self.mission.bomb(),
-            AUTOFIRE => self.mission.autofire = !self.mission.autofire,
-            MODEL if self.mode == Mode::Free => self.flight.exploded = !self.flight.exploded,
-            WINGMEN if self.mode == Mode::Free => {
-                self.flight.wing_count = (self.flight.wing_count + 1) % 3
-            }
-            WEATHER if self.mode == Mode::Free => self.flight.weather = self.flight.weather.next(),
-            TIME if self.mode == Mode::Free => self.theme = (self.theme + 1) % 3,
-            MAP if self.mode == Mode::Free => {
-                let kind = self.world.kind.next();
-                self.loader.start(kind, kind.seed());
-            }
-            SEED if self.mode == Mode::Free => self
-                .loader
-                .start(self.world.kind, self.world.seed.wrapping_add(7919)),
-            DEMO if self.mode == Mode::Free => self.flight.set_demo(!self.flight.demo),
-            AUTOPILOT if self.mode == Mode::Free => {
-                self.flight.set_demo(false);
-                self.auto = !self.auto;
-            }
-            W | A | S | D => {
+            WEAPON if self.mode == Mode::Combat => self.mission.cycle_weapon(),
+            BOMB if self.mode == Mode::Combat => self.mission.bomb(),
+            AUTOFIRE if self.mode == Mode::Combat => self.mission.autofire = !self.mission.autofire,
+            UP | LEFT | DOWN | RIGHT => {
                 self.auto = false;
                 self.flight.set_demo(false);
             }
             _ => {}
         }
     }
+    fn free_flight_key(&mut self, code: u16) {
+        match code {
+            WEATHER => self.flight.weather = self.flight.weather.next(),
+            TIME => self.theme = (self.theme + 1) % 3,
+            PORTAL => {
+                self.network
+                    .summon(&self.world, self.flight.position, self.flight.axes()[1]);
+                self.flight.portal_transit = None;
+                self.sounds.push(crate::audio::Sound::Warp);
+            }
+            VEHICLE => {
+                self.flight.vehicle =
+                    Vehicle::ALL[(self.flight.vehicle as usize + 1) % Vehicle::ALL.len()];
+                self.mission.max_health = self.flight.vehicle.shield();
+                self.mission.health = self.mission.max_health;
+            }
+            WINGMEN => self.flight.wing_count = (self.flight.wing_count + 1) % 3,
+            MODEL => self.flight.exploded = !self.flight.exploded,
+            AUTOPILOT => {
+                self.flight.set_demo(false);
+                self.auto = !self.auto;
+            }
+            DEMO => self.flight.set_demo(!self.flight.demo),
+            MAP => {
+                let kind = self.world.kind.next();
+                self.loader.start(kind, kind.seed());
+            }
+            SEED => self
+                .loader
+                .start(self.world.kind, self.world.seed.wrapping_add(7919)),
+            _ => {}
+        }
+    }
     pub fn back(&mut self) {
         match self.page {
+            Page::Chart => self.toggle_chart(),
             Page::Menu => {}
             Page::Playing => {
                 self.page = Page::Paused;

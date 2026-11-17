@@ -1,53 +1,53 @@
 use super::*;
 
-pub(super) const HELP_PAGES: [[&str; 8]; 8] = [
+pub(super) const HELP_PAGES: [[&str; 8]; 10] = [
     [
         "FLIGHT",
-        "W   PITCH UP",
-        "S   PITCH DOWN",
-        "A   TURN LEFT",
-        "D   TURN RIGHT",
-        "B   HOLD TO BOOST",
-        "Q   ROLL",
-        "V   CHANGE VIEW",
-    ],
-    [
-        "EXPLORATION / FREE FLIGHT",
-        "H   SUMMON ONE WORMHOLE",
-        "J   DIRECTOR SHOW ON/OFF",
-        "F3  CHANGE MAP",
-        "F4  CHANGE WEATHER",
-        "F5  CHANGE TIME OF DAY",
-        "F6  CHANGE WINGMEN COUNT",
-        "F7  GENERATE NEW TERRAIN",
+        "UP PITCH UP",
+        "DOWN PITCH DOWN",
+        "LEFT TURN LEFT",
+        "RIGHT TURN RIGHT",
+        "SHIFT HOLD TO BOOST",
+        "D ROLL LEFT",
+        "G ROLL RIGHT",
     ],
     [
         "INTERFACE",
-        "U   HUD ON/OFF",
-        "P   PAUSE / RESUME",
-        "R   RETRY CURRENT STAGE",
-        "F1  HELP ON/OFF",
-        "F2  SETTINGS ON/OFF",
-        "ESC BACK / PAUSE / RESUME",
-        "ESC HOLD 2S TO EXIT",
+        "SPACE CHANGE VIEW",
+        "M NAVIGATION CHART",
+        "U HUD ON/OFF",
+        "P PAUSE / RESUME",
+        "R RETRY CURRENT STAGE",
+        "F1 HELP ON/OFF",
+        "F2 SETTINGS ON/OFF",
     ],
     [
-        "FLIGHT TOOLS",
-        "F8  AUTOPILOT IN FREE FLIGHT",
-        "F9  MODEL IN FREE FLIGHT",
-        "F10 CHANGE SOUND MODE",
-        "F11 FULLSCREEN ON DESKTOP",
-        "F12 HD SCALE ON DESKTOP",
-        "I   IMU ON/OFF ON CARDPUTER",
-        "K   CALIBRATE IMU ON CARDPUTER",
+        "FREE FLIGHT / EXPLORATION",
+        "1 CHANGE WEATHER",
+        "2 CHANGE TIME OF DAY",
+        "3 SUMMON ONE WORMHOLE",
+        "4 CHANGE AIRCRAFT",
+        "5 CHANGE WINGMEN COUNT",
+        "6 MODEL EXPANSION ON/OFF",
+        "7 AUTOPILOT ON/OFF",
+    ],
+    [
+        "FREE FLIGHT / DIRECTOR",
+        "8 DIRECTOR SHOW ON/OFF",
+        "9 CHANGE MAP",
+        "0 GENERATE NEW TERRAIN",
+        "PORTAL APPEARS BEHIND CAMERA",
+        "CAMERA TURNS BEFORE WARP ENTRY",
+        "DIRECTOR : TWO WARP SEQUENCES",
+        "DIRECTION KEYS TAKE CONTROL",
     ],
     [
         "COMBAT",
-        "1   HOLD TO FIRE",
-        "2   NEXT WEAPON",
-        "3   RELEASE NOVA",
-        "4   ACTIVATE OVERDRIVE",
-        "5   AUTO FIRE ON/OFF",
+        "1 HOLD TO FIRE",
+        "2 NEXT WEAPON",
+        "3 RELEASE NOVA",
+        "4 ACTIVATE OVERDRIVE",
+        "5 AUTO FIRE ON/OFF",
         "GRAZE BULLETS TO CHARGE OVERDRIVE",
         "COLLECT WEAPONS SHIELDS ENERGY",
     ],
@@ -57,31 +57,67 @@ pub(super) const HELP_PAGES: [[&str; 8]; 8] = [
         "COINS : 3-5 SECOND CHAIN / X10",
         "ENTER NEXT STAGE AFTER WIN",
         "ENTER RETRY AFTER FAILURE",
-        "A   PREVIOUS UPGRADE AFTER COMBAT",
-        "D   NEXT UPGRADE AFTER COMBAT",
-        "R   REPLAY CURRENT STAGE",
+        "LEFT PREVIOUS COMBAT UPGRADE",
+        "RIGHT NEXT COMBAT UPGRADE",
+        "R REPLAY CURRENT STAGE",
     ],
     [
         "MENU / SETTINGS",
-        "W   SELECT PREVIOUS ROW",
-        "S   SELECT NEXT ROW",
-        "A   SELECT PREVIOUS VALUE",
-        "D   SELECT NEXT VALUE",
+        "UP SELECT PREVIOUS ROW",
+        "DOWN SELECT NEXT ROW",
+        "LEFT SELECT PREVIOUS VALUE",
+        "RIGHT SELECT NEXT VALUE",
         "ENTER ACTIVATE SELECTION",
         "ENTER ON CONFIG : GO TO START",
-        "ARROW KEYS ALSO SELECT / ADJUST",
+        "ESC RETURN",
     ],
     [
-        "AEROBATICS",
+        "NAVIGATION CHART",
+        "M OPEN / CLOSE CHART",
+        "UP ZOOM IN",
+        "DOWN ZOOM OUT",
+        "LEFT PREVIOUS PORTAL",
+        "RIGHT NEXT PORTAL",
+        "WHITE AIRCRAFT / CYAN PORTAL",
+        "GOLD OBJECTIVE / RED HOSTILE",
+    ],
+    [
+        "AEROBATICS / IMU",
         "HIGH ALTITUDE : HOLD PITCH 1.8S",
         "IMU HOLD ONE SIDE 0.8S : ROLL",
         "LOW FLIGHT : LIMITED PITCH / ROLL",
-        "DIRECTOR : TWO WARP SEQUENCES",
-        "PORTAL DISTANCE : 680-800",
         "RELEASE PITCH RESETS LOOP TIMER",
         "LOOPS FINISH AFTER INPUT RELEASE",
+        "I IMU ON/OFF ON CARDPUTER",
+        "K CALIBRATE IMU ON CARDPUTER",
+    ],
+    [
+        "SOUND / DESKTOP / EXIT",
+        "F10 CHANGE SOUND MODE",
+        "F11 FULLSCREEN ON DESKTOP",
+        "F12 HD SCALE ON DESKTOP",
+        "SHIFT+F12 PREVIOUS HD SCALE",
+        "HD SCALE : 1X / 2X / 4X / 8X",
+        "ESC BACK / PAUSE / RESUME",
+        "ESC HOLD 2S TO EXIT",
     ],
 ];
+
+fn control_label(line: &str, device: bool) -> String {
+    if device {
+        for (direction, key) in [
+            ("UP ", "F "),
+            ("DOWN ", "X "),
+            ("LEFT ", "Z "),
+            ("RIGHT ", "C "),
+        ] {
+            if let Some(action) = line.strip_prefix(direction) {
+                return format!("{key}{action}");
+            }
+        }
+    }
+    line.to_owned()
+}
 
 pub fn draw(app: &mut App) {
     let mut c = Canvas {
@@ -117,7 +153,7 @@ pub fn draw(app: &mut App) {
         c.shade(0, 0, 320, 32);
         c.text_scale(10, 7, "RUST / FLY", WHITE, 2);
         c.text(224, 8, "FLIGHT CLUB", CYAN);
-        c.text(224, 20, "ARCADE 0.10", MUTED);
+        c.text(224, 20, "ARCADE 0.11", MUTED);
         c.shade(8, 34, 304, 115);
         c.rect(8, 34, 2, 115, CYAN);
         let stage = format!(
@@ -170,7 +206,7 @@ pub fn draw(app: &mut App) {
         };
         c.shade(0, 151, 320, 19);
         c.text(8, 152, description, CYAN);
-        c.text(8, 162, "A/D CHANGE ENTER START F1 HELP", MUTED);
+        c.text(8, 162, "ENTER CONFIRM", MUTED);
         return;
     }
     if app.page == Page::Help {
@@ -185,11 +221,26 @@ pub fn draw(app: &mut App) {
             GOLD,
         );
         for (i, line) in page[1..].iter().enumerate() {
-            c.text(14, 33 + i as i32 * 13, line, WHITE);
+            c.text(
+                14,
+                33 + i as i32 * 13,
+                &control_label(line, app.device_controls),
+                WHITE,
+            );
         }
         c.rect(14, 123, 292, 1, MUTED);
-        c.text(14, 130, "A     PREVIOUS PAGE", CYAN);
-        c.text(14, 141, "D     NEXT PAGE", CYAN);
+        c.text(
+            14,
+            130,
+            &control_label("LEFT PREVIOUS PAGE", app.device_controls),
+            CYAN,
+        );
+        c.text(
+            14,
+            141,
+            &control_label("RIGHT NEXT PAGE", app.device_controls),
+            CYAN,
+        );
         c.text(14, 152, "ENTER RETURN", CYAN);
         return;
     }
@@ -214,7 +265,7 @@ pub fn draw(app: &mut App) {
             }
             c.text(47, y, line, if i == app.selection { GOLD } else { WHITE });
         }
-        c.text(34, 146, "A/D CHANGE     ESC RETURN", MUTED);
+        c.text(34, 146, "ESC RETURN", MUTED);
         return;
     }
     if app.page == Page::Paused {
@@ -306,7 +357,7 @@ pub fn draw(app: &mut App) {
                 28,
                 110,
                 &format!(
-                    "A/D REWARD {}",
+                    "REWARD {}",
                     crate::gameplay::progression::Upgrade::ALL[app.reward].name()
                 ),
                 GOLD,

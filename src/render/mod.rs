@@ -21,7 +21,7 @@ use crate::render::palette::JET;
 use crate::world::{MATERIAL_COUNT, SIZE, World, hash, index};
 
 const MODEL: &[u8] = include_bytes!("../../assets/vehicles/falcon.bin");
-const TOP: [[u8; 3]; MATERIAL_COUNT] = [
+pub(crate) const TOP: [[u8; 3]; MATERIAL_COUNT] = [
     [36, 104, 180],
     [44, 124, 198],
     [66, 160, 216],

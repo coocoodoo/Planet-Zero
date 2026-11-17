@@ -147,32 +147,27 @@ async fn main() {
         (KeyCode::Down, k::DOWN),
         (KeyCode::Left, k::LEFT),
         (KeyCode::Right, k::RIGHT),
-        (KeyCode::W, k::W),
-        (KeyCode::A, k::A),
-        (KeyCode::S, k::S),
-        (KeyCode::D, k::D),
-        (KeyCode::Q, k::ROLL),
-        (KeyCode::B, k::BOOST),
-        (KeyCode::V, k::VIEW),
+        (KeyCode::D, k::ROLL_LEFT),
+        (KeyCode::G, k::ROLL_RIGHT),
+        (KeyCode::LeftShift, k::BOOST),
+        (KeyCode::RightShift, k::BOOST_RIGHT),
+        (KeyCode::Space, k::VIEW),
+        (KeyCode::M, k::CHART),
         (KeyCode::U, k::HUD),
-        (KeyCode::H, k::PORTAL),
         (KeyCode::P, k::PAUSE),
         (KeyCode::R, k::RETRY),
-        (KeyCode::J, k::DEMO),
-        (KeyCode::Key1, k::FIRE),
-        (KeyCode::Key2, k::WEAPON),
-        (KeyCode::Key3, k::BOMB),
-        (KeyCode::Key4, k::OVERDRIVE),
-        (KeyCode::Key5, k::AUTOFIRE),
+        (KeyCode::Key1, k::WEATHER),
+        (KeyCode::Key2, k::TIME),
+        (KeyCode::Key3, k::PORTAL),
+        (KeyCode::Key4, k::VEHICLE),
+        (KeyCode::Key5, k::WINGMEN),
+        (KeyCode::Key6, k::MODEL),
+        (KeyCode::Key7, k::AUTOPILOT),
+        (KeyCode::Key8, k::DEMO),
+        (KeyCode::Key9, k::MAP),
+        (KeyCode::Key0, k::SEED),
         (KeyCode::F1, k::HELP),
         (KeyCode::F2, k::SETTINGS),
-        (KeyCode::F3, k::MAP),
-        (KeyCode::F4, k::WEATHER),
-        (KeyCode::F5, k::TIME),
-        (KeyCode::F6, k::WINGMEN),
-        (KeyCode::F7, k::SEED),
-        (KeyCode::F8, k::AUTOPILOT),
-        (KeyCode::F9, k::MODEL),
         (KeyCode::F10, k::SOUND),
     ];
     loop {
@@ -259,7 +254,9 @@ async fn main() {
             }
             frame_ms = frame.milliseconds;
         }
-        drawing.submit(&app, scale);
+        if app.page != Page::Chart {
+            drawing.submit(&app, scale);
+        }
         app.draw_overlay();
         overlay.update_from_bytes(WIDTH as u32, HEIGHT as u32, &app.screen);
         clear_background(BLACK);

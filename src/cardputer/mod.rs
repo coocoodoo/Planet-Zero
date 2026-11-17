@@ -35,8 +35,10 @@ impl Game {
         Self::with_world(World::new(7))
     }
     pub fn with_world(world: World) -> Self {
+        let mut app = App::new(world);
+        app.device_controls = true;
         Self {
-            app: App::new(world),
+            app,
             gestures: gestures::Gestures::default(),
             motion: imu::Motion::default(),
             imu_enabled: false,
@@ -44,6 +46,7 @@ impl Game {
         }
     }
     pub fn key(&mut self, code: u16, value: i32) {
+        let code = crate::keys::cardputer_direction(code);
         if value == 1 && !self.app.keys.contains(&code) {
             if code == crate::keys::IMU {
                 self.imu_enabled = !self.imu_enabled;
@@ -59,6 +62,7 @@ impl Game {
                 self.calibrate_imu = true;
             }
             if code == crate::keys::AUTOPILOT
+                && self.page == Page::Playing
                 && self.app.mode == crate::gameplay::Mode::Free
                 && !self.auto
             {

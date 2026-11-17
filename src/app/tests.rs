@@ -144,8 +144,8 @@ fn wormhole_hotkey_replaces_one_forward_link_on_every_map_without_pausing() {
             .iter()
             .map(|r| r.id)
             .collect();
-        app.key(35, 1);
-        app.key(35, 0);
+        app.key(crate::keys::PORTAL, 1);
+        app.key(crate::keys::PORTAL, 0);
         assert_eq!(app.page, Page::Playing);
         let routes = app.network.routes(&app.world);
         assert_eq!(routes.len(), 2);
@@ -172,7 +172,7 @@ fn wormhole_hotkey_replaces_one_forward_link_on_every_map_without_pausing() {
                 );
             }
         }
-        app.key(35, 1);
+        app.key(crate::keys::PORTAL, 1);
         let routes = app.network.routes(&app.world);
         assert_eq!(routes.len(), 2);
         assert_eq!(

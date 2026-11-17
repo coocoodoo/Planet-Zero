@@ -1,4 +1,5 @@
 mod audio;
+pub(crate) mod chart;
 mod director;
 mod input;
 mod records;
@@ -27,12 +28,16 @@ pub enum Page {
     Playing,
     Paused,
     Settings,
+    Chart,
     Results,
     Help,
     Loading,
 }
 
 pub struct App {
+    pub device_controls: bool,
+    pub(crate) chart: chart::Chart,
+    chart_return: Page,
     director: director::Director,
     pub portal_labels: bool,
     settings_path: Option<PathBuf>,
@@ -110,6 +115,9 @@ impl App {
         let settings = settings::Settings::load(settings_path.as_deref());
         flight.faceted = settings.faceted;
         Self {
+            device_controls: false,
+            chart: chart::Chart::default(),
+            chart_return: Page::Playing,
             portal_labels: settings.portal_labels,
             settings_path,
             settings_return: (Page::Menu, 0),
@@ -257,6 +265,14 @@ impl App {
         {
             self.quit = true;
         }
+        if self.page == Page::Chart {
+            self.network.ensure(&self.world);
+            let routes = self.network.routes(&self.world);
+            if let Some(route) = routes.get(self.chart.selected % routes.len().max(1)) {
+                self.network.request(route.target);
+            }
+            return;
+        }
         self.direct_demo();
         if self.page == Page::Loading
             || self.page == Page::Menu
@@ -284,7 +300,7 @@ impl App {
             previous = self.flight.position;
             self.sounds.push(crate::audio::Sound::Warp);
         }
-        let fire = self.keys.contains(&crate::keys::FIRE);
+        let fire = self.mode == Mode::Combat && self.keys.contains(&crate::keys::FIRE);
         self.mission
             .step(dt, &mut self.flight, &self.world, previous, fire);
         if self.mission.outcome.is_some() {
@@ -310,6 +326,10 @@ impl App {
         crate::ui::draw(self);
     }
     pub fn draw(&mut self) {
+        if self.page == Page::Chart {
+            crate::ui::draw(self);
+            return;
+        }
         self.prepare_scene();
         let menu = self.scene_is_menu();
         self.renderer.render_connected(
