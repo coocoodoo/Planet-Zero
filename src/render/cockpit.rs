@@ -392,6 +392,7 @@ fn instruments(
         .iter()
         .map(|route| &route.aperture)
         .chain(world.portals.iter().filter(|_| !connected))
+        .filter(|portal| !f.hides_portal(**portal))
     {
         let d = portal.center - f.position;
         let x = ((d.x * cy + d.y * sy) / 15.0).round() as i32;

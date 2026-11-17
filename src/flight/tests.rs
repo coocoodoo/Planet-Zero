@@ -367,6 +367,8 @@ fn wingmen_outside_the_aperture_rejoin_from_the_exit() {
     f.position = vec3(0.0, 0.0, 200.0);
     f.follow = f.position;
     f.yaw = 0.0;
+    f.view = 1;
+    f.weights = [0.0, 1.0, 0.0];
     let entry = Portal {
         center: f.position,
         yaw: std::f32::consts::PI,
@@ -506,4 +508,66 @@ fn chase_waits_for_the_camera_and_warps_without_an_exit_push() {
         assert!(f.position.distance(before.position) < 0.001);
     }
     assert!(finished);
+}
+
+#[test]
+fn overhead_preserves_wingmen_and_hides_the_exit_until_its_halo_leaves_view() {
+    use crate::world::portal::{LENS_RADIUS, Portal};
+    let world = World::generate(crate::world::MapKind::Space, 1999);
+    let mut f = Flight::new(&world);
+    f.position = vec3(0.0, -50.0, 300.0);
+    f.follow = f.position;
+    f.yaw = 0.0;
+    f.camera_yaw = 0.0;
+    f.weights = [1.0, 0.0, 0.0];
+    let entry = Portal {
+        center: vec3(0.0, 0.0, 300.0),
+        yaw: std::f32::consts::PI,
+        radius: 50.0,
+    };
+    let exit = Portal {
+        center: vec3(1600.0, 1500.0, 300.0),
+        yaw: 0.0,
+        ..entry
+    };
+    f.wingmen[0].position = f.position + vec3(100.0, 0.0, 15.0);
+    f.wingmen[1].position = f.position + vec3(-85.0, 70.0, 10.0);
+    let camera = Camera::new(&f, 320, 170);
+    let positions: Vec<_> = f
+        .wingmen
+        .iter()
+        .map(|wing| (wing.position, camera.project(wing.position).unwrap().0))
+        .collect();
+    f.warp(entry, exit);
+    let camera = Camera::new(&f, 320, 170);
+    for (wing, (position, pixel)) in f.wingmen.iter().zip(positions) {
+        assert!(wing.position.distance(entry.transform(exit, position)) < 0.001);
+        assert!(camera.project(wing.position).unwrap().0.distance(pixel) < 0.001);
+        assert_eq!(wing.portal_wait, 0.0);
+        assert!(!wing.rejoining);
+    }
+    f.portal_cooldown = 0.0;
+    f.update_portal_visibility();
+    assert!(f.hides_portal(exit));
+    assert!(
+        f.approach_portal(exit, f.position + Vec3::Y * 5.0)
+            .is_none()
+    );
+    let origin = f.position;
+    f.position.x += (160.0 + 60.0) / camera.scale;
+    f.follow = f.position;
+    let (center, _, scale) = Camera::new(&f, 320, 170).project(exit.center).unwrap();
+    assert!(center.x + exit.radius * scale < 0.0);
+    assert!(center.x + exit.radius * scale * LENS_RADIUS > 0.0);
+    f.update_portal_visibility();
+    assert!(f.hides_portal(exit));
+    f.position.x += 120.0;
+    f.follow = f.position;
+    f.update_portal_visibility();
+    assert!(!f.hides_portal(exit));
+    f.position = origin;
+    f.follow = origin;
+    f.portal_cooldown = 0.4;
+    f.update_portal_visibility();
+    assert!(!f.hides_portal(exit));
 }

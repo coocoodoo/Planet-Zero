@@ -44,7 +44,8 @@ pub struct Flight {
     pub warp_flash: f32,
     pub portal_transit: Option<PortalTransit>,
     portal_cooldown: f32,
-    portal_exit: Option<Vec3>,
+    portal_exit: Option<crate::world::portal::Portal>,
+    portal_exit_pending: bool,
     pub wing_count: usize,
     pub portal_wait: f32,
     rejoining: bool,
@@ -96,6 +97,7 @@ impl Flight {
             portal_transit: None,
             portal_cooldown: 0.0,
             portal_exit: None,
+            portal_exit_pending: false,
             wing_count: 2,
             portal_wait: 0.0,
             rejoining: false,
@@ -459,6 +461,7 @@ impl Flight {
                 wing.trails.truncate(100);
             }
         }
+        self.update_portal_visibility();
         self.trail_time += dt;
         if self.trail_time >= 0.025 {
             self.trail_time %= 0.025;

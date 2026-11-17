@@ -32,14 +32,37 @@ impl PortalTransit {
 
 impl Flight {
     pub(crate) fn hides_portal(&self, portal: Portal) -> bool {
-        self.portal_cooldown > 0.0
+        (self.portal_cooldown > 0.0 || self.portal_exit_pending)
             && self
                 .portal_exit
-                .is_some_and(|center| center.distance_squared(portal.center) < 0.01)
+                .is_some_and(|exit| exit.center.distance_squared(portal.center) < 0.01)
+    }
+
+    pub(super) fn update_portal_visibility(&mut self) {
+        if !self.portal_exit_pending {
+            return;
+        }
+        let camera = Camera::new(self, 320, 170);
+        let visible = self.portal_exit.is_some_and(|exit| {
+            camera
+                .project(exit.center)
+                .is_some_and(|(center, _, scale)| {
+                    let radius =
+                        (exit.radius * scale).max(1.0) * crate::world::portal::LENS_RADIUS + 2.0;
+                    center.x + radius >= 0.0
+                        && center.x - radius <= 320.0
+                        && center.y + radius >= 0.0
+                        && center.y - radius <= 170.0
+                })
+        });
+        self.portal_exit_pending = visible;
+        if !visible {
+            self.portal_exit = None;
+        }
     }
 
     pub fn approach_portal(&mut self, portal: Portal, previous: Vec3) -> Option<Portal> {
-        if !self.can_warp() {
+        if !self.can_warp() || self.hides_portal(portal) {
             return None;
         }
         let camera = Camera::new(self, 320, 170);
@@ -81,6 +104,9 @@ impl Flight {
     ) {
         let camera = Camera::new(self, 320, 170);
         let rotation = entry.rotation_to(exit);
+        let overhead = self
+            .portal_transit
+            .map_or(self.weights[0] > 0.5, |t| t.overhead);
         self.position = entry.transform(exit, self.position);
         self.follow = entry.transform(exit, self.follow);
         self.yaw += rotation;
@@ -90,7 +116,8 @@ impl Flight {
             *trail = trail.map(|point| entry.transform(exit, point));
         }
         for (i, wing) in self.wingmen.iter_mut().enumerate() {
-            let entered = self.portal_transit.is_some_and(|t| t.wing_entered[i])
+            let entered = overhead
+                || self.portal_transit.is_some_and(|t| t.wing_entered[i])
                 || camera
                     .project(entry.center)
                     .zip(camera.project(wing.position))
@@ -115,7 +142,8 @@ impl Flight {
             wing.yaw += rotation;
             wing.camera_yaw -= rotation;
         }
-        self.portal_exit = Some(exit.center);
+        self.portal_exit = Some(exit);
+        self.portal_exit_pending = overhead;
         self.portal_cooldown = 0.8;
         self.portal_transit = None;
         self.warp_flash = 0.08;

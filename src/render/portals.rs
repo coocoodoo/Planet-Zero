@@ -1,6 +1,6 @@
 use super::*;
 
-const LENS_RADIUS: f32 = 2.25;
+use crate::world::portal::LENS_RADIUS;
 
 struct Aperture {
     entry: crate::world::portal::Portal,
@@ -101,7 +101,7 @@ impl Renderer {
     ) {
         if let Some(network) = network.filter(|n| n.active) {
             for route in network.routes(world) {
-                if network.get(route.target).is_some() {
+                if network.get(route.target).is_some() || flight.hides_portal(route.aperture) {
                     continue;
                 }
                 let Some((p, d, scale)) = camera.project(route.aperture.center) else {

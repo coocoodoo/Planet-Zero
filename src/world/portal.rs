@@ -1,5 +1,7 @@
 use glam::{Vec3, vec3};
 
+pub(crate) const LENS_RADIUS: f32 = 2.25;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Portal {
     pub center: Vec3,

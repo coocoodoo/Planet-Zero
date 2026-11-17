@@ -31,6 +31,9 @@ fn portal_labels(app: &mut App) {
         pixels: &mut app.screen,
     };
     for route in routes {
+        if app.flight.hides_portal(route.aperture) {
+            continue;
+        }
         let Some((point, depth, scale)) = camera.project(route.aperture.center) else {
             continue;
         };
