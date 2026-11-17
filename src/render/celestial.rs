@@ -61,7 +61,7 @@ impl Renderer {
             let step = sky_camera.up * (-sky_camera.q / sky_camera.scale);
             for y in self.visible[x].0..self.visible[x].1 {
                 let at = x * self.h + y as usize;
-                if self.pixels[at] == 0 && self.depth[at].is_infinite() {
+                if self.pixels[at] == 0 && self.depth[at] == f32::INFINITY {
                     let a = ray.abs();
                     let (face, u, v) = if a.x >= a.y && a.x >= a.z {
                         (usize::from(ray.x < 0.0), ray.y / a.x, ray.z / a.x)

@@ -289,6 +289,10 @@ impl Renderer {
                 if u_edge * sign < 0 || v_edge * sign < 0 || w_edge * sign < 0 {
                     continue;
                 }
+                let at = x as usize * self.h + y as usize;
+                if self.depth[at] == f32::NEG_INFINITY {
+                    continue;
+                }
                 let u = u_edge as f32 * inverse_area;
                 let v = v_edge as f32 * inverse_area;
                 let w = w_edge as f32 * inverse_area;
@@ -299,7 +303,6 @@ impl Renderer {
                 } else {
                     orthographic_depth
                 };
-                let at = x as usize * self.h + y as usize;
                 if depth >= self.depth[at] || self.clip_depth.get(at).is_some_and(|d| depth < *d) {
                     continue;
                 }

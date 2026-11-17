@@ -171,7 +171,9 @@ impl Renderer {
                 let y1 = ((center.y + half).floor() as i32 + 1).min(self.visible[x as usize].1);
                 for y in y0..y1 {
                     let at = x as usize * self.h + y as usize;
-                    if expansion == 0.0 && depth > self.depth[at] + 0.01 {
+                    if self.occluded.get(at).copied().unwrap_or(false)
+                        || (expansion == 0.0 && depth > self.depth[at] + 0.01)
+                    {
                         continue;
                     }
                     let ny = (y as f32 - center.y) / radius;
@@ -283,7 +285,8 @@ impl Renderer {
                     let warped = point + direction * pull + tangent * swirl;
                     let sx = warped.x.clamp(0.0, self.w as f32 - 1.0) as usize;
                     let sy = warped.y.clamp(0.0, self.h as f32 - 1.0) as usize;
-                    base[sx * self.h + sy]
+                    let sample = base[sx * self.h + sy];
+                    if sample == 0 { base[at] } else { sample }
                 };
                 let photon = (1.0 - ((r - 1.035) / 0.045).abs()).max(0.0);
                 let halo = (1.0 - ((r - 1.13) / 0.2).abs()).max(0.0);

@@ -46,7 +46,7 @@ impl Renderer {
                 if (y as i32) >= self.visible[x].0
                     && (y as i32) < self.visible[x].1
                     && self.pixels[at] == 0
-                    && self.depth[at].is_infinite()
+                    && self.depth[at] == f32::INFINITY
                 {
                     self.pixels[at] = if theme == 2
                         && weather == Weather::Clear

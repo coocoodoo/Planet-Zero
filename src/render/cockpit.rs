@@ -22,12 +22,22 @@ const GLYPHS: [[u8; 5]; 10] = [
 struct Layer {
     pixels: Vec<u8>,
     colors: Vec<[u32; 256]>,
+    runs: Vec<Vec<(usize, usize)>>,
 }
 
+#[derive(PartialEq, Eq)]
+struct BaseKey {
+    shifts: [(i32, i32); 4],
+    palette: usize,
+}
 pub struct Cockpit {
     layers: [Layer; 4],
     pub pixels: Vec<u32>,
     native: Vec<u32>,
+    base: Vec<u32>,
+    lit: Vec<u32>,
+    owner: Vec<u8>,
+    base_key: Option<BaseKey>,
     hud: Vec<u32>,
 }
 
@@ -66,14 +76,39 @@ impl Cockpit {
                         })
                     })
                     .collect();
+                let pixels = bytes[2 + count * 4..].to_vec();
+                let runs = pixels
+                    .chunks_exact(342)
+                    .map(|row| {
+                        let mut runs = Vec::new();
+                        let mut x = 0;
+                        while x < row.len() {
+                            if row[x] == 0 || palette[row[x] as usize] == 0 {
+                                x += 1;
+                                continue;
+                            }
+                            let start = x;
+                            while x < row.len() && row[x] != 0 && palette[row[x] as usize] != 0 {
+                                x += 1;
+                            }
+                            runs.push((start, x));
+                        }
+                        runs
+                    })
+                    .collect();
                 Layer {
-                    pixels: bytes[2 + count * 4..].to_vec(),
+                    pixels,
                     colors,
+                    runs,
                 }
             }),
             pixels: Vec::new(),
-            native: vec![0; 320 * 170],
-            hud: vec![0; 320 * 170],
+            native: Vec::new(),
+            base: Vec::new(),
+            lit: Vec::new(),
+            owner: Vec::new(),
+            base_key: None,
+            hud: Vec::new(),
         }
     }
 
@@ -86,7 +121,6 @@ impl Cockpit {
         network: Option<&crate::world::network::Network>,
     ) {
         let (w, h) = size;
-        self.native.fill(0);
         let head = flight.rate * 2.2 + (flight.time * 9.0).sin() * flight.boost * 0.4;
         let lift = flight.pitch.sin() * 5.0;
         let away = 1.0 - ((flight.weights[2] - 0.55) / 0.45).clamp(0.0, 1.0);
@@ -108,44 +142,64 @@ impl Cockpit {
                 -(lift * 2.0).round() as i32 - (away * 153.0) as i32,
             ),
         ];
-        let sunlight = ((flight.yaw + 0.7).sin() * 75.0 + 160.0) as i32;
-        for (layer, &(dx, dy)) in shifts.iter().enumerate() {
-            for y in 0..170_i32 {
-                let sy = y - dy + 11;
-                if !(0..192).contains(&sy) {
-                    continue;
-                }
-                for x in 0..320_i32 {
-                    let sx = x - dx + 11;
-                    if !(0..342).contains(&sx) {
+        let key = BaseKey {
+            shifts,
+            palette: flight.weather as usize * 6 + theme * 2,
+        };
+        self.native.resize(320 * 170, 0);
+        if self.base_key.as_ref() != Some(&key) {
+            self.base.resize(320 * 170, 0);
+            self.lit.resize(320 * 170, 0);
+            self.owner.resize(320 * 170, 0);
+            self.base.fill(0);
+            self.lit.fill(0);
+            self.owner.fill(0);
+            for (layer, &(dx, dy)) in shifts.iter().enumerate() {
+                let source = &self.layers[layer];
+                for y in 0..170_i32 {
+                    let sy = y - dy + 11;
+                    if !(0..192).contains(&sy) {
                         continue;
                     }
-                    let color_index =
-                        self.layers[layer].pixels[sy as usize * 342 + sx as usize] as usize;
-                    if color_index == 0 {
-                        continue;
+                    for &(start, end) in &source.runs[sy as usize] {
+                        let x0 = (start as i32 + dx - 11).max(0);
+                        let x1 = (end as i32 + dx - 11).min(320);
+                        for x in x0..x1 {
+                            let sx = x - dx + 11;
+                            let index = source.pixels[sy as usize * 342 + sx as usize] as usize;
+                            let at = y as usize * 320 + x as usize;
+                            self.base[at] = source.colors[key.palette][index];
+                            self.lit[at] = source.colors[key.palette + 1][index];
+                            self.owner[at] = layer as u8 + 1;
+                        }
                     }
-                    let lit = usize::from(
-                        flight.weather == crate::content::weather::Weather::Clear
-                            && (x - sunlight + (y - 95) / 2).abs() < 40,
-                    );
-                    let color = self.layers[layer].colors
-                        [flight.weather as usize * 6 + theme * 2 + lit][color_index];
-                    if color == 0 {
-                        continue;
-                    }
-                    self.native[y as usize * 320 + x as usize] = color;
                 }
             }
+            self.base_key = Some(key);
+        }
+        self.native.copy_from_slice(&self.base);
+        if flight.weather == crate::content::weather::Weather::Clear && theme < 2 {
+            let sunlight = ((flight.yaw + 0.7).sin() * 75.0 + 160.0) as i32;
+            for y in 0..170_i32 {
+                let center = sunlight - (y - 95) / 2;
+                let start = (center - 39).clamp(0, 320) as usize;
+                let end = (center + 40).clamp(0, 320) as usize;
+                let row = y as usize * 320;
+                self.native[row + start..row + end]
+                    .copy_from_slice(&self.lit[row + start..row + end]);
+            }
+        }
+        for layer in [1, 2] {
+            let (dx, dy) = shifts[layer];
             let mut paint = Paint {
                 pixels: &mut self.native,
                 dx,
                 dy,
+                occlusion: Some((&self.owner, layer as u8 + 1)),
             };
             if layer == 1 {
                 instruments(&mut paint, flight, world, network);
-            }
-            if layer == 2 {
+            } else {
                 levers(&mut paint, flight);
             }
         }
@@ -204,9 +258,11 @@ impl Cockpit {
         if !flight.hud {
             return;
         }
+        self.hud.resize(320 * 170, 0);
         self.hud.fill(0);
         let mut p = Paint {
             pixels: &mut self.hud,
+            occlusion: None,
             dx: 0,
             dy: 0,
         };
@@ -278,6 +334,7 @@ impl Cockpit {
 
 struct Paint<'a> {
     pixels: &'a mut [u32],
+    occlusion: Option<(&'a [u8], u8)>,
     dx: i32,
     dy: i32,
 }
@@ -285,7 +342,13 @@ impl Paint<'_> {
     fn put(&mut self, x: i32, y: i32, color: u32) {
         let (x, y) = (x + self.dx, y + self.dy);
         if (0..320).contains(&x) && (0..170).contains(&y) {
-            self.pixels[y as usize * 320 + x as usize] = color;
+            let at = y as usize * 320 + x as usize;
+            if self
+                .occlusion
+                .is_none_or(|(owner, layer)| owner[at] <= layer)
+            {
+                self.pixels[at] = color;
+            }
         }
     }
     fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: u32) {

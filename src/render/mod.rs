@@ -97,6 +97,7 @@ pub struct Renderer {
     cockpit: crate::render::cockpit::Cockpit,
     visible: Vec<(i32, i32)>,
     mapping: Vec<usize>,
+    occluded: Vec<bool>,
     pub stages: [f64; 3],
     x_origin: usize,
     full_width: usize,
@@ -147,6 +148,7 @@ impl Renderer {
             cockpit: crate::render::cockpit::Cockpit::new(),
             visible: vec![],
             mapping: vec![],
+            occluded: vec![],
             stages: [0.0; 3],
             x_origin: 0,
             full_width: 0,
@@ -206,7 +208,13 @@ impl Renderer {
         self.pixels.resize(self.w * self.h, 0);
         self.pixels.fill(0);
         self.depth.resize(self.pixels.len(), f32::INFINITY);
-        self.depth.fill(f32::INFINITY);
+        self.depth.fill(if rolled {
+            f32::NEG_INFINITY
+        } else {
+            f32::INFINITY
+        });
+        self.occluded.resize(self.pixels.len(), rolled);
+        self.occluded.fill(rolled);
         self.mask.resize(self.pixels.len(), 0);
         self.mask.fill(0);
         self.column.resize(self.w, self.h as i32);
@@ -246,6 +254,8 @@ impl Renderer {
                     let sy = (q.y.round() as usize).min(self.h - 1);
                     self.mapping[y * width + x] = sx * self.h + sy;
                     if !has_panel || self.cockpit.pixels[y * width + x] == 0 {
+                        self.depth[sx * self.h + sy] = f32::INFINITY;
+                        self.occluded[sx * self.h + sy] = false;
                         self.visible[sx].0 = self.visible[sx].0.min(sy as i32);
                         self.visible[sx].1 = self.visible[sx].1.max(sy as i32 + 1);
                     }
