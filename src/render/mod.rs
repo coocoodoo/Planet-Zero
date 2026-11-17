@@ -275,7 +275,12 @@ impl Renderer {
                         let sx = (q.x.round() as usize).min(self.w - 1);
                         let sy = (q.y.round() as usize).min(self.h - 1);
                         self.mapping[y * width + x] = sx * self.h + sy;
-                        if !has_panel || !self.cockpit.opaque(x * 320 / width, y * 170 / height) {
+                        if !has_panel
+                            || !self.cockpit.opaque(
+                                if width == 320 { x } else { x * 320 / width },
+                                if height == 170 { y } else { y * 170 / height },
+                            )
+                        {
                             self.occluded[sx * self.h + sy] = false;
                             self.visible[sx].0 = self.visible[sx].0.min(sy as i32);
                             self.visible[sx].1 = self.visible[sx].1.max(sy as i32 + 1);
