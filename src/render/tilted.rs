@@ -302,15 +302,21 @@ impl Renderer {
         let inverse_area = 1.0 / area as f32;
         let columns = super::primitives::TriangleColumns::new([a, b, c]);
         let weighted = std::array::from_fn::<_, 3, _>(|i| vertices[i] * inverse[i]);
-        let vertex_shade = if faceted || self.warp.is_some() {
+        let vertex_shade = if self.warp.is_some() {
             [shade; 3]
         } else {
             vertices.map(|p| {
                 let h = |x, y| world.heights[index(x, y, SIZE)] as f32;
                 let x = p.x as i32;
                 let y = p.y as i32;
-                let normal =
-                    vec3(h(x - 8, y) - h(x + 8, y), h(x, y - 8) - h(x, y + 8), 16.0).normalize();
+                // 采样跨度随视距增大，远处坡面明暗收敛为更粗的斑块
+                let step = ((p.distance(camera.position)) / 48.0).clamp(8.0, 96.0) as i32;
+                let normal = vec3(
+                    h(x - step, y) - h(x + step, y),
+                    h(x, y - step) - h(x, y + step),
+                    2.0 * step as f32,
+                )
+                .normalize();
                 (normal.x * 0.3 + normal.y * 0.2 + normal.z * 0.9).clamp(0.45, 1.0)
             })
         };
@@ -376,25 +382,55 @@ impl Renderer {
                 if depth >= self.depth[at] || self.clip_depth.get(at).is_some_and(|d| depth < *d) {
                     continue;
                 }
-                let material = world.materials
-                    [index(pos.x.floor() as i32, pos.y.floor() as i32, SIZE)]
-                    as usize;
-                let detail = if matches!(material, 12..=14 | 19..=20)
-                    || (world.kind == crate::world::MapKind::Canyon && matches!(material, 17..=20))
-                {
-                    0.65 + super::geology::stone_texel(pos) as f32 * 0.035
-                } else {
-                    1.0
-                };
+                // 视距越远按越大跨度做双线性采样，细碎纹样平均成较缓的明暗
+                let view_distance = (pos - camera.position).length();
+                let sample_step = (view_distance / 100.0).clamp(0.5, 16.0);
+                let smooth_shade = (vertex_shade[0] * inverse[0] * u
+                    + vertex_shade[1] * inverse[1] * v
+                    + vertex_shade[2] * inverse[2] * w)
+                    * reciprocal;
+                // 远处淡出面片明暗，收敛 LOD 边界的硬接缝
+                let smooth = ((view_distance - 500.0) / 900.0).clamp(0.0, 1.0);
                 let shade = if faceted {
-                    shade
+                    shade * (1.0 - smooth) + smooth_shade * smooth
                 } else {
-                    (vertex_shade[0] * inverse[0] * u
-                        + vertex_shade[1] * inverse[1] * v
-                        + vertex_shade[2] * inverse[2] * w)
-                        * reciprocal
+                    smooth_shade
                 };
-                let mut color = self.terrain_cache.shade(material, shade * detail);
+                let cell = sample_step;
+                let gx = (pos.x / cell).floor();
+                let gy = (pos.y / cell).floor();
+                let fx = pos.x / cell - gx;
+                let fy = pos.y / cell - gy;
+                let (mut red, mut green, mut blue) = (0.0f32, 0.0f32, 0.0f32);
+                for (ix, iy, weight) in [
+                    (gx, gy, (1.0 - fx) * (1.0 - fy)),
+                    (gx + 1.0, gy, fx * (1.0 - fy)),
+                    (gx, gy + 1.0, (1.0 - fx) * fy),
+                    (gx + 1.0, gy + 1.0, fx * fy),
+                ] {
+                    let sample = vec3(ix * cell, iy * cell, pos.z);
+                    let material =
+                        world.materials[index(sample.x as i32, sample.y as i32, SIZE)] as usize;
+                    let detail = if matches!(material, 12..=14 | 19..=20)
+                        || (world.kind == crate::world::MapKind::Canyon
+                            && matches!(material, 17..=20))
+                    {
+                        0.65 + super::geology::stone_texel_lod(
+                            sample,
+                            (view_distance.max(1.0) / 180.0).log2(),
+                        ) * 0.035
+                    } else {
+                        1.0
+                    };
+                    let [r, g, b, _] = self
+                        .terrain_cache
+                        .shade(material, shade * detail)
+                        .to_le_bytes();
+                    red += r as f32 * weight;
+                    green += g as f32 * weight;
+                    blue += b as f32 * weight;
+                }
+                let mut color = rgb(red as u8, green as u8, blue as u8);
                 if let Some(warp) = self.warp {
                     color = super::orbit::earth_color(
                         warp,

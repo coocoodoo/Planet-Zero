@@ -172,9 +172,9 @@ impl Renderer {
     }
 }
 
-pub(super) fn stone_texel(p: Vec3) -> usize {
+fn stone_texture() -> &'static Vec<u8> {
     static TEXTURE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
-    let texture = TEXTURE.get_or_init(|| {
+    TEXTURE.get_or_init(|| {
         let noise = |x: f32, y: f32, cell: i32| {
             let u = x / cell as f32;
             let v = y / cell as f32;
@@ -204,8 +204,79 @@ pub(super) fn stone_texel(p: Vec3) -> usize {
                 shade.clamp(0.0, 15.0) as u8
             })
             .collect()
-    });
+    })
+}
+
+fn stone_mips() -> &'static Vec<Vec<u8>> {
+    static MIPS: std::sync::OnceLock<Vec<Vec<u8>>> = std::sync::OnceLock::new();
+    MIPS.get_or_init(|| {
+        let base = stone_texture();
+        let mut levels = vec![base.clone()];
+        let mut size = 256usize;
+        while size > 4 {
+            let src = levels.last().unwrap();
+            let next = size / 2;
+            let mut level = vec![0u8; next * next];
+            for y in 0..next {
+                for x in 0..next {
+                    let sum = src[(y * 2) * size + x * 2] as u32
+                        + src[(y * 2) * size + x * 2 + 1] as u32
+                        + src[(y * 2 + 1) * size + x * 2] as u32
+                        + src[(y * 2 + 1) * size + x * 2 + 1] as u32;
+                    level[y * next + x] = (sum / 4) as u8;
+                }
+            }
+            levels.push(level);
+            size = next;
+        }
+        levels
+    })
+}
+
+pub(super) fn stone_texel(p: Vec3) -> usize {
     let u = (p.x * 0.8 + p.y * 0.6).floor() as i32;
     let v = (p.z * 1.2 + p.y * 0.3).floor() as i32;
-    texture[index(u, v, 256)] as usize
+    stone_texture()[index(u, v, 256)] as usize
+}
+
+fn stone_level(p: Vec3, level: usize) -> f32 {
+    let levels = stone_mips();
+    let level = level.min(levels.len() - 1);
+    let size = 256usize >> level;
+    let u = ((p.x * 0.8 + p.y * 0.6).floor() as i32) >> level;
+    let v = ((p.z * 1.2 + p.y * 0.3).floor() as i32) >> level;
+    levels[level][index(u, v, size)] as f32
+}
+
+/// 按视距在相邻层级间插值采样，越远纹样越平缓
+pub(super) fn stone_texel_lod(p: Vec3, lod: f32) -> f32 {
+    let top = stone_mips().len() as f32 - 1.0;
+    let lod = lod.clamp(0.0, top);
+    let lower = lod.floor() as usize;
+    let blend = lod - lower as f32;
+    stone_level(p, lower) * (1.0 - blend) + stone_level(p, lower + 1) * blend
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn variance(lod: f32) -> f32 {
+        let mut values = Vec::new();
+        for y in 0..24 {
+            for x in 0..24 {
+                values.push(stone_texel_lod(
+                    vec3(x as f32 * 7.0, y as f32 * 7.0, 20.0),
+                    lod,
+                ));
+            }
+        }
+        let mean = values.iter().sum::<f32>() / values.len() as f32;
+        values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / values.len() as f32
+    }
+    #[test]
+    fn distant_levels_flatten_stone_detail() {
+        let near = variance(0.0);
+        let far = variance(3.0);
+        assert!(far < near * 0.6, "near {near} far {far}");
+    }
 }
