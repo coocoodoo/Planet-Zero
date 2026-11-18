@@ -7,7 +7,7 @@ default-run = "rust-fly"
 [features]
 default = ["desktop"]
 desktop = ["dep:macroquad", "dep:cpal"]
-cardputer = ["dep:libc", "dep:memmap2"]
+cardputer = ["dep:memmap2"]
 
 [[bin]]
 name = "rust-fly"
@@ -28,7 +28,7 @@ macroquad = { version = "0.4.16", optional = true }
 glam = "0.27"
 serde = { version = "1", features = ["derive"] }
 toml = { version = "0.9", default-features = false, features = ["parse", "serde", "std"] }
-libc = { version = "0.2", optional = true }
+libc = "0.2"
 memmap2 = { version = "0.9", optional = true }
 font8x8 = "0.3"
 

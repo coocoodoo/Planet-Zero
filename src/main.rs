@@ -174,7 +174,8 @@ async fn main() {
         (KeyCode::Key0, k::SEED),
         (KeyCode::F1, k::HELP),
         (KeyCode::F2, k::SETTINGS),
-        (KeyCode::F10, k::SOUND),
+        (KeyCode::F9, k::SOUND),
+        (KeyCode::F10, k::PERF),
     ];
     loop {
         let dt = get_frame_time().min(0.1);

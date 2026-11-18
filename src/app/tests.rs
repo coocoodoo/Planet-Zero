@@ -408,8 +408,14 @@ fn hover_pitch_holds_without_recentering() {
     for _ in 0..40 {
         app.step(0.1, None);
     }
-    assert!((app.flight.pitch - pitched).abs() < 0.05, "松开后应保持俯仰不回正");
-    assert!((app.flight.position.z - altitude).abs() < 0.5, "悬停俯仰时高度应保持");
+    assert!(
+        (app.flight.pitch - pitched).abs() < 0.05,
+        "松开后应保持俯仰不回正"
+    );
+    assert!(
+        (app.flight.position.z - altitude).abs() < 0.5,
+        "悬停俯仰时高度应保持"
+    );
 }
 
 #[test]
@@ -455,4 +461,35 @@ fn chart_zooms_pans_marks_and_navigates_without_changing_the_view() {
     press(&mut app, LEFT);
     assert!(!app.navigation.active);
     assert!(app.navigation.target.is_some());
+}
+
+#[test]
+fn perf_key_toggles_overlay_without_sound_conflict() {
+    let mut app = App::new(World::new(7));
+    let press = |app: &mut App, key| {
+        app.key(key, 1);
+        app.key(key, 0);
+    };
+    assert!(!app.perf_show);
+    press(&mut app, 68);
+    assert!(app.perf_show);
+    press(&mut app, 67);
+    assert!(app.perf_show);
+    press(&mut app, 68);
+    assert!(!app.perf_show);
+}
+
+#[test]
+fn perf_stats_track_frames_and_triangles() {
+    let mut app = App::new(World::new(7));
+    app.record_path = None;
+    app.start();
+    for _ in 0..40 {
+        app.step(1.0 / 30.0, None);
+        app.draw();
+    }
+    assert!(app.renderer.triangles > 0);
+    assert!(app.perf.render_ms > 0.0);
+    assert!((app.perf.fps - 30.0).abs() < 5.0);
+    assert!(!app.perf.curve.is_empty());
 }

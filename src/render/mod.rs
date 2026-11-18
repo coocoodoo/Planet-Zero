@@ -104,6 +104,7 @@ pub struct Renderer {
     mapping_key: Option<(usize, usize, usize, usize, u32, u64)>,
     occluded: Vec<bool>,
     pub stages: [f64; 3],
+    pub triangles: u32,
     x_origin: usize,
     full_width: usize,
     w: usize,
@@ -174,6 +175,7 @@ impl Renderer {
             mapping_key: None,
             occluded: vec![],
             stages: [0.0; 3],
+            triangles: 0,
             x_origin: 0,
             full_width: 0,
             w: 0,
@@ -377,6 +379,7 @@ impl Renderer {
         height: usize,
     ) {
         self.detail = [0.0; 4];
+        self.triangles = 0;
         self.warp = flight.surface.filter(|surface| surface.bend > 0.00001);
         if world.kind != crate::world::MapKind::Space {
             self.world(world, flight, camera, theme);
@@ -466,6 +469,7 @@ impl Renderer {
             self.detail = std::array::from_fn(|i| {
                 self.workers.iter().map(|w| w.detail[i]).fold(0.0, f64::max)
             });
+            self.triangles = self.workers.iter().map(|w| w.triangles).sum();
             for (i, worker) in self.workers.iter().enumerate() {
                 let start = i * strip * h;
                 let end = start + worker.pixels.len();

@@ -7,6 +7,7 @@ mod menus;
 mod navigation;
 mod orbit;
 mod osd;
+mod perf;
 use crate::app::{App, Page};
 use crate::flight::angle;
 use crate::gameplay::Mode;
@@ -30,6 +31,7 @@ pub fn draw(app: &mut App) {
         menus::draw(app);
     }
     orbit::draw(app);
+    perf::draw(app);
 }
 
 fn portal_labels(app: &mut App) {

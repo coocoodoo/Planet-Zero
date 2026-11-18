@@ -268,6 +268,7 @@ impl Renderer {
             world.heights[index(camera.position.x as i32, camera.position.y as i32, SIZE)] as f32;
         let altitude_fade = ((camera.position.z - ground_height - 500.0) / 700.0).clamp(0.0, 1.0);
 
+        self.triangles = self.triangles.wrapping_add(1);
         let [Some((a, da, _)), Some((b, db, _)), Some((c, dc, _))] =
             points.map(|p| camera.project(p))
         else {

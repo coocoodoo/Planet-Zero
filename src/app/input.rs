@@ -109,6 +109,9 @@ impl App {
                 self.open_settings();
                 return;
             }
+            PERF => {
+                self.perf_show = !self.perf_show;
+            }
             SOUND => {
                 self.audio_settings.profile = (self.audio_settings.profile + 1) % 4;
                 return;

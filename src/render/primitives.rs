@@ -115,6 +115,7 @@ impl Renderer {
         }
     }
     fn raster_triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32, stone: bool) {
+        self.triangles = self.triangles.wrapping_add(1);
         let [Some((a, da, _)), Some((b, db, _)), Some((c, dc, _))] =
             points.map(|p| camera.project(p))
         else {
