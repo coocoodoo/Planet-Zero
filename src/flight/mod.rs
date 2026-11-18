@@ -475,7 +475,9 @@ impl Flight {
         let proposed = self.position + (horizontal * self.speed + self.frame_drift) * dt;
         let (_, ahead_climb) =
             flight_floor(world, self.position, horizontal, self.speed, self.rate);
-        let mut climb = if manual_attitude {
+        let mut climb = if self.hover && self.loop_remaining <= 0.0 {
+            0.0
+        } else if manual_attitude {
             forward.z * self.speed
         } else if controls.manual {
             controls.climb * self.speed * 0.55
@@ -492,12 +494,15 @@ impl Flight {
             let limit = self.speed * (0.4 + high_altitude.max(self.orbital_thrust) * 0.6);
             climb = climb.clamp(-limit, limit);
         }
-        let acceleration =
-            if self.loop_remaining > 0.0 || self.orbital_thrust > 0.0001 || high_altitude > 0.0 {
-                90.0
-            } else {
-                24.0
-            };
+        let acceleration = if self.hover
+            || self.loop_remaining > 0.0
+            || self.orbital_thrust > 0.0001
+            || high_altitude > 0.0
+        {
+            90.0
+        } else {
+            24.0
+        };
         self.vertical_speed +=
             (climb - self.vertical_speed).clamp(-acceleration * dt, acceleration * dt);
         let old_altitude = self.position.z;

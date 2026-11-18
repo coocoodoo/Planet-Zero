@@ -634,3 +634,31 @@ fn camera_view_altitude_smooths_abrupt_lift() {
         f.view_altitude
     );
 }
+
+#[test]
+fn hover_holds_altitude_when_entered_from_descent() {
+    let world = World::generate(
+        crate::world::MapKind::Moon,
+        crate::world::MapKind::Moon.seed(),
+    );
+    let mut f = Flight::new(&world);
+    f.position = vec3(0.0, 0.0, 900.0);
+    f.follow = f.position;
+    f.pitch = -0.35;
+    f.speed = 92.0;
+    f.hover = true;
+    let controls = Controls {
+        throttle: Some(0.0),
+        manual: true,
+        aerobatic: true,
+        ..Default::default()
+    };
+    let start = f.position.z;
+    let mut worst = 0.0_f32;
+    for _ in 0..60 {
+        f.step(1.0 / 30.0, &controls, &world);
+        worst = worst.max((f.position.z - start).abs());
+    }
+    assert!(f.speed < 0.01, "speed {}", f.speed);
+    assert!(worst < 5.0, "altitude drifted {worst}");
+}
