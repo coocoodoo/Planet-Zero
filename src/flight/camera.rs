@@ -39,11 +39,11 @@ impl Camera {
             && flight.space_attitude.is_none()
             && flight.surface.is_some()
             && chase > 0.01
-            && flight.pitch > -0.35
         {
             let approach = ((1200.0 - flight.view_altitude) / 1200.0).clamp(0.0, 1.0);
             let descent = (-flight.vertical_speed / 200.0).clamp(0.0, 1.0);
-            pitch -= approach * (0.30 + 0.35 * descent);
+            let level = ((flight.pitch + 0.35) / 0.25).clamp(0.0, 1.0);
+            pitch -= approach * (0.30 + 0.35 * descent) * level;
         }
         camera.orient(
             flight.camera_yaw + angle(-flight.yaw - flight.camera_yaw) * (chase + cockpit),
