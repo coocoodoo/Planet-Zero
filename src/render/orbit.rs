@@ -120,20 +120,26 @@ impl Renderer {
                 .as_deref()
                 .filter(|_| detailed)
             {
+                let anchor = map.uv((camera.position - body.center()).normalize());
                 let mut space_camera = *camera;
                 space_camera.position = rotation * camera.position + offset;
                 space_camera.right = rotation * camera.right;
                 space_camera.up = rotation * camera.up;
                 space_camera.forward = rotation * camera.forward;
-                self.surface_body(&space_camera, flight, body, map);
+                self.surface_body(&space_camera, flight, body, map, anchor);
             } else {
                 self.distant_body(camera, center, body, rotation);
             }
         }
     }
-    fn surface_body(&mut self, camera: &Camera, flight: &Flight, body: Body, map: &SurfaceMap) {
-        let normal = (camera.position - body.center()).normalize();
-        let anchor = map.uv(normal);
+    fn surface_body(
+        &mut self,
+        camera: &Camera,
+        flight: &Flight,
+        body: Body,
+        map: &SurfaceMap,
+        anchor: Vec2,
+    ) {
         let warp = SurfaceWarp::new(body, map.origin, anchor, 1.0);
         let rotation = warp.basis.transpose();
         let mut view = *camera;
