@@ -127,7 +127,7 @@ struct Reader {
 }
 impl Reader {
     fn open() -> io::Result<Self> {
-        let path = if let Some(path) = std::env::var_os("RUST_FLY_IMU") {
+        let path = if let Some(path) = std::env::var_os("FLIGHT_CLUB_IMU") {
             PathBuf::from(path)
         } else {
             std::fs::read_dir("/sys/bus/iio/devices")?

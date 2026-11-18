@@ -1,8 +1,8 @@
 [package]
-name = "rust-fly"
+name = "flight-club"
 version = "0.19.2"
 edition = "2024"
-default-run = "rust-fly"
+default-run = "flight-club"
 
 [features]
 default = ["desktop"]
@@ -10,17 +10,17 @@ desktop = ["dep:macroquad", "dep:cpal"]
 cardputer = ["dep:memmap2"]
 
 [[bin]]
-name = "rust-fly"
+name = "flight-club"
 path = "src/main.rs"
 required-features = ["desktop"]
 
 [[bin]]
-name = "rust-fly-cardputer"
+name = "flight-club-cardputer"
 path = "src/bin/cardputer.rs"
 required-features = ["cardputer"]
 
 [[bin]]
-name = "rust-fly-audio"
+name = "flight-club-audio"
 path = "src/bin/audio.rs"
 
 [dependencies]

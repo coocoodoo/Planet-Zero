@@ -192,7 +192,7 @@ impl App {
         let mut flight = Flight::new(&world);
         let mission = Mission::new(Mode::Free, Difficulty::Cadet, &mut flight, &world);
         flight.set_demo(true);
-        let record_path = std::env::var_os("RUST_FLY_RECORDS")
+        let record_path = std::env::var_os("FLIGHT_CLUB_RECORDS")
             .map(PathBuf::from)
             .or_else(|| {
                 std::env::var_os("XDG_DATA_HOME")
@@ -200,7 +200,7 @@ impl App {
                     .or_else(|| {
                         std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".local/share"))
                     })
-                    .map(|p| p.join("rust-fly/records-v1.txt"))
+                    .map(|p| p.join("flight-club/records-v1.txt"))
             });
         let records = record_path
             .as_ref()
@@ -214,7 +214,7 @@ impl App {
                     .collect()
             })
             .unwrap_or_default();
-        let settings_path = std::env::var_os("RUST_FLY_SETTINGS")
+        let settings_path = std::env::var_os("FLIGHT_CLUB_SETTINGS")
             .map(PathBuf::from)
             .or_else(|| {
                 record_path

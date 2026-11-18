@@ -74,7 +74,7 @@ struct FixedInfo {
 
 fn framebuffer_path() -> io::Result<PathBuf> {
     for name in [
-        "RUST_FLY_FB",
+        "FLIGHT_CLUB_FB",
         "APPLAUNCH_LINUX_FBDEV_DEVICE",
         "LV_LINUX_FBDEV_DEVICE",
     ] {
@@ -95,7 +95,7 @@ fn framebuffer_path() -> io::Result<PathBuf> {
     }
     Err(io::Error::new(
         io::ErrorKind::NotFound,
-        "请通过 RUST_FLY_FB 指定 Cardputer Zero 的屏幕节点",
+        "请通过 FLIGHT_CLUB_FB 指定 Cardputer Zero 的屏幕节点",
     ))
 }
 
@@ -177,7 +177,7 @@ pub struct Keyboard(File);
 
 impl Keyboard {
     pub fn open() -> io::Result<Self> {
-        let path = std::env::var("RUST_FLY_KEYBOARD")
+        let path = std::env::var("FLIGHT_CLUB_KEYBOARD")
             .or_else(|_| std::env::var("APPLAUNCH_LINUX_KEYBOARD_DEVICE"))
             .unwrap_or_else(|_| "/dev/input/by-path/platform-3f804000.i2c-event".into());
         let file = OpenOptions::new()

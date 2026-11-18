@@ -37,8 +37,8 @@ pub fn open(receiver: Receiver<Frame>) -> Result<Handle, Box<dyn std::error::Err
             "--channels=2",
             "--latency-msec=60",
             "--process-time-msec=10",
-            "--client-name=Rust Fly",
-            "--stream-name=Rust Fly Chiptune",
+            "--client-name=Flight Club",
+            "--stream-name=Flight Club Chiptune",
             "--property=media.role=game",
         ])
         .stdin(Stdio::piped())

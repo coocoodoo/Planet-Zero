@@ -1,9 +1,9 @@
-# Rust Fly
+# Flight Club
 
 使用 Rust 实现的像素飞行场景，核心是 Sprite Stacking、高度图和 CPU 软件渲染。桌面版使用 macroquad 显示纹理，Cardputer Zero 版直接输出 RGB565 帧缓冲，渲染与游戏逻辑均由 Rust 实现
 
 ```sh
-cd <user-home>/src/rust-fly
+cd <user-home>/src/flight-club
 cargo run --release
 ```
 
@@ -71,7 +71,7 @@ NOVA 伤害当前波次敌机、清除敌方弹幕并提供短暂无敌。擦过
 
 普通敌机包括轻型机、截击机和重型机，后续关卡加入高速精英截击机、修复附近敌机的维修无人机以及地面防空炮台。压制阶段使用导弹会优先锁定炮台，Boss 和炮台射击前显示短暂的瞄准预警。Boss 随机出现 DREADNOUGHT、SKY SERPENT 或 TEMPEST，分别使用扇形散射、斜向追击和旋转环形弹幕，半血后攻击强化。每次开始会重新生成敌人组合
 
-成绩按模式、难度、载具、地图和种子分别保存到 `$XDG_DATA_HOME/rust-fly/records-v1.txt`，默认路径为 `~/.local/share/rust-fly/records-v1.txt`。竞速保存完赛成绩，金币和空战保存最高分；测试可以通过 `RUST_FLY_RECORDS` 指定独立路径
+成绩按模式、难度、载具、地图和种子分别保存到 `$XDG_DATA_HOME/flight-club/records-v1.txt`，默认路径为 `~/.local/share/flight-club/records-v1.txt`。竞速保存完赛成绩，金币和空战保存最高分；测试可以通过 `FLIGHT_CLUB_RECORDS` 指定独立路径
 
 俯视和座舱视角的战斗 HUD 使用左右各 29 像素的侧栏：左侧显示分数、护盾、能量、武器等级、炸弹、超载与僚机；右侧显示关卡、阶段、目标进度、运输机或 Boss 耐久和雷达。升级、受击、补给和 Boss 到来使用小图标提醒，中央 260 像素区域保留给场景
 
@@ -108,11 +108,11 @@ NOVA 伤害当前波次敌机、清除敌方弹幕并提供短暂无敌。擦过
 
 ```sh
 # 导出七首配乐、96 秒串烧和音效试听为 WAV
-cargo run --release --no-default-features --bin rust-fly-audio -- captures/audio
+cargo run --release --no-default-features --bin flight-club-audio -- captures/audio
 
 # 在设备上测量合成器，或关闭音频进行画面对照
-rust-fly-cardputer --audio-benchmark 15
-rust-fly-cardputer --mode combat --audio off --frames 450
+flight-club-cardputer --audio-benchmark 15
+flight-club-cardputer --mode combat --audio off --frames 450
 ```
 
 0.6.0 真机合成压力测试：15 秒 Boss 配乐、超载、加速与密集音效耗时 2.054 秒，约占一个 CPU 核心的 13.69%，优化前为 16.10%，同时发声峰值 20。火山雷雨座舱显示对照各运行 450 帧，关闭声音平均 29.93 FPS，开启声音平均 29.93 FPS，开启声音时绘制平均 18.84 ms、P95 19.49 ms，游戏进程峰值内存比关闭声音增加约 1.4 MiB
@@ -260,7 +260,7 @@ F10 在屏幕顶部中央叠加性能面板，显示 FPS、本次渲染耗时、
 | 按住鼠标左键 | 开火 | 空战场景 |
 | 点击鼠标左键 | 右横滚 | 自由飞行场景 |
 
-功能快捷键在桌面和 Cardputer 共用 `src/keys.rs`。每项功能使用一个主要键位，菜单额外支持方向键。F2 设置页可切换棱面地形、虫洞标签、HUD、声音模式及音量；棱面和标签偏好保存在 `~/.local/share/rust-fly/settings-v1.toml`，可用 `RUST_FLY_SETTINGS` 指定路径
+功能快捷键在桌面和 Cardputer 共用 `src/keys.rs`。每项功能使用一个主要键位，菜单额外支持方向键。F2 设置页可切换棱面地形、虫洞标签、HUD、声音模式及音量；棱面和标签偏好保存在 `~/.local/share/flight-club/settings-v1.toml`，可用 `FLIGHT_CLUB_SETTINGS` 指定路径
 
 隐藏 UI 后保留座舱实体美术、仪表及场景对象，U 恢复显示；暂停与主菜单始终可打开。眼睛图标按钮可直接点击，三种主要视角均位于右上角，固定追焦的空战界面位于右下角；暂停菜单也提供显隐按钮
 
@@ -398,15 +398,15 @@ bash scripts/build-cardputer.sh
 python3 scripts/package-cardputer.py
 ```
 
-构建生成 `dist/rust-fly-cardputer` 静态 AArch64 可执行文件和 `dist/rust-fly_0.13.0_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
+构建生成 `dist/flight-club-cardputer` 静态 AArch64 可执行文件和 `dist/flight-club_0.13.0_arm64.deb` 安装包。打包工具使用本机 dpkg-deb，或 Docker 中的 ubuntu:22.04
 
 将安装包复制到设备后执行：
 
 ```sh
-sudo apt install ./rust-fly_0.13.0_arm64.deb
+sudo apt install ./flight-club_0.13.0_arm64.deb
 ```
 
-APPLaunch 中会出现带战机图标的 Rust Fly，选择即可进入主菜单。菜单操作与上方表格一致，操作说明分别提供桌面版与设备版内容，每页七项，每行对应一项操作
+APPLaunch 中会出现带战机图标的 Flight Club，选择即可进入主菜单。菜单操作与上方表格一致，操作说明分别提供桌面版与设备版内容，每页七项，每行对应一项操作
 
 设备沿用上方统一快捷键，专用体感按键见「Cardputer Zero 体感」表格。F1、F2、F9 和 F10 使用设备功能键输入，桌面显示功能见「桌面显示与鼠标」表格
 
@@ -544,23 +544,23 @@ Apple M4 Pro 本机固定相机性能对照运行两轮，先完成全部编译�
 
 设备版通过 `glam` 复用场景数学，直接向 fbdev mmap 写入 RGB565，再用 evdev 接收完整按下/松开事件，运行时依赖静态链接在可执行文件中
 
-屏幕路径优先读取 `RUST_FLY_FB`、`APPLAUNCH_LINUX_FBDEV_DEVICE`、`LV_LINUX_FBDEV_DEVICE`，随后使用 `/dev/fb_lcd` 或扫描 `/proc/fb`；打开后通过 ioctl 校验尺寸、RGB565 位布局与 stride。键盘支持 `RUST_FLY_KEYBOARD`、`APPLAUNCH_LINUX_KEYBOARD_DEVICE`，默认使用 I²C 键盘的 by-path 节点
+屏幕路径优先读取 `FLIGHT_CLUB_FB`、`APPLAUNCH_LINUX_FBDEV_DEVICE`、`LV_LINUX_FBDEV_DEVICE`，随后使用 `/dev/fb_lcd` 或扫描 `/proc/fb`；打开后通过 ioctl 校验尺寸、RGB565 位布局与 stride。键盘支持 `FLIGHT_CLUB_KEYBOARD`、`APPLAUNCH_LINUX_KEYBOARD_DEVICE`，默认使用 I²C 键盘的 by-path 节点
 
 设备上可独立运行 CPU 基准，或限定帧数检查实际显示：
 
 ```sh
-rust-fly-cardputer --benchmark 180 --scale 1 --capture-dir /tmp/rust-fly-captures
-rust-fly-cardputer --mode combat --frames 300 --view cockpit --weather storm
-rust-fly-cardputer --mode race --vehicle 1 --level 3
-rust-fly-cardputer --mode combat --level 2 --view cockpit
-rust-fly-cardputer --mode combat --benchmark 180 --capture-dir /tmp/combat-check
-rust-fly-cardputer --map moon --mode free --view chase
-rust-fly-cardputer --map space --mode free --view cockpit
-rust-fly-cardputer --map space --benchmark 180 --capture-dir /tmp/space-check
-rust-fly-cardputer --map city --maneuvers 330 --capture-dir /tmp/flight-loops
-rust-fly-cardputer --map canyon --weather sandstorm --demo on
-rust-fly-cardputer --map alpine --seed 8082 --weather snow
-rust-fly-cardputer --imu-test 10 --imu-csv /tmp/rust-fly-imu.csv
+flight-club-cardputer --benchmark 180 --scale 1 --capture-dir /tmp/flight-club-captures
+flight-club-cardputer --mode combat --frames 300 --view cockpit --weather storm
+flight-club-cardputer --mode race --vehicle 1 --level 3
+flight-club-cardputer --mode combat --level 2 --view cockpit
+flight-club-cardputer --mode combat --benchmark 180 --capture-dir /tmp/combat-check
+flight-club-cardputer --map moon --mode free --view chase
+flight-club-cardputer --map space --mode free --view cockpit
+flight-club-cardputer --map space --benchmark 180 --capture-dir /tmp/space-check
+flight-club-cardputer --map city --maneuvers 330 --capture-dir /tmp/flight-loops
+flight-club-cardputer --map canyon --weather sandstorm --demo on
+flight-club-cardputer --map alpine --seed 8082 --weather snow
+flight-club-cardputer --imu-test 10 --imu-csv /tmp/flight-club-imu.csv
 ```
 
 直接运行显示测试前暂停 APPLaunch 用户服务，结束后恢复；从 APPLaunch 正常启动时由启动器管理前台应用生命周期
@@ -652,6 +652,6 @@ cargo run --release -- --capture captures
 
 IMU 接口与坐标轴参考设备已安装的 Compass 及其[公开实现](https://github.com/CardputerZero/Compass/blob/main/src/models/compass_pose.cpp)。BMI270 原始坐标到屏幕坐标为 `(Y, -X, Z)`；运行时从 `in_accel_scale` 和 `in_anglvel_scale` 读取 SI 单位比例，以独立线程每 10 ms 读取六个 IIO 通道，用陀螺仪预测重力方向并通过加速度修正，再相对校准握姿求横滚与俯仰。转向使用倾斜量及偏航角速度，适合飞行操控，不依赖磁北航向
 
-IMU 默认按 IIO `name=bmi270` 自动发现，测试时可通过 `RUST_FLY_IMU` 指定包含同名通道的目录。采样失效或超过 150 ms 未更新时显示 `FAIL` 并保留键盘操作；`--imu off` 可用于关闭体感的显示基准
+IMU 默认按 IIO `name=bmi270` 自动发现，测试时可通过 `FLIGHT_CLUB_IMU` 指定包含同名通道的目录。采样失效或超过 150 ms 未更新时显示 `FAIL` 并保留键盘操作；`--imu off` 可用于关闭体感的显示基准
 
 项目包含原页面的战机美术数据，来源保留上述记录，项目未另行授予这些素材的许可

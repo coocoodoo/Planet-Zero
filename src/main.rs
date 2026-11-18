@@ -1,12 +1,12 @@
 mod desktop;
 use macroquad::prelude::*;
-use rust_fly::app::{App, HEIGHT, Page, WIDTH};
-use rust_fly::gameplay::Mode;
-use rust_fly::world::World;
+use flight_club::app::{App, HEIGHT, Page, WIDTH};
+use flight_club::gameplay::Mode;
+use flight_club::world::World;
 
 fn configuration() -> Conf {
     Conf {
-        window_title: "Rust Fly / Flight Club".into(),
+        window_title: "Flight Club".into(),
         window_width: 1152,
         window_height: 612,
         high_dpi: true,
@@ -85,7 +85,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
     save_capture(app, &path.join("results-loss.png"));
     for level in [2, 3, 6] {
         app.level = level;
-        let profile = rust_fly::content::levels::operation(level);
+        let profile = flight_club::content::levels::operation(level);
         app.world = World::generate(profile.map, profile.map.seed()).into();
         app.mode = Mode::Combat;
         app.flight.weather = profile.weather;
@@ -98,7 +98,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
         app.draw();
         save_capture(app, &path.join(format!("stage-{level}.png")));
     }
-    for vehicle in rust_fly::content::vehicles::Vehicle::ALL {
+    for vehicle in flight_club::content::vehicles::Vehicle::ALL {
         app.mode = Mode::Free;
         app.flight.vehicle = vehicle;
         app.start();
@@ -123,7 +123,7 @@ async fn main() {
         );
         return;
     }
-    let audio = rust_fly::audio::Output::start()
+    let audio = flight_club::audio::Output::start()
         .map_err(|error| eprintln!("音频暂不可用：{error}"))
         .ok();
     app.draw();
@@ -139,7 +139,7 @@ async fn main() {
     let mut fullscreen = false;
     let mut pointer = mouse_position();
     let mut pointer_idle = 10.0_f32;
-    use rust_fly::keys as k;
+    use flight_club::keys as k;
     let mapping = [
         (KeyCode::Escape, k::ESC),
         (KeyCode::Enter, k::ENTER),
@@ -213,7 +213,7 @@ async fn main() {
             {
                 app.click(mx.max(0.0) as usize, my.max(0.0) as usize);
             } else if app.mode == Mode::Free && app.flight.roll() {
-                app.sounds.push(rust_fly::audio::Sound::Roll);
+                app.sounds.push(flight_club::audio::Sound::Roll);
             }
         }
         if is_mouse_button_down(MouseButton::Left) && app.mode == Mode::Combat {
@@ -249,7 +249,7 @@ async fn main() {
         let scale = desktop::SCALES[quality];
         if let Some(frame) = drawing.poll()
             && frame.scale == scale
-            && frame.map == rust_fly::world::network::MapKey::of(&app.world)
+            && frame.map == flight_club::world::network::MapKey::of(&app.world)
         {
             let (w, h) = (WIDTH * scale, HEIGHT * scale);
             if displayed_scale == scale {

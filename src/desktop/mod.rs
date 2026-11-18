@@ -1,8 +1,8 @@
-use rust_fly::app::{App, HEIGHT, WIDTH};
-use rust_fly::flight::Flight;
-use rust_fly::gameplay::Mission;
-use rust_fly::render::Renderer;
-use rust_fly::world::{World, network::Network};
+use flight_club::app::{App, HEIGHT, WIDTH};
+use flight_club::flight::Flight;
+use flight_club::gameplay::Mission;
+use flight_club::render::Renderer;
+use flight_club::world::{World, network::Network};
 use std::sync::{Arc, mpsc};
 
 pub const SCALES: [usize; 4] = [1, 2, 4, 8];
@@ -16,7 +16,7 @@ struct Scene {
     scale: usize,
 }
 pub struct Frame {
-    pub map: rust_fly::world::network::MapKey,
+    pub map: flight_club::world::network::MapKey,
     pub pixels: Vec<u8>,
     pub scale: usize,
     pub milliseconds: f64,
@@ -54,7 +54,7 @@ impl Drawing {
                     scene.network.as_ref(),
                 );
                 let frame = Frame {
-                    map: rust_fly::world::network::MapKey::of(&scene.world),
+                    map: flight_club::world::network::MapKey::of(&scene.world),
                     pixels: std::mem::take(&mut renderer.rgba),
                     scale,
                     milliseconds: started.elapsed().as_secs_f64() * 1000.0,

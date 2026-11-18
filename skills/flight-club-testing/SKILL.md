@@ -36,8 +36,8 @@ cargo run --example <名称>
 示例骨架：
 
 ```rust
-use rust_fly::flight::{Controls, Flight};
-use rust_fly::world::{MapKind, World};
+use flight_club::flight::{Controls, Flight};
+use flight_club::world::{MapKind, World};
 
 fn main() {
     let world = World::generate(MapKind::Moon, 7);
@@ -58,7 +58,7 @@ fn main() {
 ```
 cargo build --lib
 rustc --edition 2024 probe.rs \
-  --extern rust_fly=target/debug/librust_fly.rlib \
+  --extern flight_club=target/debug/libflight_club.rlib \
   -L dependency=target/debug/deps -O -o probe
 ./probe
 ```
@@ -78,7 +78,7 @@ rustc --edition 2024 probe.rs \
 use std::fs;
 use std::path::Path;
 
-fn write_ppm(app: &rust_fly::app::App, path: &Path) {
+fn write_ppm(app: &flight_club::app::App, path: &Path) {
     let mut data = b"P6\n320 170\n255\n".to_vec();
     for pixel in app.screen.chunks_exact(4) {
         data.extend_from_slice(&pixel[..3]);
@@ -105,7 +105,7 @@ im.save("/tmp/x.png")
 - `app.page`（`Page`）、`app.flight`（`Flight`）、`app.screen`
 - `Flight::new(&world)`、`f.step(dt, &controls, &world)`、`f.position`、`f.speed`、`f.yaw`、`f.space`
 - `Controls { throttle: Option<f32>, turn: f32, climb: f32, boost: bool, manual: bool, aerobatic: bool, ..Default::default() }`
-- 按键常量在 `rust_fly::keys`（`HOVER`、`LEFT`、`RIGHT`、`UP`、`DOWN`、`BOOST` 等）
+- 按键常量在 `flight_club::keys`（`HOVER`、`LEFT`、`RIGHT`、`UP`、`DOWN`、`BOOST` 等）
 - `MapKind::Moon` 为大气星球，`MapKind::Space` 为太空；`Flight::new` 据 `world.kind` 设置 `space`
 
 ## 5. 真机测试（CardputerZero）
@@ -132,23 +132,23 @@ SSH_ASKPASS_REQUIRE=force \
 
 ```sh
 bash scripts/build-cardputer.sh   # 脚本可能没有执行位，用 bash 调用
-scp dist/rust-fly-cardputer "$DEVICE_HOST":/tmp/rust-fly-cardputer
-ssh "$DEVICE_HOST" 'sudo -S install -m 755 /tmp/rust-fly-cardputer /usr/share/APPLaunch/bin/rust-fly-cardputer'
+scp dist/flight-club-cardputer "$DEVICE_HOST":/tmp/flight-club-cardputer
+ssh "$DEVICE_HOST" 'sudo -S install -m 755 /tmp/flight-club-cardputer /usr/share/APPLaunch/bin/flight-club-cardputer'
 ```
 
-交叉编译使用 `aarch64-unknown-linux-musl`、`cortex-a53`、`link-self-contained`；脚本已封装这些参数，产物固定为 `dist/rust-fly-cardputer`。
+交叉编译使用 `aarch64-unknown-linux-musl`、`cortex-a53`、`link-self-contained`；脚本已封装这些参数，产物固定为 `dist/flight-club-cardputer`。
 
 ### 5.3 端到端自检
 
 参考 Codex 工作目录 `work/seamless-v014/device-check.py`，流程如下：
 
 1. `systemctl --user stop APPLaunch.service`
-2. 建 FIFO 作为键盘，设 `RUST_FLY_KEYBOARD=<fifo>`、`RUST_FLY_SETTINGS=<root>/settings.toml`、`RUST_FLY_RECORDS=<root>/records.txt`
-3. 启动 `rust-fly-cardputer --mode free --map moon --view chase --frames 2400 --audio on --imu off --capture-dir <root>`
+2. 建 FIFO 作为键盘，设 `FLIGHT_CLUB_KEYBOARD=<fifo>`、`FLIGHT_CLUB_SETTINGS=<root>/settings.toml`、`FLIGHT_CLUB_RECORDS=<root>/records.txt`
+3. 启动 `flight-club-cardputer --mode free --map moon --view chase --frames 2400 --audio on --imu off --capture-dir <root>`
 4. 等 stderr 出现 `"event":"state"` 表示进入游戏
 5. 用 `struct.pack('qqHHi', 0, 0, 1, code, value)` 写 FIFO 注入按键，value 1 按下、0 松开，中间留 90ms
 6. 直接读 `/dev/fb_lcd` 前 320×170×2 字节，`<H` 解 RGB565 转 RGB，写 P6 PPM
-7. ESC 退出，断言退出码 0；`pactl list short sink-inputs` 检查 `application.name == "Rust Fly"` 的音频流
+7. ESC 退出，断言退出码 0；`pactl list short sink-inputs` 检查 `application.name == "Flight Club"` 的音频流
 8. 结束时 `systemctl --user start APPLaunch.service` 恢复桌面
 
 按键码就是 `src/keys.rs` 的常量值，也是 Linux evdev 键码：`BOOST=42`（左 Shift）、`SPACE=57`、`ESC=1`、方向键 `103/105/106/108`、`HOVER=56`（左 Alt）。Cardputer 的实体方向键会先经过 `keys::cardputer_direction` 把 `33/45/44/46` 映射为上下左右。

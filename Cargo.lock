@@ -277,6 +277,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "flight-club"
+version = "0.19.2"
+dependencies = [
+ "cpal",
+ "font8x8",
+ "glam",
+ "libc",
+ "macroquad",
+ "memmap2",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -789,20 +803,6 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
-
-[[package]]
-name = "rust-fly"
-version = "0.19.2"
-dependencies = [
- "cpal",
- "font8x8",
- "glam",
- "libc",
- "macroquad",
- "memmap2",
- "serde",
- "toml",
-]
 
 [[package]]
 name = "rustc-hash"

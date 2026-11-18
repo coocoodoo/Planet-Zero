@@ -1,5 +1,5 @@
-use rust_fly::cardputer::{Game, HEIGHT, WIDTH};
-use rust_fly::world::{MapKind, World};
+use flight_club::cardputer::{Game, HEIGHT, WIDTH};
+use flight_club::world::{MapKind, World};
 use std::error::Error;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ struct Options {
     audio: bool,
     audio_benchmark: Option<f32>,
     level: u32,
-    mode: Option<rust_fly::gameplay::Mode>,
+    mode: Option<flight_club::gameplay::Mode>,
     vehicle: usize,
     benchmark: Option<usize>,
     maneuvers: Option<usize>,
@@ -30,7 +30,7 @@ struct Options {
     imu: bool,
     demo: bool,
     map: MapKind,
-    weather: rust_fly::content::weather::Weather,
+    weather: flight_club::content::weather::Weather,
     seed: Option<u32>,
 }
 
@@ -55,7 +55,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
         imu: true,
         demo: false,
         map: MapKind::Islands,
-        weather: rust_fly::content::weather::Weather::Clear,
+        weather: flight_club::content::weather::Weather::Clear,
         seed: None,
     };
     let mut map_explicit = false;
@@ -64,7 +64,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
     while let Some(arg) = args.next() {
         if arg == "--help" {
             println!(
-                "rust-fly-cardputer [--audio on|off] [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..4] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--maneuvers N] [--travel N] [--hd 1|2|4|8] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic|moon|space|fjords|icebergs|city|highlands] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
+                "flight-club-cardputer [--audio on|off] [--level 1..999] [--mode free|race|coins|combat] [--vehicle 0..4] [--scale 1] [--view top|chase|cockpit] [--fps 30] [--frames N] [--benchmark N] [--maneuvers N] [--travel N] [--hd 1|2|4|8] [--capture-dir PATH] [--imu on|off] [--demo on|off] [--map islands|alpine|canyon|desert|wetlands|volcanic|moon|space|fjords|icebergs|city|highlands] [--seed N] [--weather clear|rain|snow|storm|fog|sandstorm] [--imu-test SECONDS] [--imu-csv PATH]"
             );
             std::process::exit(0);
         }
@@ -81,14 +81,14 @@ fn options() -> Result<Options, Box<dyn Error>> {
             "--level" => result.level = value.parse()?,
             "--mode" => {
                 result.mode = Some(
-                    rust_fly::gameplay::Mode::parse(&value)
+                    flight_club::gameplay::Mode::parse(&value)
                         .ok_or("未知模式，请使用 free、race、coins 或 combat")?,
                 )
             }
             "--vehicle" => result.vehicle = value.parse()?,
             "--weather" => {
                 weather_explicit = true;
-                result.weather = rust_fly::content::weather::Weather::parse(&value)
+                result.weather = flight_club::content::weather::Weather::parse(&value)
                     .ok_or("未知天气，请使用 --help 查看天气名称")?
             }
             "--map" => {
@@ -134,14 +134,14 @@ fn options() -> Result<Options, Box<dyn Error>> {
     if !(1..=999).contains(&result.level) {
         return Err("关卡编号范围为 1–999".into());
     }
-    let operation = rust_fly::content::levels::operation(result.level);
+    let operation = flight_club::content::levels::operation(result.level);
     if !map_explicit {
         result.map = operation.map;
     }
     if !weather_explicit {
         result.weather = operation.weather;
     }
-    if result.vehicle >= rust_fly::content::vehicles::Vehicle::ALL.len()
+    if result.vehicle >= flight_club::content::vehicles::Vehicle::ALL.len()
         || result.scale != 1
         || !(1..=60).contains(&result.fps)
         || result.maneuvers.is_some_and(|n| n < 180)
@@ -179,7 +179,7 @@ fn report(name: &str, scale: usize, samples: &mut [f64]) {
 }
 
 fn keep_benchmark_active(game: &mut Game) {
-    if game.mode == rust_fly::gameplay::Mode::Combat {
+    if game.mode == flight_club::gameplay::Mode::Combat {
         // 性能采样期间维持双方护盾和僚机，持续绘制战斗场景
         game.mission.health = game.mission.max_health;
         game.mission.support = 30.0;
@@ -190,7 +190,7 @@ fn keep_benchmark_active(game: &mut Game) {
 }
 
 fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Box<dyn Error>> {
-    let scenes = if game.mode == rust_fly::gameplay::Mode::Combat {
+    let scenes = if game.mode == flight_club::gameplay::Mode::Combat {
         6
     } else {
         3
@@ -205,7 +205,7 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
         };
         game.start();
         game.mission.shuffle_encounters(7109);
-        if game.mode == rust_fly::gameplay::Mode::Combat {
+        if game.mode == flight_club::gameplay::Mode::Combat {
             game.mission.prepare_benchmark(scene >= 3);
             game.mission.support = 30.0;
         }
@@ -215,7 +215,7 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
         game.flight.view = view;
         game.flight.weights = [0.0; 3];
         game.flight.weights[view] = 1.0;
-        for _ in 0..if game.mode == rust_fly::gameplay::Mode::Free {
+        for _ in 0..if game.mode == flight_club::gameplay::Mode::Free {
             60
         } else {
             240
@@ -288,7 +288,7 @@ fn capture_landmarks(game: &mut Game, path: &Path) -> Result<(), Box<dyn Error>>
             (
                 "canyon-floor",
                 vec3(
-                    rust_fly::world::regions_detail::canyon_center(2870.0),
+                    flight_club::world::regions_detail::canyon_center(2870.0),
                     2870.0,
                     38.0,
                 ),
@@ -314,7 +314,7 @@ fn capture_landmarks(game: &mut Game, path: &Path) -> Result<(), Box<dyn Error>>
         _ => vec![],
     };
     for (name, position, yaw, view) in scenes {
-        game.mode = rust_fly::gameplay::Mode::Free;
+        game.mode = flight_club::gameplay::Mode::Free;
         game.start();
         game.flight.position = position;
         game.flight.follow = position;
@@ -334,9 +334,9 @@ fn capture_landmarks(game: &mut Game, path: &Path) -> Result<(), Box<dyn Error>>
 
 #[cfg(target_os = "linux")]
 fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
-    use rust_fly::cardputer::linux::{Display, Keyboard, install_signals, stopped};
+    use flight_club::cardputer::linux::{Display, Keyboard, install_signals, stopped};
     install_signals()?;
-    let sensor = match rust_fly::cardputer::imu::Sensor::open() {
+    let sensor = match flight_club::cardputer::imu::Sensor::open() {
         Ok(sensor) => {
             eprintln!("BMI270: {}", sensor.path.display());
             Some(sensor)
@@ -350,11 +350,11 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
     if game.imu_enabled {
         game.auto = false;
     }
-    let telemetry = rust_fly::cardputer::telemetry::Sensor::start();
+    let telemetry = flight_club::cardputer::telemetry::Sensor::start();
     let mut keyboard = Keyboard::open()?;
     let mut display = Display::open()?;
     let audio = if options.audio {
-        rust_fly::audio::Output::start()
+        flight_club::audio::Output::start()
             .map_err(|error| eprintln!("音频暂不可用：{error}"))
             .ok()
     } else {
@@ -384,7 +384,7 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
         let (pitch, spin, warp) = (game.flight.pitch, game.flight.spin, game.flight.warp_flash);
         game.step((start - previous).as_secs_f32());
         if options.frames.is_some() {
-            pitch_rotation += rust_fly::flight::angle(game.flight.pitch - pitch);
+            pitch_rotation += flight_club::flight::angle(game.flight.pitch - pitch);
             if spin == 0.0 && game.flight.spin != 0.0 {
                 maneuvers[usize::from(game.flight.spin > 0.0)] += 1;
             }
@@ -506,14 +506,14 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
 fn main() -> Result<(), Box<dyn Error>> {
     let options = options()?;
     if let Some(seconds) = options.imu_test {
-        rust_fly::cardputer::imu::diagnose(seconds, options.imu_csv.as_deref())?;
+        flight_club::cardputer::imu::diagnose(seconds, options.imu_csv.as_deref())?;
         return Ok(());
     }
     if let Some(seconds) = options.audio_benchmark {
         if !seconds.is_finite() || seconds <= 0.0 {
             return Err("音频测试时长需要大于零".into());
         }
-        rust_fly::audio::export::benchmark(seconds);
+        flight_club::audio::export::benchmark(seconds);
         return Ok(());
     }
     let start = Instant::now();
@@ -527,17 +527,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         }),
     ));
     if options.benchmark.is_some() || options.travel.is_some() || options.maneuvers.is_some() {
-        game.network = rust_fly::world::network::Network::new(7109);
+        game.network = flight_club::world::network::Network::new(7109);
     }
     eprintln!("地形生成：{:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
     game.level = options.level;
-    game.flight.vehicle = rust_fly::content::vehicles::Vehicle::ALL[options.vehicle];
+    game.flight.vehicle = flight_club::content::vehicles::Vehicle::ALL[options.vehicle];
     if options.mode.is_some()
         || options.benchmark.is_some()
         || options.frames.is_some()
         || options.demo
     {
-        game.mode = options.mode.unwrap_or(rust_fly::gameplay::Mode::Free);
+        game.mode = options.mode.unwrap_or(flight_club::gameplay::Mode::Free);
         game.start();
         game.flight.set_demo(options.demo);
     }

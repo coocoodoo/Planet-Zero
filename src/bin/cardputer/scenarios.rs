@@ -1,6 +1,6 @@
 use super::*;
 use glam::Vec3;
-use rust_fly::flight::{Controls, angle};
+use flight_club::flight::{Controls, angle};
 
 pub(super) fn high_resolution(
     options: &Options,
@@ -16,7 +16,7 @@ pub(super) fn high_resolution(
     }
     let (w, h) = (WIDTH * scale, HEIGHT * scale);
     let started = Instant::now();
-    let mut renderer = rust_fly::render::Renderer::new();
+    let mut renderer = flight_club::render::Renderer::new();
     renderer.render(&game.world, &game.flight, w, h, 0);
     println!(
         "{{\"scene\":\"hd\",\"scale\":{scale},\"width\":{w},\"height\":{h},\"milliseconds\":{:.2}}}",
@@ -41,7 +41,7 @@ pub(super) fn travel(
     game: &mut Game,
     hops: usize,
 ) -> Result<(), Box<dyn Error>> {
-    use rust_fly::world::network::MapKey;
+    use flight_club::world::network::MapKey;
     game.start();
     game.auto = false;
     game.network.active = true;
@@ -122,7 +122,7 @@ pub(super) fn maneuvers(
 ) -> Result<(), Box<dyn Error>> {
     for view in [1, 2] {
         for direction in [-1.0, 1.0] {
-            game.mode = rust_fly::gameplay::Mode::Free;
+            game.mode = flight_club::gameplay::Mode::Free;
             game.start();
             game.auto = false;
             game.flight.position.z = game.flight.loop_altitude() + 160.0;

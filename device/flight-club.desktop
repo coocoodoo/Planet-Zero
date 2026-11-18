@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Flight Club
+Exec=/usr/share/APPLaunch/bin/flight-club-cardputer
+Icon=share/images/flight-club.png
+Terminal=false
+Categories=Game;
