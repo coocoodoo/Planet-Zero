@@ -520,6 +520,12 @@ fn overhead_view_controls_only_heading() {
         );
     }
     assert!((app.flight.yaw - yaw).abs() > 0.05, "航向应随方向输入改变");
-    assert!((app.flight.position.z - z).abs() < 0.6, "俯瞰视角不应改变高度");
-    assert!((app.flight.pitch - pitch).abs() < 0.01, "俯瞰视角不应改变俯仰");
+    assert!(
+        (app.flight.position.z - z).abs() < 0.6,
+        "俯瞰视角不应改变高度"
+    );
+    assert!(
+        (app.flight.pitch - pitch).abs() < 0.01,
+        "俯瞰视角不应改变俯仰"
+    );
 }

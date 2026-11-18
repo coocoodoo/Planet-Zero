@@ -1,8 +1,8 @@
 mod desktop;
-use macroquad::prelude::*;
 use flight_club::app::{App, HEIGHT, Page, WIDTH};
 use flight_club::gameplay::Mode;
 use flight_club::world::World;
+use macroquad::prelude::*;
 
 fn configuration() -> Conf {
     Conf {

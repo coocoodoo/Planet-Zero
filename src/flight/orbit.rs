@@ -39,7 +39,13 @@ impl Flight {
         }
         self.preserve_camera(camera, Mat3::IDENTITY, Vec3::ZERO, roll_before);
     }
-    pub(crate) fn preserve_camera(&mut self, camera: Camera, rotation: Mat3, offset: Vec3, roll_before: f32) {
+    pub(crate) fn preserve_camera(
+        &mut self,
+        camera: Camera,
+        rotation: Mat3,
+        offset: Vec3,
+        roll_before: f32,
+    ) {
         self.camera_adjustment = None;
         let target = Camera::new(self, 320, 170);
         let roll = Quat::from_axis_angle(

@@ -1,6 +1,6 @@
 use super::*;
-use glam::Vec3;
 use flight_club::flight::{Controls, angle};
+use glam::Vec3;
 
 pub(super) fn high_resolution(
     options: &Options,

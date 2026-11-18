@@ -80,7 +80,11 @@ impl Chart {
                 } else {
                     let i = index(p.x.floor() as i32, p.y.floor() as i32, SIZE);
                     let h = world.heights[i] as f32;
-                    let neighbor = index((p.x + step).floor() as i32, (p.y + step).floor() as i32, SIZE);
+                    let neighbor = index(
+                        (p.x + step).floor() as i32,
+                        (p.y + step).floor() as i32,
+                        SIZE,
+                    );
                     let next = world.heights[neighbor] as f32;
                     let contour = h > 16.0 && (h / 24.0).floor() != (next / 24.0).floor();
                     let light = (0.62 + h / 550.0 + (h - next) * 0.012).clamp(0.35, 1.1)

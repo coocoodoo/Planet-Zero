@@ -663,7 +663,6 @@ fn hover_holds_altitude_when_entered_from_descent() {
     assert!(worst < 5.0, "altitude drifted {worst}");
 }
 
-
 #[test]
 fn safety_lift_rises_without_a_jump() {
     let mut world = World::generate(
@@ -689,7 +688,11 @@ fn safety_lift_rises_without_a_jump() {
     for _ in 0..180 {
         f.step(1.0 / 30.0, &controls, &world);
     }
-    assert!(f.position.z > 250.0, "did not clear terrain {}", f.position.z);
+    assert!(
+        f.position.z > 250.0,
+        "did not clear terrain {}",
+        f.position.z
+    );
 }
 
 #[test]

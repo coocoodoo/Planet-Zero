@@ -389,8 +389,8 @@ impl Renderer {
         } else {
             self.sky(camera, flight, theme, height);
             let bend = self.warp.map_or(0.0, |warp| warp.bend);
-            let thin_air =
-                1.0 - (1.0 - crate::world::orbit::thin_air(flight.position.z)) * (1.0 - bend).powi(2);
+            let thin_air = 1.0
+                - (1.0 - crate::world::orbit::thin_air(flight.position.z)) * (1.0 - bend).powi(2);
             if thin_air > 0.0 {
                 self.stars(camera, thin_air, flight.sky_rotation);
             }

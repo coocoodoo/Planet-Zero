@@ -146,7 +146,11 @@ impl Renderer {
             .take()
             .unwrap_or_else(|| Box::new(Self::single()));
         // 传送门预览按半分辨率渲染，孔径内略糊但减少填充开销；穿梭动画期间保持全分辨率，避免结束后切换闪烁
-        let divisor = if flight.portal_transit.is_some() || flight.weights[0] > 0.5 { 1usize } else { 2usize };
+        let divisor = if flight.portal_transit.is_some() || flight.weights[0] > 0.5 {
+            1usize
+        } else {
+            2usize
+        };
         let rw = (self.w / divisor).max(1);
         let rh = (self.h / divisor).max(1);
         remote.w = rw;
@@ -290,8 +294,10 @@ impl Renderer {
                     let offset = direction * (ripple * amplitude - pull * 0.15)
                         + tangent * (cross * amplitude + swirl * 0.5);
                     let sample = point + offset;
-                    let px = (sample.x.clamp(0.0, self.w as f32 - 1.0) * ratio_x).min((rw - 1) as f32) as usize;
-                    let py = (sample.y.clamp(0.0, self.h as f32 - 1.0) * ratio_y).min((rh - 1) as f32) as usize;
+                    let px = (sample.x.clamp(0.0, self.w as f32 - 1.0) * ratio_x)
+                        .min((rw - 1) as f32) as usize;
+                    let py = (sample.y.clamp(0.0, self.h as f32 - 1.0) * ratio_y)
+                        .min((rh - 1) as f32) as usize;
                     let scene = remote.pixels[px * rh + py];
                     let veil = (0.14 + ripple * 0.04 + cross * 0.03) * membrane;
                     let shaded = mix(scene, rgb(15, 24, 52), 0.13 * membrane);
@@ -432,7 +438,11 @@ mod tests {
             assert!(corner.distance(final_window.center) < final_window.radius * 0.82);
         }
         renderer.render(&world, &flight, 320, 170, 0);
-        assert_eq!(renderer.portal_view.as_ref().unwrap().w, 320, "穿梭动画期间保持全分辨率");
+        assert_eq!(
+            renderer.portal_view.as_ref().unwrap().w,
+            320,
+            "穿梭动画期间保持全分辨率"
+        );
         let before = renderer.rgba.clone();
         flight.warp(final_window.entry, exit);
         flight.warp_flash = 0.0;

@@ -177,7 +177,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod bank_tests {
     use super::*;
