@@ -46,7 +46,13 @@ impl App {
         let held = |key| f32::from(self.keys.contains(&key));
         Controls {
             direction: None,
-            throttle: None,
+            throttle: if self.auto {
+                None
+            } else if self.flight.hover {
+                Some(0.0)
+            } else {
+                Some(1.0)
+            },
             bank: None,
             aerobatic: true,
             turn: held(RIGHT) - held(LEFT),
@@ -221,6 +227,14 @@ impl App {
                     self.mission.dodge();
                 }
             }
+            HOVER => {
+                self.flight.hover = !self.flight.hover;
+                self.navigation.active = false;
+                self.navigation.arrived = false;
+                self.auto = false;
+                self.flight.set_demo(false);
+                self.sounds.push(crate::audio::Sound::Confirm);
+            }
             PAUSE => {
                 self.pitch_gesture = Default::default();
                 self.page = Page::Paused;
@@ -282,10 +296,12 @@ impl App {
             AUTOPILOT => {
                 self.navigation.active = false;
                 self.flight.set_demo(false);
+                self.flight.hover = false;
                 self.auto = !self.auto;
             }
             DEMO => {
                 self.navigation.active = false;
+                self.flight.hover = false;
                 self.flight.set_demo(!self.flight.demo);
             }
             MAP => {

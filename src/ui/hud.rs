@@ -23,12 +23,12 @@ pub fn draw(app: &mut App) {
         c.weather(5, 3, f.weather, app.world.kind.vacuum());
         c.text(17, 3, app.world.kind.name(), MUTED);
         c.shade(124, 1, 174, 12);
-        c.text(
-            128,
-            3,
-            &format!("{:03.0}  ALT {:03.0}", f.speed, f.position.z),
-            WHITE,
-        );
+        let status = if f.hover {
+            format!("HOVER  ALT {:03.0}", f.position.z)
+        } else {
+            format!("{:03.0}  ALT {:03.0}", f.speed, f.position.z)
+        };
+        c.text(128, 3, &status, if f.hover { CYAN } else { WHITE });
         if f.demo || app.auto || app.input_label == "IMU" || app.loader.pending.is_some() {
             c.shade(2, 16, 13, 12);
             c.icon(

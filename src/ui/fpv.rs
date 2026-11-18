@@ -67,6 +67,9 @@ fn instruments(c: &mut Canvas<'_>, f: &Flight, ground: Option<f32>, chase: bool,
     let (left, right, y) = if cockpit { (78, 242, 47) } else { (5, 315, 66) };
     c.osd(left, y, "SPD", MUTED);
     c.osd_value(left, y + 12, &format!("{:03.0}", f.speed), WHITE);
+    if f.hover {
+        c.osd(left, y + 40, "HOLD", CYAN);
+    }
     c.osd(left, y + 28, "U/S", MUTED);
     c.osd_right(right, y, "ALT", MUTED);
     let altitude = format!("{:.0}", f.orbital_altitude());

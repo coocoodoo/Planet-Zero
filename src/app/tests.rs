@@ -327,6 +327,92 @@ fn camera_keys_leave_aircraft_heading_unchanged_and_return_to_center() {
 }
 
 #[test]
+fn hover_key_toggles_and_holds_altitude() {
+    use crate::keys::*;
+    let mut app = App::new(World::generate(crate::world::MapKind::Moon, 1999));
+    app.start();
+    app.auto = false;
+    app.flight.position.z = 900.0;
+    // Alt 进入悬停，速度归零
+    app.key(HOVER, 1);
+    app.key(HOVER, 0);
+    assert!(app.flight.hover);
+    for _ in 0..40 {
+        app.step(0.1, None);
+    }
+    assert!(app.flight.speed < 0.01);
+    let held = app.flight.position;
+    for _ in 0..20 {
+        app.step(0.1, None);
+    }
+    assert!((app.flight.position.z - held.z).abs() < 0.5);
+    assert!((app.flight.position - held).truncate().length() < 0.5);
+    // 再次按 Alt 退出悬停，速度恢复
+    app.key(HOVER, 1);
+    app.key(HOVER, 0);
+    assert!(!app.flight.hover);
+    for _ in 0..20 {
+        app.step(0.1, None);
+    }
+    assert!(app.flight.speed > 50.0);
+}
+
+#[test]
+fn hover_exits_on_boost_but_keeps_direction_keys() {
+    use crate::keys::*;
+    let mut app = App::new(World::generate(crate::world::MapKind::Moon, 1999));
+    app.start();
+    app.auto = false;
+    app.flight.position.z = 900.0;
+    app.key(HOVER, 1);
+    app.key(HOVER, 0);
+    assert!(app.flight.hover);
+    // 方向键（左右转向、上下俯仰）只调整姿态，保持悬停
+    for key in [LEFT, RIGHT, UP, DOWN] {
+        app.key(key, 1);
+        for _ in 0..10 {
+            app.step(0.1, None);
+        }
+        assert!(app.flight.hover, "方向键不应退出悬停");
+        app.key(key, 0);
+    }
+    // 按加速视为开始移动，自动退出悬停并恢复速度
+    app.key(BOOST, 1);
+    app.step(0.1, None);
+    assert!(!app.flight.hover, "加速应退出悬停");
+    app.key(BOOST, 0);
+    for _ in 0..20 {
+        app.step(0.1, None);
+    }
+    assert!(app.flight.speed > 50.0, "退出悬停后应恢复速度");
+}
+
+#[test]
+fn hover_pitch_holds_without_recentering() {
+    use crate::keys::*;
+    let mut app = App::new(World::generate(crate::world::MapKind::Moon, 1999));
+    app.start();
+    app.auto = false;
+    app.flight.position.z = 2000.0;
+    app.key(HOVER, 1);
+    app.key(HOVER, 0);
+    assert!(app.flight.hover);
+    app.key(UP, 1);
+    for _ in 0..20 {
+        app.step(0.1, None);
+    }
+    app.key(UP, 0);
+    let pitched = app.flight.pitch;
+    assert!(pitched > 0.2, "按上应抬头");
+    let altitude = app.flight.position.z;
+    for _ in 0..40 {
+        app.step(0.1, None);
+    }
+    assert!((app.flight.pitch - pitched).abs() < 0.05, "松开后应保持俯仰不回正");
+    assert!((app.flight.position.z - altitude).abs() < 0.5, "悬停俯仰时高度应保持");
+}
+
+#[test]
 fn chart_zooms_pans_marks_and_navigates_without_changing_the_view() {
     use crate::keys::*;
     let mut app = App::new(World::generate(crate::world::MapKind::Space, 1999));

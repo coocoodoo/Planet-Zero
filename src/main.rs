@@ -153,6 +153,8 @@ async fn main() {
         (KeyCode::A, k::LOOK_LEFT),
         (KeyCode::S, k::LOOK_DOWN),
         (KeyCode::D, k::LOOK_RIGHT),
+        (KeyCode::LeftAlt, k::HOVER),
+        (KeyCode::RightAlt, k::HOVER),
         (KeyCode::LeftShift, k::BOOST),
         (KeyCode::RightShift, k::BOOST_RIGHT),
         (KeyCode::Space, k::VIEW),
@@ -257,6 +259,7 @@ async fn main() {
                 displayed_scale = scale;
             }
             frame_ms = frame.milliseconds;
+            drawing.recycle(frame.pixels);
         }
         if app.page != Page::Chart {
             drawing.submit(&app, scale);

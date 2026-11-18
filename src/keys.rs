@@ -25,6 +25,7 @@ pub const LOOK_UP: u16 = 17;
 pub const LOOK_LEFT: u16 = 30;
 pub const LOOK_DOWN: u16 = 31;
 pub const LOOK_RIGHT: u16 = 32;
+pub const HOVER: u16 = 109;
 pub const CALIBRATE: u16 = 37;
 pub const BOOST: u16 = 42;
 pub const VIEW: u16 = 57;

@@ -59,8 +59,11 @@ impl Flight {
         self.space_attitude = Some(q.normalize());
         self.sync_space_angles();
         let base = self.vehicle.speed() * (1.0 + self.boost * 0.8 + self.orbital_thrust * 3.0);
+        // 悬停模式油门为 0，速度归零并保持位置
         let throttle = controls.throttle.unwrap_or(1.0).clamp(0.0, 1.0);
-        self.speed += (base * throttle - self.speed) * ease(4.0, dt);
+        // 悬停（油门归零）时快速制动，避免长时间滑行
+        let rate = if throttle > 0.0 { 4.0 } else { 10.0 };
+        self.speed += (base * throttle - self.speed) * ease(rate, dt);
         let velocity = self.axes()[1] * self.speed + self.frame_drift;
         self.vertical_speed = velocity.z;
         self.position += velocity * dt;

@@ -207,6 +207,7 @@ impl App {
                 .shuffle_encounters(time.subsec_nanos() ^ self.world.seed);
         }
         self.auto = self.mode == Mode::Free;
+        self.flight.hover = false;
         self.page = Page::Playing;
         self.new_record = false;
         self.best_score = self
@@ -339,6 +340,11 @@ impl App {
         let mut controls = self
             .navigation_controls()
             .unwrap_or_else(|| external.unwrap_or_else(|| self.controls()));
+        // 悬停中按加速（开始移动）自动退出悬停并恢复油门；方向键只调整姿态
+        if self.flight.hover && controls.manual && controls.boost {
+            self.flight.hover = false;
+            controls.throttle = Some(1.0);
+        }
         self.orbit_controls(&mut controls, dt);
         let mut previous = self.flight.position;
         if self.mission.countdown <= 0.0 {
