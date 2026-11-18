@@ -137,8 +137,15 @@ impl App {
         if let Some(mut transition) = self.orbit.transition.take() {
             let altitude = self.flight.position.z;
             let progress = smooth((altitude - transition.low) / (transition.high - transition.low));
+            // 下降时加速收平曲率，低空露出地平线；切换瞬间仍保持球面以衔接太空视角
+            let bend = if transition.ascent {
+                progress
+            } else {
+                let fall = (altitude / transition.high).clamp(0.0, 1.0);
+                progress * fall * fall * fall
+            };
             if let Some(surface) = &mut self.flight.surface {
-                surface.set_bend(progress);
+                surface.set_bend(bend);
                 self.flight.sky_rotation =
                     Quat::IDENTITY.slerp(Quat::from_mat3(&surface.basis), progress);
             }

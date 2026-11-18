@@ -370,3 +370,30 @@ fn descent_can_be_reversed_or_finished_by_navigation() {
         }
     }
 }
+
+#[test]
+fn descent_flattens_terrain_and_tilts_camera_down() {
+    let kind = MapKind::Moon;
+    let mut app = ready_ascent(kind);
+    let body = Body::of(kind);
+    let original = app.world.clone();
+    let position = body.center() + Vec3::Z * (body.radius() + 1000.0);
+    app.flight.translate(position - app.flight.position);
+    app.flight.space_attitude = Some(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2));
+    app.flight.camera_adjustment = None;
+    app.network.remember(original);
+    app.begin_descent(body, MapKey { kind, seed: kind.seed() });
+    app.flight.translate(glam::vec3(0.0, 0.0, 700.0) - app.flight.position);
+    app.flight.follow = app.flight.position;
+    app.flight.pitch = 0.0;
+    for _ in 0..40 {
+        app.step(
+            1.0 / 60.0,
+            Some(Controls { manual: true, aerobatic: true, ..Default::default() }),
+        );
+    }
+    let bend = app.flight.surface.unwrap().bend;
+    assert!(bend < 0.3, "bend {bend}");
+    let camera = crate::flight::Camera::new(&app.flight, 320, 170);
+    assert!(camera.pitch < -0.08, "camera pitch {}", camera.pitch);
+}
