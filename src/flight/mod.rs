@@ -503,8 +503,12 @@ impl Flight {
         } else {
             24.0
         };
-        self.vertical_speed +=
-            (climb - self.vertical_speed).clamp(-acceleration * dt, acceleration * dt);
+        if self.hover {
+            self.vertical_speed = 0.0;
+        } else {
+            self.vertical_speed +=
+                (climb - self.vertical_speed).clamp(-acceleration * dt, acceleration * dt);
+        }
         let old_altitude = self.position.z;
         let target = vec3(
             proposed.x,
