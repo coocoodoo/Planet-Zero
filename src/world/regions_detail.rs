@@ -21,7 +21,9 @@ impl Cavern {
     }
 }
 pub fn canyon_center(y: f32) -> f32 {
-    2048.0 + (y * std::f32::consts::TAU / 4096.0).sin() * 270.0 + (y * 0.0035).sin() * 95.0
+    2048.0
+        + (y * std::f32::consts::TAU / 4096.0).sin() * 270.0
+        + (y * std::f32::consts::TAU * 2.0 / 4096.0).sin() * 95.0
 }
 impl World {
     pub(super) fn enrich_region(&mut self) {
@@ -117,7 +119,7 @@ impl World {
     fn carve_canyon(&mut self) {
         for y in 0..SIZE {
             let center = canyon_center(y as f32);
-            let width = 54.0 + (y as f32 * 0.002).sin() * 10.0;
+            let width = 54.0 + (y as f32 * std::f32::consts::TAU / 4096.0).sin() * 10.0;
             for x in 0..SIZE {
                 let at = y * SIZE + x;
                 let d = (x as f32 - center).abs();

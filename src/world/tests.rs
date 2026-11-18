@@ -60,3 +60,15 @@ fn lunar_sites_and_space_landmarks_are_present_without_atmosphere() {
     assert!(space.scenery.iter().any(|s| s.kind == Structure::Cruiser));
     assert!(space.scenery.iter().any(|s| s.kind == Structure::Satellite));
 }
+
+#[test]
+fn canyon_terrain_wraps_across_the_y_boundary() {
+    let world = World::generate(MapKind::Canyon, 7);
+    let mut worst = 0_i32;
+    for x in 0..SIZE {
+        let edge = world.heights[(SIZE - 1) * SIZE + x] as i32;
+        let seam = world.heights[x] as i32;
+        worst = worst.max((edge - seam).abs());
+    }
+    assert!(worst <= 40, "canyon y seam jumps by {worst}");
+}
