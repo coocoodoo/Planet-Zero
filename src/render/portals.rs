@@ -145,13 +145,17 @@ impl Renderer {
             .portal_view
             .take()
             .unwrap_or_else(|| Box::new(Self::single()));
-        remote.w = self.w;
-        remote.full_width = self.w;
-        remote.h = self.h;
-        remote.pixels.resize(self.w * self.h, 0);
-        remote.depth.resize(self.w * self.h, f32::INFINITY);
-        remote.mask.resize(self.w * self.h, 0);
-        remote.visible.resize(self.w, (0, 0));
+        // 传送门预览按半分辨率渲染，孔径内略糊但减少填充开销
+        let divisor = 2usize;
+        let rw = (self.w / divisor).max(1);
+        let rh = (self.h / divisor).max(1);
+        remote.w = rw;
+        remote.full_width = rw;
+        remote.h = rh;
+        remote.pixels.resize(rw * rh, 0);
+        remote.depth.resize(rw * rh, f32::INFINITY);
+        remote.mask.resize(rw * rh, 0);
+        remote.visible.resize(rw, (0, 0));
         for (original, exit, destination, _) in scenes {
             let Some(window) = self.aperture(original, flight, camera) else {
                 continue;
@@ -172,7 +176,7 @@ impl Renderer {
             let min_x = ((center.x - extent).floor() as i32).max(0);
             let max_x = ((center.x + extent).ceil() as i32).min(self.w as i32 - 1);
             let mut samples = Vec::new();
-            remote.visible.fill((self.h as i32, 0));
+            remote.visible.fill((rh as i32, 0));
             for x in min_x..=max_x {
                 let nx = (x as f32 - center.x) / radius;
                 let half = (LENS_RADIUS * LENS_RADIUS - nx * nx).max(0.0).sqrt() * radius;
@@ -189,18 +193,23 @@ impl Renderer {
                     let radius2 = nx * nx + ny * ny;
                     samples.push((x as usize, y as usize, depth, radius2));
                     if radius2 < 1.08_f32.powi(2) {
-                        remote.visible[x as usize].0 = remote.visible[x as usize].0.min(y);
-                        remote.visible[x as usize].1 = remote.visible[x as usize].1.max(y + 1);
+                        let rx = (x as usize * rw / self.w).min(rw - 1);
+                        let ry = (y as usize * rh / self.h).min(rh - 1);
+                        remote.visible[rx].0 = remote.visible[rx].0.min(ry as i32);
+                        remote.visible[rx].1 = remote.visible[rx].1.max(ry as i32 + 1);
                     }
                 }
             }
             if samples.is_empty() {
                 continue;
             }
-            remote.clip_depth.resize(self.w * self.h, f32::NEG_INFINITY);
+            remote.clip_depth.resize(rw * rh, f32::NEG_INFINITY);
             remote.clip_depth.fill(f32::NEG_INFINITY);
             for &(x, y, depth, _) in &samples {
-                remote.clip_depth[x * self.h + y] = depth;
+                let rx = (x * rw / self.w).min(rw - 1);
+                let ry = (y * rh / self.h).min(rh - 1);
+                let at = rx * rh + ry;
+                remote.clip_depth[at] = remote.clip_depth[at].min(depth);
             }
             remote.pixels.fill(0);
             remote.depth.fill(f32::INFINITY);
@@ -208,6 +217,10 @@ impl Renderer {
             let mut view = *camera;
             view.position = entry.transform(exit, camera.position);
             view.rotate_yaw(entry.rotation_to(exit));
+            let ratio_x = rw as f32 / self.w as f32;
+            let ratio_y = rh as f32 / self.h as f32;
+            view.center = vec2(camera.center.x * ratio_x, camera.center.y * ratio_y);
+            view.scale = camera.scale * ratio_x;
             remote.clip_plane = None;
             remote.near_depth = if expansion > 0.0 {
                 f32::NEG_INFINITY
@@ -217,13 +230,14 @@ impl Renderer {
             if expansion > 0.0 {
                 remote.clip_depth.clear();
             }
-            remote.column.resize(self.w, self.h as i32);
+            remote.column.resize(rw, rh as i32);
             for (column, visible) in remote.column.iter_mut().zip(&remote.visible) {
                 *column = visible.1;
             }
             if samples.len() > 9000
                 && (cfg!(target_os = "linux") || self.w > 640)
                 && remote.workers.is_empty()
+                && rw == self.w
             {
                 remote.workers = (0..3).map(|_| Self::single()).collect();
             }
@@ -237,7 +251,7 @@ impl Renderer {
             } else {
                 theme
             };
-            remote.background(destination, &remote_flight, &view, remote_theme, 170);
+            remote.background(destination, &remote_flight, &view, remote_theme, rh);
             if !destination.kind.vacuum() {
                 remote.precipitation(&remote_flight, &view, remote_theme);
             }
@@ -276,9 +290,9 @@ impl Renderer {
                     let offset = direction * (ripple * amplitude - pull * 0.15)
                         + tangent * (cross * amplitude + swirl * 0.5);
                     let sample = point + offset;
-                    let px = sample.x.clamp(0.0, self.w as f32 - 1.0) as usize;
-                    let py = sample.y.clamp(0.0, self.h as f32 - 1.0) as usize;
-                    let scene = remote.pixels[px * self.h + py];
+                    let px = (sample.x.clamp(0.0, self.w as f32 - 1.0) * ratio_x).min((rw - 1) as f32) as usize;
+                    let py = (sample.y.clamp(0.0, self.h as f32 - 1.0) * ratio_y).min((rh - 1) as f32) as usize;
+                    let scene = remote.pixels[px * rh + py];
                     let veil = (0.14 + ripple * 0.04 + cross * 0.03) * membrane;
                     let shaded = mix(scene, rgb(15, 24, 52), 0.13 * membrane);
                     let tinted = mix(shaded, rim, veil);
@@ -302,7 +316,9 @@ impl Renderer {
                 color = mix(color, photon_color, photon * 0.95 * membrane);
                 self.pixels[at] = color;
                 if r < 1.0 && entering {
-                    self.depth[at] = remote.depth[at];
+                    let rx = (x * rw / self.w).min(rw - 1);
+                    let ry = (y * rh / self.h).min(rh - 1);
+                    self.depth[at] = remote.depth[rx * rh + ry];
                 } else if r < 1.06 {
                     self.depth[at] = depth;
                 }
