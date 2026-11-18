@@ -99,7 +99,7 @@ fn hardware(c: &mut Canvas<'_>, t: crate::app::telemetry::Telemetry, full: bool)
         Some(_) => WHITE,
         None => MUTED,
     };
-    c.rect(229, 2, 15, 10, INK);
+    c.rect(229, 2, 13, 10, INK);
     c.rect(230, 3, 12, 8, battery_color);
     c.rect(231, 4, 10, 6, INK);
     c.rect(242, 5, 2, 4, battery_color);
@@ -379,6 +379,29 @@ fn combat(c: &mut Canvas<'_>, m: &Mission, full: bool) {
     }
 }
 
+fn clock_text(hour: u32, minute: u32) -> String {
+    format!("{hour:02}:{minute:02}")
+}
+
+fn device_clock() -> (u32, u32) {
+    #[cfg(feature = "cardputer")]
+    unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut local: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&now, &mut local).is_null() {
+            return (0, 0);
+        }
+        (local.tm_hour as u32, local.tm_min as u32)
+    }
+    #[cfg(not(feature = "cardputer"))]
+    {
+        let seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        (((seconds / 3600) % 24) as u32, ((seconds / 60) % 60) as u32)
+    }
+}
+
 pub fn draw(app: &mut App) {
     let cockpit = app.flight.weights[2] >= 0.5;
     let chase = app.flight.weights[1] >= 0.5;
@@ -403,18 +426,8 @@ pub fn draw(app: &mut App) {
     );
     hardware(&mut c, app.telemetry, chase);
     c.icon(5, 4, 'O', WHITE);
-    let seconds = m.elapsed as u32;
-    let time = if seconds >= 3600 {
-        format!(
-            "{}:{:02}:{:02}",
-            seconds / 3600,
-            seconds / 60 % 60,
-            seconds % 60
-        )
-    } else {
-        format!("{:02}:{:02}", seconds / 60, seconds % 60)
-    };
-    c.osd(16, 4, &time, WHITE);
+    let (hour, minute) = device_clock();
+    c.osd(16, 4, &clock_text(hour, minute), WHITE);
     c.weather(5, 20, f.weather, app.world.kind.vacuum());
     let status = if app.loader.pending.is_some() {
         'O'
@@ -502,5 +515,17 @@ pub fn draw(app: &mut App) {
             },
             WHITE,
         );
+    }
+}
+
+#[cfg(test)]
+mod clock_tests {
+    use super::clock_text;
+
+    #[test]
+    fn clock_text_pads_hours_and_minutes() {
+        assert_eq!(clock_text(0, 0), "00:00");
+        assert_eq!(clock_text(9, 5), "09:05");
+        assert_eq!(clock_text(23, 59), "23:59");
     }
 }
