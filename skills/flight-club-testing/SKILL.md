@@ -114,17 +114,15 @@ im.save("/tmp/x.png")
 
 ### 5.1 连接
 
-设备凭据在 `<device-credential-file>`（`DEVICE_IP`、`DEVICE_USER`、`DEVICE_PASS`、`DEVICE_SUDO_PASS`）。当前设备 IP 为 `<device-ip>`。
+设备凭据放在本机的环境文件中（包含 `DEVICE_IP`、`DEVICE_USER`、`DEVICE_PASS`、`DEVICE_SUDO_PASS`），通过环境变量导入，不提交到仓库。连接前先确认设备 IP。
 
 ```sh
-set -a; . <device-credential-file>; set +a
+set -a; . ./device.env; set +a
 export DEVICE_HOST="${DEVICE_USER:-pi}@${DEVICE_IP}"
-SSH_ASKPASS=<user-home>/src/cardbili-dev/.agents/skills/cardputer-zero/scripts/askpass.sh \
-SSH_ASKPASS_REQUIRE=force \
-<user-home>/src/cardbili-dev/.agents/skills/cardputer-zero/scripts/r.sh -o ConnectTimeout=8 'uname -m; ls /dev/fb_lcd'
+ssh "$DEVICE_HOST" -o ConnectTimeout=8 'uname -m; ls /dev/fb_lcd'
 ```
 
-`cardputer-connect.sh` 里的主机地址写死为旧 IP `192.168.0.63`，换网后直接走上面的 `r.sh` 并显式传 `DEVICE_HOST`。`asroot`、`copy`、`fetch` 子命令可以用同样的方式手工展开成 `ssh`/`scp`。
+连接脚本通过 `DEVICE_HOST` 传入主机地址，换网后重新设置 `DEVICE_IP` 即可。`asroot`、`copy`、`fetch` 等封装可以手工展开成 `ssh`/`scp`。
 
 设备是 aarch64 Debian（CardputerZero），屏幕 `/dev/fb_lcd` 为 320×170 RGB565，键盘事件节点 `/dev/input/by-path/platform-3f804000.i2c-event`。
 
@@ -140,7 +138,7 @@ ssh "$DEVICE_HOST" 'sudo -S install -m 755 /tmp/flight-club-cardputer /usr/share
 
 ### 5.3 端到端自检
 
-参考 Codex 工作目录 `work/seamless-v014/device-check.py`，流程如下：
+端到端自检按以下流程实现：
 
 1. `systemctl --user stop APPLaunch.service`
 2. 建 FIFO 作为键盘，设 `FLIGHT_CLUB_KEYBOARD=<fifo>`、`FLIGHT_CLUB_SETTINGS=<root>/settings.toml`、`FLIGHT_CLUB_RECORDS=<root>/records.txt`
