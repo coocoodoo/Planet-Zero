@@ -408,3 +408,27 @@ fn descent_flattens_terrain_and_tilts_camera_down() {
     let camera = crate::flight::Camera::new(&app.flight, 320, 170);
     assert!(camera.pitch < -0.08, "camera pitch {}", camera.pitch);
 }
+
+
+#[test]
+fn descent_keeps_camera_scale_and_heading_stable() {
+    let kind = MapKind::Moon;
+    let mut app = ready_ascent(kind);
+    let body = Body::of(kind);
+    let original = app.world.clone();
+    let position = body.center() + Vec3::Z * (body.radius() + 1000.0);
+    app.flight.translate(position - app.flight.position);
+    app.flight.space_attitude = Some(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2));
+    app.network.remember(original);
+    app.begin_descent(body, MapKey { kind, seed: kind.seed() });
+    let mut previous: Option<(f32, Vec3)> = None;
+    for _ in 0..30 {
+        app.step(1.0 / 30.0, Some(Controls { manual: true, aerobatic: true, throttle: Some(1.0), ..Default::default() }));
+        let camera = crate::flight::Camera::new(&app.flight, 320, 170);
+        if let Some((scale, forward)) = previous {
+            assert!((camera.scale - scale).abs() < 0.05, "camera scale jumped {} -> {}", scale, camera.scale);
+            assert!(camera.forward.dot(forward) > 0.98, "camera heading jumped");
+        }
+        previous = Some((camera.scale, camera.forward));
+    }
+}

@@ -110,6 +110,8 @@ impl Camera {
             let rotation = glam::Quat::IDENTITY.slerp(adjustment.rotation, adjustment.weight);
             camera.position += adjustment.offset * adjustment.weight;
             camera.slope += adjustment.slope * adjustment.weight;
+            camera.scale += (adjustment.scale - camera.scale) * adjustment.weight;
+            camera.q += (adjustment.q - camera.q) * adjustment.weight;
             camera.right = rotation * camera.right;
             camera.up = rotation * camera.up;
             camera.forward = rotation * camera.forward;

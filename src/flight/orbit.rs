@@ -7,6 +7,8 @@ pub struct CameraAdjustment {
     pub offset: Vec3,
     pub weight: f32,
     pub slope: f32,
+    pub scale: f32,
+    pub q: f32,
 }
 impl Flight {
     pub fn velocity(&self) -> Vec3 {
@@ -37,7 +39,7 @@ impl Flight {
         }
         self.preserve_camera(camera, Mat3::IDENTITY, Vec3::ZERO, roll_before);
     }
-    fn preserve_camera(&mut self, camera: Camera, rotation: Mat3, offset: Vec3, roll_before: f32) {
+    pub(crate) fn preserve_camera(&mut self, camera: Camera, rotation: Mat3, offset: Vec3, roll_before: f32) {
         self.camera_adjustment = None;
         let target = Camera::new(self, 320, 170);
         let roll = Quat::from_axis_angle(
@@ -55,6 +57,8 @@ impl Flight {
             offset: rotation * camera.position + offset - target.position,
             weight: 1.0,
             slope: camera.slope - target.slope,
+            scale: camera.scale,
+            q: camera.q,
         });
     }
     fn transform_pose(&mut self, rotation: Mat3, offset: Vec3, space: bool) {
