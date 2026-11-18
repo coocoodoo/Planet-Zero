@@ -6,7 +6,7 @@ Flight Club is a pixel flight game for Cardputer Zero. Pilot a fighter through w
 
 [简体中文](README_zh.md)
 
-[![CI](https://github.com/journey-ad/M5CardputerZero-M5Flight/actions/workflows/ci.yml/badge.svg)](https://github.com/journey-ad/M5CardputerZero-M5Flight/actions/workflows/ci.yml)
+[![CI](https://github.com/journey-ad/M5CardputerZero-FlightClub/actions/workflows/ci.yml/badge.svg)](https://github.com/journey-ad/M5CardputerZero-FlightClub/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 2024](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
 

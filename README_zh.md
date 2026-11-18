@@ -6,7 +6,7 @@
 
 Flight Club 是为 Cardputer Zero 制作的像素飞行游戏。驾驶战机穿越虫洞，到达世界的另一端，从地表飞向宇宙，再驶向星球降落。自由探索、竞速、金币冲刺与空战。
 
-[![CI](https://github.com/journey-ad/M5CardputerZero-M5Flight/actions/workflows/ci.yml/badge.svg)](https://github.com/journey-ad/M5CardputerZero-M5Flight/actions/workflows/ci.yml)
+[![CI](https://github.com/journey-ad/M5CardputerZero-FlightClub/actions/workflows/ci.yml/badge.svg)](https://github.com/journey-ad/M5CardputerZero-FlightClub/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 2024](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
 
