@@ -24,16 +24,22 @@ pub struct Frame {
 pub struct Drawing {
     send: mpsc::SyncSender<Scene>,
     receive: mpsc::Receiver<Frame>,
+    recycle: mpsc::Sender<Vec<u8>>,
     busy: bool,
 }
 impl Drawing {
     pub fn new() -> Self {
         let (send, scenes) = mpsc::sync_channel::<Scene>(1);
         let (frames, receive) = mpsc::sync_channel(1);
+        let (recycle, recycled) = mpsc::channel::<Vec<u8>>();
         std::thread::spawn(move || {
             let mut renderer = Renderer::new();
             let mut scale = 1;
             while let Ok(scene) = scenes.recv() {
+                // 回收主线程用过的帧缓冲，避免每帧重新分配
+                if let Ok(buffer) = recycled.try_recv() {
+                    renderer.rgba = buffer;
+                }
                 if scale != scene.scale {
                     renderer = Renderer::new();
                     scale = scene.scale;
@@ -61,6 +67,7 @@ impl Drawing {
         Self {
             send,
             receive,
+            recycle,
             busy: false,
         }
     }
@@ -68,6 +75,10 @@ impl Drawing {
         let frame = self.receive.try_recv().ok()?;
         self.busy = false;
         Some(frame)
+    }
+    /// 交还已上传的帧缓冲，渲染线程复用它作为下一帧的输出
+    pub fn recycle(&mut self, pixels: Vec<u8>) {
+        let _ = self.recycle.send(pixels);
     }
     pub fn submit(&mut self, app: &App, scale: usize) {
         if self.busy {

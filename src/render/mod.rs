@@ -474,7 +474,6 @@ impl Renderer {
                 let start = i * strip * h;
                 let end = start + worker.pixels.len();
                 self.pixels[start..end].copy_from_slice(&worker.pixels);
-                self.depth[start..end].copy_from_slice(&worker.depth);
             }
         }
     }
