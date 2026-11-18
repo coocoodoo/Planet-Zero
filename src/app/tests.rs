@@ -484,7 +484,7 @@ fn perf_stats_track_frames_and_triangles() {
     let mut app = App::new(World::new(7));
     app.record_path = None;
     app.start();
-    for _ in 0..40 {
+    for _ in 0..70 {
         app.step(1.0 / 30.0, None);
         app.draw();
     }
