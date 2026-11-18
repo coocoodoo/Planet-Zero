@@ -176,6 +176,11 @@ pub fn smooth(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// 高空大气稀薄度，0 表示海平面密度，1 表示真空
+pub fn thin_air(altitude: f32) -> f32 {
+    smooth((altitude - 500.0) / 700.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

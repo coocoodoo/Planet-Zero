@@ -325,9 +325,5 @@ impl App {
             .park_portals(&self.world, self.flight.position, self.flight.axes()[1]);
     }
 }
-pub fn thin_air(altitude: f32) -> f32 {
-    smooth((altitude - 500.0) / 700.0)
-}
-
 #[cfg(test)]
 mod tests;

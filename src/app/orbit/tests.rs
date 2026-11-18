@@ -382,14 +382,25 @@ fn descent_flattens_terrain_and_tilts_camera_down() {
     app.flight.space_attitude = Some(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2));
     app.flight.camera_adjustment = None;
     app.network.remember(original);
-    app.begin_descent(body, MapKey { kind, seed: kind.seed() });
-    app.flight.translate(glam::vec3(0.0, 0.0, 700.0) - app.flight.position);
+    app.begin_descent(
+        body,
+        MapKey {
+            kind,
+            seed: kind.seed(),
+        },
+    );
+    app.flight
+        .translate(glam::vec3(0.0, 0.0, 700.0) - app.flight.position);
     app.flight.follow = app.flight.position;
     app.flight.pitch = 0.0;
     for _ in 0..40 {
         app.step(
             1.0 / 60.0,
-            Some(Controls { manual: true, aerobatic: true, ..Default::default() }),
+            Some(Controls {
+                manual: true,
+                aerobatic: true,
+                ..Default::default()
+            }),
         );
     }
     let bend = app.flight.surface.unwrap().bend;
