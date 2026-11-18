@@ -128,5 +128,16 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          sha256sum * > SHA256SUMS
-          gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes $(ls | grep -v '^SHA256SUMS$')
+          sha256sum ./* > SHA256SUMS
+          gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes ./*
+
+  store:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    permissions:
+      contents: read
+    uses: ./.github/workflows/publish-store.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      CARDPUTER_STORE_TOKEN: ${{ secrets.CARDPUTER_STORE_TOKEN }}

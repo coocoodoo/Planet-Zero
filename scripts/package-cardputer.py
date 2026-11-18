@@ -27,7 +27,7 @@ shutil.copy2(ROOT / "device/flight-club.desktop", app / "applications/flight-clu
 shutil.copy2(ROOT / "README.md", stage / "usr/share/doc/flight-club/README.md")
 (stage / "DEBIAN/control").write_text(
     f"Package: flight-club\nVersion: {version}\nArchitecture: arm64\n"
-    "Maintainer: Flight Club contributors <flight-club@localhost>\n"
+    "Maintainer: journey-ad <journey-ad@users.noreply.github.com>\n"
     "Section: games\nPriority: optional\n"
     "Depends: pulseaudio-utils\n"
     "Recommends: pipewire-pulse | pulseaudio\n"
