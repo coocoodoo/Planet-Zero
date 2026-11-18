@@ -224,9 +224,9 @@ pub fn draw(app: &mut App) {
     }
     if app.page == Page::Menu {
         c.shade(0, 0, 320, 32);
-        c.text_scale(10, 7, "RUST / FLY", WHITE, 2);
-        c.text(224, 8, "FLIGHT CLUB", CYAN);
-        c.text(224, 20, "ARCADE 0.12", MUTED);
+        c.text_scale(10, 7, "FLIGHT CLUB", WHITE, 2);
+        c.text(224, 8, "ARCADE", CYAN);
+        c.text(224, 20, concat!("V", env!("CARGO_PKG_VERSION")), MUTED);
         c.shade(8, 34, 304, 115);
         c.rect(8, 34, 2, 115, CYAN);
         let stage = format!(
