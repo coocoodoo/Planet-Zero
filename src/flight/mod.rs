@@ -510,6 +510,7 @@ impl Flight {
                 (climb - self.vertical_speed).clamp(-acceleration * dt, acceleration * dt);
         }
         let old_altitude = self.position.z;
+        let max_lift = 80.0 * dt;
         let target = vec3(
             proposed.x,
             proposed.y,
@@ -518,15 +519,17 @@ impl Flight {
         self.position = if self.surface.is_some_and(|surface| surface.bend > 0.0) {
             target
         } else {
-            safety::advance(world, self.position, target)
+            safety::advance(world, self.position, target, max_lift)
         };
         let actual_climb = (self.position.z - old_altitude) / dt.max(0.001);
-        // 地形保护抬高时保持原俯仰与升降惯性，避免画面突然抬头
-        if !terrain_guard && (actual_climb - self.vertical_speed).abs() > 0.01 {
+        // 地形保护和安全抬升保持原俯仰与升降惯性，避免画面突然抬头
+        let lifted = self.position.z > target.z + 0.01;
+        let guarded = terrain_guard || lifted;
+        if !guarded && (actual_climb - self.vertical_speed).abs() > 0.01 {
             self.vertical_speed = actual_climb;
         }
         self.view_altitude += (self.position.z - self.view_altitude) * ease(3.0, dt);
-        if !manual_attitude && !terrain_guard {
+        if !manual_attitude && !guarded {
             self.pitch += angle((actual_climb / self.speed).clamp(-0.7, 0.9).asin() - self.pitch)
                 * ease(4.0, dt);
         }

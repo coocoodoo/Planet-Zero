@@ -66,12 +66,19 @@ pub(super) fn flight_floor(
     (floor, guard)
 }
 
-pub(super) fn advance(world: &World, from: Vec3, to: Vec3) -> Vec3 {
+pub(super) fn advance(world: &World, from: Vec3, to: Vec3, max_lift: f32) -> Vec3 {
     if world.kind == MapKind::Space {
         return to;
     }
     let collision = |p| clearance_floor(world, p) - MIN_CLEARANCE + 8.0;
-    let z = to.z.clamp(collision(from), world.flight_ceiling(from));
+    let floor = collision(from);
+    let ceiling = world.flight_ceiling(from);
+    // 已经低于地形时按允许速度逐步抬升，避免瞬间弹到地表
+    let z = if to.z < floor && from.z < floor {
+        (from.z + max_lift).min(floor)
+    } else {
+        to.z.clamp(floor, ceiling)
+    };
     let candidate = vec3(to.x, to.y, z);
     let safe = |p: Vec3| p.z >= collision(p) && p.z <= world.flight_ceiling(p);
     if safe(candidate) {

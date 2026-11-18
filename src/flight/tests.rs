@@ -662,3 +662,32 @@ fn hover_holds_altitude_when_entered_from_descent() {
     assert!(f.speed < 0.01, "speed {}", f.speed);
     assert!(worst < 5.0, "altitude drifted {worst}");
 }
+
+
+#[test]
+fn safety_lift_rises_without_a_jump() {
+    let mut world = World::generate(
+        crate::world::MapKind::Alpine,
+        crate::world::MapKind::Alpine.seed(),
+    );
+    world.heights.fill(250);
+    world.scenery.clear();
+    let mut f = Flight::new(&world);
+    f.position = vec3(0.0, 0.0, 120.0);
+    f.follow = f.position;
+    f.speed = 92.0;
+    let controls = Controls {
+        throttle: Some(1.0),
+        manual: true,
+        aerobatic: true,
+        ..Default::default()
+    };
+    let before = f.position.z;
+    f.step(1.0 / 30.0, &controls, &world);
+    let first = f.position.z - before;
+    assert!(first <= 2.8, "first lift frame jumped {first}");
+    for _ in 0..180 {
+        f.step(1.0 / 30.0, &controls, &world);
+    }
+    assert!(f.position.z > 250.0, "did not clear terrain {}", f.position.z);
+}
