@@ -145,8 +145,8 @@ impl Renderer {
             .portal_view
             .take()
             .unwrap_or_else(|| Box::new(Self::single()));
-        // 传送门预览按半分辨率渲染，孔径内略糊但减少填充开销
-        let divisor = 2usize;
+        // 传送门预览按半分辨率渲染，孔径内略糊但减少填充开销；穿梭动画期间保持全分辨率，避免结束后切换闪烁
+        let divisor = if flight.portal_transit.is_some() || flight.weights[0] > 0.5 { 1usize } else { 2usize };
         let rw = (self.w / divisor).max(1);
         let rh = (self.h / divisor).max(1);
         remote.w = rw;
@@ -432,6 +432,7 @@ mod tests {
             assert!(corner.distance(final_window.center) < final_window.radius * 0.82);
         }
         renderer.render(&world, &flight, 320, 170, 0);
+        assert_eq!(renderer.portal_view.as_ref().unwrap().w, 320, "穿梭动画期间保持全分辨率");
         let before = renderer.rgba.clone();
         flight.warp(final_window.entry, exit);
         flight.warp_flash = 0.0;
