@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore: ['docs/**', '**.md', 'LICENSE']
+  pull_request:
+    paths-ignore: ['docs/**', '**.md', 'LICENSE']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install check dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libxi-dev
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup override set stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: checks
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Test desktop
+        run: cargo test --locked
+      - name: Test cardputer
+        run: cargo test --locked --no-default-features --features cardputer
+
+  device:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 dpkg
+          rustup toolchain install stable --profile minimal --target aarch64-unknown-linux-musl
+          rustup override set stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: device
+      - name: Build device binary
+        run: bash scripts/build-cardputer.sh
+      - name: Package APPLaunch deb
+        run: python3 scripts/package-cardputer.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flight-club-device
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/flight-club-cardputer
+            dist/flight-club_*_arm64.deb
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            binary: flight-club
+          - os: macos-15
+            name: macos-arm64
+            target: aarch64-apple-darwin
+            binary: flight-club
+          - os: windows-latest
+            name: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            binary: flight-club.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libxi-dev
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+          rustup override set stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --features desktop --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/flight-club-${{ matrix.name }}${{ runner.os == 'Windows' && '.exe' || '' }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flight-club-${{ matrix.name }}
+          if-no-files-found: error
+          retention-days: 14
+          path: dist/flight-club-${{ matrix.name }}*
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [checks, device, desktop]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: flight-club-*
+          merge-multiple: true
+          path: release
+      - name: Publish release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          sha256sum * > SHA256SUMS
+          gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes $(ls | grep -v '^SHA256SUMS$')

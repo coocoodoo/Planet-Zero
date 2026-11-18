@@ -3,6 +3,10 @@ name = "flight-club"
 version = "0.19.2"
 edition = "2024"
 default-run = "flight-club"
+description = "Pixel flight arcade with sprite stacking rendering for desktop and Cardputer Zero"
+license = "MIT"
+repository = "https://github.com/journey-ad/M5CardputerZero-M5Flight"
+readme = "README.md"
 
 [features]
 default = ["desktop"]

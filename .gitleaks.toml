@@ -1,0 +1,12 @@
+title = "Flight Club secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "device-password"
+description = "Literal device password"
+regex = '''(?m)^\s*(?:export\s+)?DEVICE_(?:SUDO_)?PASS\s*=\s*["']?([^\s"'$`{}]{4,})'''
+secretGroup = 1
+[[rules.allowlists]]
+regexes = ['''yourpass''']
