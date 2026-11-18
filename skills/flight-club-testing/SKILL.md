@@ -1,6 +1,6 @@
 ---
 name: flight-club-testing
-description: flight-club 飞行模拟器的离屏测试方法。用于验证飞行物理、输入行为、HUD 显示等改动，不需要打开窗口或人工操作。当修改 flight、app、ui 等模块后需要跑数值断言或生成 HUD 截图时使用
+description: flight-club 飞行模拟器的测试方法，包含离屏测试与 CardputerZero 真机测试。离屏测试用于验证飞行物理、输入行为、HUD 显示等改动，不需要打开窗口或人工操作；真机测试用于验证屏幕呈现、按键、音频与 IMU。当修改 flight、app、ui 等模块后需要跑数值断言、生成截图或上真机验证时使用
 ---
 
 # flight-club-testing 离屏测试
@@ -108,7 +108,54 @@ im.save("/tmp/x.png")
 - 按键常量在 `rust_fly::keys`（`HOVER`、`LEFT`、`RIGHT`、`UP`、`DOWN`、`BOOST` 等）
 - `MapKind::Moon` 为大气星球，`MapKind::Space` 为太空；`Flight::new` 据 `world.kind` 设置 `space`
 
-## 5. 归档与清理
+## 5. 真机测试（CardputerZero）
+
+离屏测试只能证明计算与离屏绘制正确，屏幕呈现、按键、音频、IMU 仍需上真机验证。
+
+### 5.1 连接
+
+设备凭据在 `<device-credential-file>`（`DEVICE_IP`、`DEVICE_USER`、`DEVICE_PASS`、`DEVICE_SUDO_PASS`）。当前设备 IP 为 `<device-ip>`。
+
+```sh
+set -a; . <device-credential-file>; set +a
+export DEVICE_HOST="${DEVICE_USER:-pi}@${DEVICE_IP}"
+SSH_ASKPASS=<user-home>/src/cardbili-dev/.agents/skills/cardputer-zero/scripts/askpass.sh \
+SSH_ASKPASS_REQUIRE=force \
+<user-home>/src/cardbili-dev/.agents/skills/cardputer-zero/scripts/r.sh -o ConnectTimeout=8 'uname -m; ls /dev/fb_lcd'
+```
+
+`cardputer-connect.sh` 里的主机地址写死为旧 IP `192.168.0.63`，换网后直接走上面的 `r.sh` 并显式传 `DEVICE_HOST`。`asroot`、`copy`、`fetch` 子命令可以用同样的方式手工展开成 `ssh`/`scp`。
+
+设备是 aarch64 Debian（CardputerZero），屏幕 `/dev/fb_lcd` 为 320×170 RGB565，键盘事件节点 `/dev/input/by-path/platform-3f804000.i2c-event`。
+
+### 5.2 构建与部署
+
+```sh
+bash scripts/build-cardputer.sh   # 脚本可能没有执行位，用 bash 调用
+scp dist/rust-fly-cardputer "$DEVICE_HOST":/tmp/rust-fly-cardputer
+ssh "$DEVICE_HOST" 'sudo -S install -m 755 /tmp/rust-fly-cardputer /usr/share/APPLaunch/bin/rust-fly-cardputer'
+```
+
+交叉编译使用 `aarch64-unknown-linux-musl`、`cortex-a53`、`link-self-contained`；脚本已封装这些参数，产物固定为 `dist/rust-fly-cardputer`。
+
+### 5.3 端到端自检
+
+参考 Codex 工作目录 `work/seamless-v014/device-check.py`，流程如下：
+
+1. `systemctl --user stop APPLaunch.service`
+2. 建 FIFO 作为键盘，设 `RUST_FLY_KEYBOARD=<fifo>`、`RUST_FLY_SETTINGS=<root>/settings.toml`、`RUST_FLY_RECORDS=<root>/records.txt`
+3. 启动 `rust-fly-cardputer --mode free --map moon --view chase --frames 2400 --audio on --imu off --capture-dir <root>`
+4. 等 stderr 出现 `"event":"state"` 表示进入游戏
+5. 用 `struct.pack('qqHHi', 0, 0, 1, code, value)` 写 FIFO 注入按键，value 1 按下、0 松开，中间留 90ms
+6. 直接读 `/dev/fb_lcd` 前 320×170×2 字节，`<H` 解 RGB565 转 RGB，写 P6 PPM
+7. ESC 退出，断言退出码 0；`pactl list short sink-inputs` 检查 `application.name == "Rust Fly"` 的音频流
+8. 结束时 `systemctl --user start APPLaunch.service` 恢复桌面
+
+按键码就是 `src/keys.rs` 的常量值，也是 Linux evdev 键码：`BOOST=42`（左 Shift）、`SPACE=57`、`ESC=1`、方向键 `103/105/106/108`、`HOVER=56`（左 Alt）。Cardputer 的实体方向键会先经过 `keys::cardputer_direction` 把 `33/45/44/46` 映射为上下左右。
+
+改动输入键位后先确认设备实际发出的 evdev 码，再改 `src/keys.rs` 常量，否则桌面上能用的键在真机上可能无效。
+
+## 6. 归档与清理
 
 - 截图等临时产物归档到 `target/<主题>/`（`target` 已被 git 忽略），不污染仓库
 - 临时的 `examples/<名称>.rs` 或 `probe.rs` 在验证完成后删除
