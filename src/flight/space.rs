@@ -55,6 +55,11 @@ impl Flight {
                 self.loop_remaining = (self.loop_remaining - pitch.abs()).max(0.0);
             }
             q = q * Quat::from_rotation_z(self.rate * dt) * Quat::from_rotation_x(-pitch);
+            // 太空跟随 IMU 的机翼滚转，让左右倾斜与大气内一致
+            if let Some(target) = controls.bank {
+                let delta = (target - self.bank) * ease(6.0, dt);
+                q = q * Quat::from_rotation_y(delta);
+            }
         }
         self.space_attitude = Some(q.normalize());
         self.sync_space_angles();
@@ -169,5 +174,30 @@ mod tests {
             &world,
         );
         assert!((f.position.z - before.z + f.speed * 0.1).abs() < 0.01);
+    }
+}
+
+
+#[cfg(test)]
+mod bank_tests {
+    use super::*;
+    #[test]
+    fn bank_input_rolls_the_spacecraft() {
+        let world = World::generate(crate::world::MapKind::Space, 1999);
+        let mut f = Flight::new(&world);
+        f.space_attitude = Some(Quat::IDENTITY);
+        f.position.z = 3000.0;
+        f.follow = f.position;
+        let controls = Controls {
+            manual: true,
+            aerobatic: true,
+            bank: Some(65.0_f32.to_radians()),
+            ..Default::default()
+        };
+        for _ in 0..40 {
+            f.step(1.0 / 60.0, &controls, &world);
+        }
+        assert!(f.bank > 1.0, "bank {}", f.bank);
+        assert!(f.axes()[1].z.abs() < 0.01);
     }
 }
