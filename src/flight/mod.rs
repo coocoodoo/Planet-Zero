@@ -56,6 +56,8 @@ pub struct Flight {
     pub space: bool,
     /// 悬停模式：油门归零，保持当前高度，可自由转向
     pub hover: bool,
+    /// 俯瞰视角：只调整航向，不改变俯仰和高度
+    pub overhead: bool,
     pub warp_flash: f32,
     pub portal_transit: Option<PortalTransit>,
     portal_cooldown: f32,
@@ -124,6 +126,7 @@ impl Flight {
             wingmen: Vec::new(),
             space: world.kind == crate::world::MapKind::Space,
             hover: false,
+            overhead: false,
             warp_flash: 0.0,
             portal_transit: None,
             portal_cooldown: 0.0,
@@ -475,7 +478,7 @@ impl Flight {
         let proposed = self.position + (horizontal * self.speed + self.frame_drift) * dt;
         let (_, ahead_climb) =
             flight_floor(world, self.position, horizontal, self.speed, self.rate);
-        let mut climb = if self.hover && self.loop_remaining <= 0.0 {
+        let mut climb = if (self.hover || self.overhead) && self.loop_remaining <= 0.0 {
             0.0
         } else if manual_attitude {
             forward.z * self.speed
@@ -485,7 +488,7 @@ impl Flight {
             (110.0 - self.position.z) * 0.6
         };
         // 悬停时不按前方地形抬高，保持当前高度
-        let terrain_guard = throttle > 0.0 && ahead_climb > climb;
+        let terrain_guard = !self.overhead && throttle > 0.0 && ahead_climb > climb;
         if terrain_guard {
             climb = ahead_climb;
         }

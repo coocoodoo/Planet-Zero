@@ -691,3 +691,27 @@ fn safety_lift_rises_without_a_jump() {
     }
     assert!(f.position.z > 250.0, "did not clear terrain {}", f.position.z);
 }
+
+#[test]
+fn overhead_blocks_climb_and_keeps_pitch() {
+    use crate::world::World;
+    let world = World::generate(crate::world::MapKind::Desert, 1999);
+    let mut flight = Flight::new(&world);
+    flight.space = false;
+    flight.surface = None;
+    flight.overhead = true;
+    flight.position = glam::vec3(0.0, 0.0, 3000.0);
+    flight.follow = flight.position;
+    let controls = Controls {
+        manual: true,
+        turn: 0.5,
+        climb: 1.0,
+        ..Default::default()
+    };
+    let (z, pitch) = (flight.position.z, flight.pitch);
+    for _ in 0..40 {
+        flight.step(1.0 / 30.0, &controls, &world);
+    }
+    assert!((flight.position.z - z).abs() < 0.6, "俯瞰视角不应改变高度");
+    assert!((flight.pitch - pitch).abs() < 0.01, "俯瞰视角不应改变俯仰");
+}

@@ -493,3 +493,33 @@ fn perf_stats_track_frames_and_triangles() {
     assert!((app.perf.fps - 30.0).abs() < 5.0);
     assert!(!app.perf.curve.is_empty());
 }
+
+#[test]
+fn overhead_view_controls_only_heading() {
+    let mut app = App::new(World::generate(crate::world::MapKind::Desert, 1999));
+    app.start();
+    app.auto = false;
+    app.navigation.active = false;
+    app.flight.space = false;
+    app.flight.surface = None;
+    app.flight.weights = [1.0, 0.0, 0.0];
+    app.flight.position = glam::vec3(0.0, 0.0, 3000.0);
+    app.flight.follow = app.flight.position;
+    let (z, pitch, yaw) = (app.flight.position.z, app.flight.pitch, app.flight.yaw);
+    for _ in 0..40 {
+        app.flight.weights = [1.0, 0.0, 0.0];
+        app.step(
+            1.0 / 30.0,
+            Some(Controls {
+                manual: true,
+                turn: 0.5,
+                climb: 1.0,
+                bank: Some(0.5),
+                ..Default::default()
+            }),
+        );
+    }
+    assert!((app.flight.yaw - yaw).abs() > 0.05, "航向应随方向输入改变");
+    assert!((app.flight.position.z - z).abs() < 0.6, "俯瞰视角不应改变高度");
+    assert!((app.flight.pitch - pitch).abs() < 0.01, "俯瞰视角不应改变俯仰");
+}

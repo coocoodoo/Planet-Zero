@@ -444,6 +444,12 @@ impl App {
         let mut controls = self
             .navigation_controls()
             .unwrap_or_else(|| external.unwrap_or_else(|| self.controls()));
+        // 俯瞰视角只调整航向，屏蔽俯仰和高度输入
+        self.flight.overhead = self.flight.weights[0] > 0.5;
+        if self.flight.overhead && controls.manual {
+            controls.climb = 0.0;
+            controls.bank = None;
+        }
         // 悬停中按加速（开始移动）自动退出悬停并恢复油门；方向键只调整姿态
         if self.flight.hover && controls.manual && controls.boost {
             self.flight.hover = false;
