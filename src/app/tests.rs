@@ -435,8 +435,8 @@ fn chart_zooms_pans_marks_and_navigates_without_changing_the_view() {
         press(&mut app, WEATHER);
     }
     app.chart.prepare(&app.world, app.flight.position);
-    assert_eq!(app.chart.zoom, 9);
-    assert_eq!(app.chart.span, 64.0);
+    assert_eq!(app.chart.zoom, 6);
+    assert_eq!(app.chart.span, 512.0);
     let center = app.chart.center;
     app.key(RIGHT, 1);
     app.step(0.1, None);

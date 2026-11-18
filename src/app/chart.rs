@@ -78,9 +78,9 @@ impl Chart {
                 let color = if world.kind == MapKind::Space {
                     [12, 22, 40]
                 } else {
-                    let i = index(p.x as i32, p.y as i32, SIZE);
+                    let i = index(p.x.floor() as i32, p.y.floor() as i32, SIZE);
                     let h = world.heights[i] as f32;
-                    let neighbor = index((p.x + step) as i32, (p.y + step) as i32, SIZE);
+                    let neighbor = index((p.x + step).floor() as i32, (p.y + step).floor() as i32, SIZE);
                     let next = world.heights[neighbor] as f32;
                     let contour = h > 16.0 && (h / 24.0).floor() != (next / 24.0).floor();
                     let light = (0.62 + h / 550.0 + (h - next) * 0.012).clamp(0.35, 1.1)
@@ -105,7 +105,7 @@ impl Chart {
     pub fn zoom_by(&mut self, direction: i32, world: &World, position: Vec3) {
         self.prepare(world, position);
         self.focus = Some(self.center);
-        self.zoom = (self.zoom as i32 + direction).clamp(0, 9) as usize;
+        self.zoom = (self.zoom as i32 + direction).clamp(0, 6) as usize;
     }
     pub fn point(&self, position: Vec3) -> Vec2 {
         Vec2::splat(CHART_SIZE as f32 * 0.5)
