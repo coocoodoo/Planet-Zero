@@ -98,6 +98,7 @@ pub struct Flight {
     roll_direction: f32,
     pitch_rate: f32,
     vertical_speed: f32,
+    view_altitude: f32,
     frame_drift: Vec3,
     loop_remaining: f32,
     loop_direction: f32,
@@ -165,6 +166,7 @@ impl Flight {
             roll_direction: 1.0,
             pitch_rate: 0.0,
             vertical_speed: 0.0,
+            view_altitude: position.z,
             frame_drift: Vec3::ZERO,
             loop_remaining: 0.0,
             loop_direction: 1.0,
@@ -481,8 +483,9 @@ impl Flight {
             (110.0 - self.position.z) * 0.6
         };
         // 悬停时不按前方地形抬高，保持当前高度
-        if throttle > 0.0 {
-            climb = climb.max(ahead_climb);
+        let terrain_guard = throttle > 0.0 && ahead_climb > climb;
+        if terrain_guard {
+            climb = ahead_climb;
         }
         climb = climb.clamp(-self.speed, self.speed);
         if self.loop_remaining <= 0.0 {
@@ -509,10 +512,12 @@ impl Flight {
             safety::advance(world, self.position, target)
         };
         let actual_climb = (self.position.z - old_altitude) / dt.max(0.001);
-        if (actual_climb - self.vertical_speed).abs() > 0.01 {
+        // 地形保护抬高时保持原俯仰与升降惯性，避免画面突然抬头
+        if !terrain_guard && (actual_climb - self.vertical_speed).abs() > 0.01 {
             self.vertical_speed = actual_climb;
         }
-        if !manual_attitude {
+        self.view_altitude += (self.position.z - self.view_altitude) * ease(3.0, dt);
+        if !manual_attitude && !terrain_guard {
             self.pitch += angle((actual_climb / self.speed).clamp(-0.7, 0.9).asin() - self.pitch)
                 * ease(4.0, dt);
         }

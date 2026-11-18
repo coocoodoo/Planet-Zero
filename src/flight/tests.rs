@@ -576,3 +576,61 @@ fn overhead_preserves_wingmen_and_hides_the_exit_until_its_halo_leaves_view() {
     f.update_portal_visibility();
     assert!(!f.hides_portal(exit));
 }
+
+#[test]
+fn terrain_protection_keeps_pitch_level() {
+    let mut world = World::generate(
+        crate::world::MapKind::Alpine,
+        crate::world::MapKind::Alpine.seed(),
+    );
+    world.heights.fill(250);
+    world.scenery.clear();
+    let mut f = Flight::new(&world);
+    f.position = vec3(0.0, 0.0, 120.0);
+    f.follow = f.position;
+    f.yaw = 0.0;
+    f.speed = 92.0;
+    let controls = Controls {
+        throttle: Some(1.0),
+        manual: false,
+        aerobatic: false,
+        ..Default::default()
+    };
+    let mut previous = f.pitch;
+    let mut worst = 0.0_f32;
+    for _ in 0..120 {
+        f.step(1.0 / 30.0, &controls, &world);
+        worst = worst.max((f.pitch - previous).abs());
+        previous = f.pitch;
+    }
+    assert!(
+        f.position.z > 250.0,
+        "did not clear terrain {}",
+        f.position.z
+    );
+    assert!(worst < 0.05, "pitch jumped {worst}");
+}
+
+#[test]
+fn camera_view_altitude_smooths_abrupt_lift() {
+    let world = World::generate(
+        crate::world::MapKind::Moon,
+        crate::world::MapKind::Moon.seed(),
+    );
+    let mut f = Flight::new(&world);
+    f.position = vec3(0.0, 0.0, 320.0);
+    f.follow = f.position;
+    f.view_altitude = 1200.0;
+    let controls = Controls {
+        throttle: Some(1.0),
+        manual: true,
+        aerobatic: true,
+        ..Default::default()
+    };
+    f.step(1.0 / 30.0, &controls, &world);
+    assert!(
+        f.view_altitude > 800.0,
+        "view altitude snapped {}",
+        f.view_altitude
+    );
+}

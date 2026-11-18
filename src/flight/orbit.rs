@@ -66,6 +66,7 @@ impl Flight {
         self.director_anchor = rotation * self.director_anchor + offset;
         self.yaw = forward.x.atan2(-forward.y);
         self.pitch = forward.z.clamp(-1.0, 1.0).asin();
+        self.view_altitude = self.position.z;
         let base_right = vec3(self.yaw.cos(), self.yaw.sin(), 0.0);
         let base_up = forward.cross(base_right);
         self.bank = angle((-right.dot(base_up)).atan2(right.dot(base_right)) - self.spin);

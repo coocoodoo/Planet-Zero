@@ -41,7 +41,7 @@ impl Camera {
             && chase > 0.01
             && flight.pitch > -0.35
         {
-            let approach = ((1200.0 - flight.position.z) / 1200.0).clamp(0.0, 1.0);
+            let approach = ((1200.0 - flight.view_altitude) / 1200.0).clamp(0.0, 1.0);
             let descent = (-flight.vertical_speed / 200.0).clamp(0.0, 1.0);
             pitch -= approach * (0.30 + 0.35 * descent);
         }
