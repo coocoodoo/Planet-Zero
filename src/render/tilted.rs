@@ -263,6 +263,11 @@ impl Renderer {
             }
             return;
         }
+        // 低空保持原始采样精度，海拔升高后才逐步放大采样跨度
+        let ground_height =
+            world.heights[index(camera.position.x as i32, camera.position.y as i32, SIZE)] as f32;
+        let altitude_fade = ((camera.position.z - ground_height - 500.0) / 700.0).clamp(0.0, 1.0);
+
         let [Some((a, da, _)), Some((b, db, _)), Some((c, dc, _))] =
             points.map(|p| camera.project(p))
         else {
@@ -310,7 +315,8 @@ impl Renderer {
                 let x = p.x as i32;
                 let y = p.y as i32;
                 // 采样跨度随视距增大，远处坡面明暗收敛为更粗的斑块
-                let step = ((p.distance(camera.position)) / 48.0).clamp(8.0, 96.0) as i32;
+                let coarse = ((p.distance(camera.position)) / 48.0).clamp(8.0, 96.0);
+                let step = (8.0 + (coarse - 8.0) * altitude_fade) as i32;
                 let normal = vec3(
                     h(x - step, y) - h(x + step, y),
                     h(x, y - step) - h(x, y + step),
@@ -384,13 +390,14 @@ impl Renderer {
                 }
                 // 视距越远按越大跨度做双线性采样，细碎纹样平均成较缓的明暗
                 let view_distance = (pos - camera.position).length();
-                let sample_step = (view_distance / 100.0).clamp(0.5, 16.0);
+                let coarse = (view_distance / 100.0).clamp(0.5, 16.0);
+                let sample_step = (coarse * altitude_fade).max(0.15);
                 let smooth_shade = (vertex_shade[0] * inverse[0] * u
                     + vertex_shade[1] * inverse[1] * v
                     + vertex_shade[2] * inverse[2] * w)
                     * reciprocal;
                 // 远处淡出面片明暗，收敛 LOD 边界的硬接缝
-                let smooth = ((view_distance - 500.0) / 900.0).clamp(0.0, 1.0);
+                let smooth = ((view_distance - 500.0) / 900.0).clamp(0.0, 1.0) * altitude_fade;
                 let shade = if faceted {
                     shade * (1.0 - smooth) + smooth_shade * smooth
                 } else {
@@ -417,7 +424,7 @@ impl Renderer {
                     {
                         0.65 + super::geology::stone_texel_lod(
                             sample,
-                            (view_distance.max(1.0) / 180.0).log2(),
+                            (view_distance.max(1.0) / 180.0).log2() * altitude_fade,
                         ) * 0.035
                     } else {
                         1.0
