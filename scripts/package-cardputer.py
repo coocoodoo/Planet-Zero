@@ -25,7 +25,9 @@ shutil.copy2(binary, app / "bin/flight-club-cardputer")
 shutil.copy2(icon, app / "share/images/flight-club.png")
 shutil.copy2(ROOT / "device/flight-club.desktop", app / "applications/flight-club.desktop")
 for name in ["README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]:
-    shutil.copy2(ROOT / name, stage / "usr/share/doc/flight-club" / name)
+    destination = stage / "usr/share/doc/flight-club" / name
+    shutil.copy2(ROOT / name, destination)
+    destination.chmod(0o644)
 (stage / "DEBIAN/control").write_text(
     f"Package: flight-club\nVersion: {version}\nArchitecture: arm64\n"
     "Maintainer: journey-ad <journey-ad@users.noreply.github.com>\n"
