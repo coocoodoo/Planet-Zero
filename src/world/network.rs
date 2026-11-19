@@ -301,6 +301,10 @@ impl Network {
             self.cache.remove(0);
         }
     }
+    pub fn loading(&self) -> bool {
+        self.job.is_some()
+    }
+
     pub fn poll(&mut self) {
         if self.job.as_ref().is_some_and(|(_, job)| job.is_finished()) {
             let (_, job) = self.job.take().unwrap();

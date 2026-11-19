@@ -119,6 +119,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
 #[macroquad::main(configuration)]
 async fn main() {
     let mut app = App::new(World::new(7));
+    app.perf.asynchronous = true;
     let args: Vec<_> = std::env::args().collect();
     if let Some(i) = args.iter().position(|a| a == "--capture") {
         capture(
@@ -182,7 +183,8 @@ async fn main() {
         (KeyCode::F10, k::PERF),
     ];
     loop {
-        let dt = get_frame_time().min(0.1);
+        let frame_dt = get_frame_time();
+        let dt = frame_dt.min(0.1);
         quality_notice = (quality_notice - dt).max(0.0);
         if is_key_pressed(KeyCode::F12) {
             let count = desktop::SCALES.len();
@@ -245,7 +247,7 @@ async fn main() {
         } else {
             "KEY"
         };
-        app.step(dt, Some(controls));
+        app.step(frame_dt, Some(controls));
         if let Some(audio) = &audio {
             audio.update(&mut app);
         }
@@ -264,6 +266,8 @@ async fn main() {
                 displayed_scale = scale;
             }
             frame_ms = frame.milliseconds;
+            app.perf
+                .record_render(frame.milliseconds as f32, frame.triangles, frame.detail);
             drawing.recycle(frame.pixels);
         }
         if app.page != Page::Chart {

@@ -20,6 +20,8 @@ pub struct Frame {
     pub pixels: Vec<u8>,
     pub scale: usize,
     pub milliseconds: f64,
+    pub triangles: u32,
+    pub detail: [f64; 4],
 }
 pub struct Drawing {
     send: mpsc::SyncSender<Scene>,
@@ -58,6 +60,8 @@ impl Drawing {
                     pixels: std::mem::take(&mut renderer.rgba),
                     scale,
                     milliseconds: started.elapsed().as_secs_f64() * 1000.0,
+                    triangles: renderer.triangles,
+                    detail: renderer.detail,
                 };
                 if frames.send(frame).is_err() {
                     break;

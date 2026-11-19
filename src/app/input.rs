@@ -113,6 +113,13 @@ impl App {
             }
             PERF => {
                 self.perf_show = !self.perf_show;
+                if self.perf_show {
+                    let target_fps = self.perf.target_fps;
+                    let asynchronous = self.perf.asynchronous;
+                    self.perf = PerfStats::default();
+                    self.perf.target_fps = target_fps;
+                    self.perf.asynchronous = asynchronous;
+                }
             }
             SOUND => {
                 self.audio_settings.profile = (self.audio_settings.profile + 1) % 4;

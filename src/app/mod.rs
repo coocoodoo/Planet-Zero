@@ -4,6 +4,8 @@ mod director;
 mod input;
 pub mod navigation;
 pub(crate) mod orbit;
+pub mod perf;
+pub use perf::PerfStats;
 mod records;
 mod settings;
 pub mod telemetry;
@@ -35,105 +37,6 @@ pub enum Page {
     Results,
     Help,
     Loading,
-}
-
-#[derive(Default)]
-pub struct PerfStats {
-    pub fps: f32,
-    pub fps_avg: f32,
-    pub fps_min: f32,
-    pub frame_ms: f32,
-    pub frame_peak: f32,
-    pub render_ms: f32,
-    pub cpu: f32,
-    pub mem_mb: f32,
-    pub curve: Vec<f32>,
-    window: f32,
-    age: f32,
-    cpu_secs: Option<f64>,
-}
-
-impl PerfStats {
-    fn record(&mut self, dt: f32) {
-        if self.frame_ms <= 0.0 {
-            self.frame_ms = dt * 1000.0;
-        }
-        self.frame_ms += (dt * 1000.0 - self.frame_ms) * 0.15;
-        self.frame_peak = self.frame_peak.max(self.frame_ms);
-        let instant = (1000.0 / self.frame_ms.max(0.1)).min(240.0);
-        self.fps += (instant - self.fps) * 0.15;
-        self.age += dt;
-        self.window += dt;
-        if self.age < 1.5 || self.window < 0.1 {
-            return;
-        }
-        let cpu = process_cpu_seconds();
-        if let (Some(now), Some(previous)) = (cpu, self.cpu_secs) {
-            let cores = cpu_cores().max(1.0);
-            let load = (now - previous) / self.window as f64 / cores as f64 * 100.0;
-            self.cpu += (load as f32 - self.cpu) * 0.4;
-        }
-        self.cpu_secs = cpu;
-        self.mem_mb = process_max_rss_mb().unwrap_or(0.0);
-        self.window = 0.0;
-        self.curve.push(self.fps);
-        if self.curve.len() > 96 {
-            self.curve.remove(0);
-        }
-        let settled = &self.curve[self.curve.len().min(5)..];
-        if !settled.is_empty() {
-            self.fps_avg = settled.iter().sum::<f32>() / settled.len() as f32;
-            self.fps_min = settled.iter().copied().fold(f32::INFINITY, f32::min);
-        }
-    }
-}
-
-#[cfg(unix)]
-fn process_cpu_seconds() -> Option<f64> {
-    unsafe {
-        let mut usage: libc::rusage = std::mem::zeroed();
-        if libc::getrusage(libc::RUSAGE_SELF, &mut usage) != 0 {
-            return None;
-        }
-        let user = usage.ru_utime.tv_sec as f64 + usage.ru_utime.tv_usec as f64 / 1_000_000.0;
-        let system = usage.ru_stime.tv_sec as f64 + usage.ru_stime.tv_usec as f64 / 1_000_000.0;
-        Some(user + system)
-    }
-}
-
-#[cfg(not(unix))]
-fn process_cpu_seconds() -> Option<f64> {
-    None
-}
-
-#[cfg(unix)]
-fn cpu_cores() -> f32 {
-    unsafe { libc::sysconf(libc::_SC_NPROCESSORS_ONLN).max(1) as f32 }
-}
-
-#[cfg(not(unix))]
-fn cpu_cores() -> f32 {
-    1.0
-}
-
-#[cfg(unix)]
-fn process_max_rss_mb() -> Option<f32> {
-    unsafe {
-        let mut usage: libc::rusage = std::mem::zeroed();
-        if libc::getrusage(libc::RUSAGE_SELF, &mut usage) != 0 {
-            return None;
-        }
-        #[cfg(target_os = "macos")]
-        let bytes = usage.ru_maxrss as f64;
-        #[cfg(not(target_os = "macos"))]
-        let bytes = usage.ru_maxrss as f64 * 1024.0;
-        Some((bytes / 1_048_576.0) as f32)
-    }
-}
-
-#[cfg(not(unix))]
-fn process_max_rss_mb() -> Option<f32> {
-    None
 }
 
 pub struct App {
@@ -370,8 +273,10 @@ impl App {
         self.keys.clear();
     }
     pub fn step(&mut self, dt: f32, external: Option<Controls>) {
+        if self.perf_show {
+            self.perf.record(dt);
+        }
         let dt = dt.clamp(0.0, 0.1);
-        self.perf.record(dt);
         self.network.poll();
         if let Some(route) = self.travel {
             if self.arrive(route) {
@@ -504,9 +409,11 @@ impl App {
     }
     pub fn draw(&mut self) {
         if self.page == Page::Chart {
+            self.perf.record_render(0.0, 0, [0.0; 4]);
             crate::ui::draw(self);
             return;
         }
+        let started = Instant::now();
         self.prepare_scene();
         let menu = self.scene_is_menu();
         self.renderer.render_connected(
@@ -518,7 +425,11 @@ impl App {
             Some(&self.network),
         );
         self.screen.copy_from_slice(&self.renderer.rgba);
-        self.perf.render_ms = self.renderer.stages.iter().sum::<f64>() as f32;
+        self.perf.record_render(
+            started.elapsed().as_secs_f32() * 1000.0,
+            self.renderer.triangles,
+            self.renderer.detail,
+        );
         crate::ui::draw(self);
     }
 }

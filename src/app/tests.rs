@@ -484,6 +484,7 @@ fn perf_stats_track_frames_and_triangles() {
     let mut app = App::new(World::new(7));
     app.record_path = None;
     app.start();
+    app.perf_show = true;
     for _ in 0..70 {
         app.step(1.0 / 30.0, None);
         app.draw();
@@ -491,7 +492,7 @@ fn perf_stats_track_frames_and_triangles() {
     assert!(app.renderer.triangles > 0);
     assert!(app.perf.render_ms > 0.0);
     assert!((app.perf.fps - 30.0).abs() < 5.0);
-    assert!(!app.perf.curve.is_empty());
+    assert!(!app.perf.frames.is_empty());
 }
 
 #[test]
@@ -605,4 +606,22 @@ fn daylight_pauses_freezes_and_keeps_phase_across_maps() {
     assert_eq!(app.flight.day_time, 0.0);
     let settings: super::settings::Settings = toml::from_str("dynamic_lighting = false").unwrap();
     assert!(!settings.dynamic_lighting);
+}
+
+#[test]
+fn performance_samples_unclamped_time_only_while_visible() {
+    let mut app = App::new(World::generate(crate::world::MapKind::Moon, 7));
+    app.step(0.3, None);
+    assert!(app.perf.frames.is_empty());
+    app.key(crate::keys::PERF, 1);
+    app.key(crate::keys::PERF, 0);
+    let before = app.flight.time;
+    app.step(0.3, None);
+    assert_eq!(app.perf.frames.back().unwrap().ms, 300.0);
+    assert!((app.flight.time - before - 0.1).abs() < 0.0001);
+    app.key(crate::keys::PERF, 1);
+    app.key(crate::keys::PERF, 0);
+    let count = app.perf.frames.len();
+    app.step(0.1, None);
+    assert_eq!(app.perf.frames.len(), count);
 }

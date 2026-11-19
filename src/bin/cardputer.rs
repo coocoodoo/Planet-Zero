@@ -364,6 +364,7 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
     } else {
         None
     };
+    game.perf.target_fps = options.fps as f32;
     let period = Duration::from_secs_f64(1.0 / options.fps as f64);
     let mut previous = Instant::now();
     let mut count = 0;
@@ -426,16 +427,27 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
             previous_state = Some(state);
         }
         previous = start;
+        let draw_start = Instant::now();
         game.draw();
         let drawn = Instant::now();
         display.present(&game.screen)?;
+        let presented = Instant::now();
         count += 1;
         if options.frames.is_some() {
             rendering.push((drawn - start).as_secs_f64() * 1000.0);
-            presenting.push(drawn.elapsed().as_secs_f64() * 1000.0);
+            presenting.push((presented - drawn).as_secs_f64() * 1000.0);
         }
+        let waiting = Instant::now();
         if let Some(wait) = period.checked_sub(start.elapsed()) {
             std::thread::sleep(wait);
+        }
+        if game.perf_show {
+            game.perf.last_timing = Some(flight_club::app::perf::FrameTiming {
+                logic: (draw_start - start).as_secs_f32() * 1000.0,
+                draw: (drawn - draw_start).as_secs_f32() * 1000.0,
+                present: (presented - drawn).as_secs_f32() * 1000.0,
+                wait: waiting.elapsed().as_secs_f32() * 1000.0,
+            });
         }
     }
     if !rendering.is_empty() {
