@@ -37,10 +37,10 @@ impl Camera {
         // 低空平飞或下降时相机额外俯视，让地面和地平线进入视野
         if !flight.space
             && flight.space_attitude.is_none()
-            && flight.surface.is_some()
+            && let Some(surface) = flight.surface
             && chase > 0.01
         {
-            let altitude = flight.surface.unwrap().body.surface_altitude();
+            let altitude = surface.body.surface_altitude();
             let approach = ((altitude - flight.view_altitude) / altitude).clamp(0.0, 1.0);
             let descent = (-flight.vertical_speed / 200.0).clamp(0.0, 1.0);
             let level = ((flight.pitch + 0.35) / 0.25).clamp(0.0, 1.0);

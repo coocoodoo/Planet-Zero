@@ -209,6 +209,7 @@ impl Flight {
     pub fn enter_region(&mut self, world: &World) {
         self.orbit_quiet = false;
         self.orbital_scenery = None;
+        self.planet_maps = [None, None];
         self.surface = None;
         self.sky_rotation = glam::Quat::IDENTITY;
         self.camera_adjustment = None;

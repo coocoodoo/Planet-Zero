@@ -356,6 +356,7 @@ impl App {
         self.flight.camera_adjustment = None;
         self.flight.orbit_quiet = false;
         self.flight.orbital_scenery = None;
+        self.flight.planet_maps = [None, None];
         self.page = Page::Menu;
         self.travel = None;
         self.flight.portal_transit = None;
@@ -486,8 +487,8 @@ impl App {
                 self.network.ensure(&self.world);
                 return;
             }
-            self.network
-                .preload(&self.world, self.flight.position, self.flight.axes()[1]);
+            let camera = crate::flight::Camera::new(&self.flight, WIDTH, HEIGHT);
+            self.network.preload(&self.world, &camera, (WIDTH, HEIGHT));
         }
     }
     pub fn scene_is_menu(&self) -> bool {

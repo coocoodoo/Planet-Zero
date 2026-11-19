@@ -94,6 +94,10 @@ impl App {
                     Body::Moon
                 },
             ] {
+                if body.altitude(self.flight.position) > 6000.0 {
+                    self.flight.planet_maps[body.index()] = None;
+                    continue;
+                }
                 let key = self.orbit_key(body).unwrap();
                 if let Some(world) = self.network.get(key) {
                     let slot = &mut self.flight.planet_maps[body.index()];

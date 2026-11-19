@@ -321,25 +321,33 @@ impl Network {
             self.job = Some((key, super::loader::spawn_world(key.kind, key.seed)));
         }
     }
-    pub fn preload(&mut self, world: &World, position: Vec3, forward: Vec3) {
+    pub fn preload(&mut self, world: &World, camera: &crate::flight::Camera, size: (usize, usize)) {
         self.ensure(world);
         self.poll();
         let mut routes = self.routes(world);
-        routes.sort_by(|a, b| {
-            let rank = |r: &Route| {
-                let delta = r.aperture.center - position;
-                delta.length_squared()
-                    * if delta.normalize_or_zero().dot(forward) > 0.3 {
-                        0.12
-                    } else {
-                        1.0
-                    }
-            };
-            rank(a).total_cmp(&rank(b))
-        });
         self.cache
             .retain(|world| routes.iter().any(|r| r.target == MapKey::of(world)));
-        for route in routes.iter().take(2) {
+        routes.retain(|route| {
+            if route.aperture.center.distance_squared(camera.position) > 3200.0_f32.powi(2) {
+                return false;
+            }
+            camera
+                .project(route.aperture.center)
+                .is_some_and(|(p, _, scale)| {
+                    let margin = route.aperture.radius * scale + 64.0;
+                    p.x + margin >= 0.0
+                        && p.x - margin <= size.0 as f32
+                        && p.y + margin >= 0.0
+                        && p.y - margin <= size.1 as f32
+                })
+        });
+        routes.sort_by(|a, b| {
+            a.aperture
+                .center
+                .distance_squared(camera.position)
+                .total_cmp(&b.aperture.center.distance_squared(camera.position))
+        });
+        for route in routes {
             if self.get(route.target).is_none() {
                 self.request(route.target);
                 break;
@@ -395,6 +403,44 @@ fn safe_aperture(world: &World, aperture: &mut Portal) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preloading_starts_when_a_portal_approaches_the_view() {
+        let world = World::generate(MapKind::Space, 1999);
+        let mut flight = crate::flight::Flight::new(&world);
+        flight.position = Vec3::ZERO;
+        flight.follow = Vec3::ZERO;
+        flight.yaw = 0.0;
+        flight.weights = [0.0, 1.0, 0.0];
+        let camera = crate::flight::Camera::new(&flight, 320, 170);
+        for (position, expected) in [
+            (vec3(0.0, 800.0, 0.0), false),
+            (vec3(2000.0, -800.0, 0.0), false),
+            (vec3(0.0, -4000.0, 0.0), false),
+            (vec3(0.0, -800.0, 0.0), true),
+        ] {
+            let mut network = Network::new(7);
+            network.links.clear();
+            network.add_link(
+                [
+                    MapKey::of(&world),
+                    MapKey {
+                        kind: MapKind::Space,
+                        seed: 8,
+                    },
+                ],
+                [
+                    Some(Portal {
+                        center: position,
+                        yaw: 0.0,
+                        radius: 48.0,
+                    }),
+                    None,
+                ],
+            );
+            network.preload(&world, &camera, (320, 170));
+            assert_eq!(network.job.is_some(), expected);
+        }
+    }
     #[test]
     fn replacing_portals_preserves_a_connected_two_exit_network() {
         let mut network = Network::new(7109);
