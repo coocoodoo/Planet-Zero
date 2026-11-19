@@ -207,14 +207,6 @@ impl Renderer {
             if samples.is_empty() {
                 continue;
             }
-            remote.clip_depth.resize(rw * rh, f32::NEG_INFINITY);
-            remote.clip_depth.fill(f32::NEG_INFINITY);
-            for &(x, y, depth, _) in &samples {
-                let rx = (x * rw / self.w).min(rw - 1);
-                let ry = (y * rh / self.h).min(rh - 1);
-                let at = rx * rh + ry;
-                remote.clip_depth[at] = remote.clip_depth[at].min(depth);
-            }
             remote.pixels.fill(0);
             remote.depth.fill(f32::INFINITY);
             remote.mask.fill(0);
@@ -225,15 +217,11 @@ impl Renderer {
             let ratio_y = rh as f32 / self.h as f32;
             view.center = vec2(camera.center.x * ratio_x, camera.center.y * ratio_y);
             view.scale = camera.scale * ratio_x;
-            remote.clip_plane = None;
             remote.near_depth = if expansion > 0.0 {
                 f32::NEG_INFINITY
             } else {
                 depth
             };
-            if expansion > 0.0 {
-                remote.clip_depth.clear();
-            }
             remote.column.resize(rw, rh as i32);
             for (column, visible) in remote.column.iter_mut().zip(&remote.visible) {
                 *column = visible.1;
@@ -498,6 +486,31 @@ mod tests {
 mod window_tests {
     use super::*;
     use crate::world::celestial::{Scenery, Structure};
+    #[test]
+    fn window_clips_scenery_in_front_of_the_exit() {
+        let mut world = World::generate(crate::world::MapKind::Space, 1999);
+        let entry = world.portals[0];
+        let exit = world.portals[1];
+        world.scenery = vec![Scenery {
+            position: exit.center - exit.normal() * 100.0,
+            yaw: 0.0,
+            scale: 1.0,
+            kind: Structure::Satellite,
+        }];
+        let mut flight = Flight::new(&world);
+        flight.position = entry.center + entry.normal() * 140.0;
+        flight.follow = flight.position;
+        flight.yaw = entry.yaw + std::f32::consts::PI;
+        flight.camera_yaw = -flight.yaw;
+        flight.weights = [0.0, 1.0, 0.0];
+        flight.wing_count = 0;
+        let mut renderer = Renderer::single();
+        renderer.render(&world, &flight, 320, 170, 0);
+        let before = renderer.rgba.clone();
+        world.scenery[0].yaw = 1.5;
+        renderer.render(&world, &flight, 320, 170, 0);
+        assert_eq!(before, renderer.rgba);
+    }
     #[test]
     fn window_renders_changes_at_the_remote_exit() {
         let mut world = World::generate(crate::world::MapKind::Space, 1999);

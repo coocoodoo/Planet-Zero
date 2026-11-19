@@ -95,8 +95,6 @@ pub struct Renderer {
     terrain_cache: terrain_cache::TerrainCache,
     workers: Vec<Renderer>,
     portal_view: Option<Box<Renderer>>,
-    clip_plane: Option<(Vec3, Vec3)>,
-    clip_depth: Vec<f32>,
     near_depth: f32,
     cockpit: crate::render::cockpit::Cockpit,
     visible: Vec<(i32, i32)>,
@@ -166,8 +164,6 @@ impl Renderer {
             terrain_cache: terrain_cache::TerrainCache::default(),
             workers: vec![],
             portal_view: None,
-            clip_plane: None,
-            clip_depth: vec![],
             near_depth: f32::NEG_INFINITY,
             cockpit: crate::render::cockpit::Cockpit::new(),
             visible: vec![],
@@ -442,13 +438,6 @@ impl Renderer {
                     worker.mask.resize(worker.w * h, 0);
                     worker.mask.fill(0);
                     worker.near_depth = self.near_depth;
-                    worker.clip_plane = self.clip_plane;
-                    worker.clip_depth.clear();
-                    if !self.clip_depth.is_empty() {
-                        worker
-                            .clip_depth
-                            .extend_from_slice(&self.clip_depth[start * h..end * h]);
-                    }
                     worker.depth.resize(worker.w * h, f32::INFINITY);
                     worker
                         .depth
@@ -474,6 +463,7 @@ impl Renderer {
                 let start = i * strip * h;
                 let end = start + worker.pixels.len();
                 self.pixels[start..end].copy_from_slice(&worker.pixels);
+                self.depth[start..end].copy_from_slice(&worker.depth);
             }
         }
     }
@@ -482,6 +472,38 @@ impl Renderer {
 #[cfg(test)]
 mod parallel_tests {
     use super::*;
+    #[test]
+    fn column_workers_preserve_depth_for_foreground_occlusion() {
+        let mut world = World::generate(crate::world::MapKind::Moon, 7);
+        world.portals.clear();
+        world.scenery.clear();
+        let mut flight = Flight::new(&world);
+        flight.position.z = 300.0;
+        flight.follow = flight.position;
+        flight.pitch = -0.45;
+        flight.weights = [0.0, 1.0, 0.0];
+        flight.wing_count = 0;
+        let mut renderer = Renderer::single();
+        renderer.workers = (0..3).map(|_| Renderer::single()).collect();
+        renderer.render(&world, &flight, 320, 170, 0);
+        let at = renderer.depth.iter().position(|d| d.is_finite()).unwrap();
+        let color = renderer.pixels[at];
+        renderer.point(
+            vec2((at / renderer.h) as f32, (at % renderer.h) as f32),
+            renderer.depth[at] + 100.0,
+            rgb(255, 0, 255),
+            0,
+            1,
+        );
+        assert_eq!(renderer.pixels[at], color);
+        for worker in &renderer.workers {
+            for (i, depth) in worker.depth.iter().enumerate() {
+                if depth.is_finite() {
+                    assert!(renderer.depth[worker.x_origin * renderer.h + i] <= *depth + 0.01);
+                }
+            }
+        }
+    }
     #[test]
     fn curved_surface_matches_between_single_and_column_workers() {
         use crate::world::orbit::{Body, SurfaceWarp};

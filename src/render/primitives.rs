@@ -34,21 +34,9 @@ impl TriangleColumns {
 
 impl Renderer {
     pub(super) fn world_line(&mut self, camera: &Camera, a: Vec3, b: Vec3, color: u32) {
-        let (mut a, mut b) = self
+        let (a, b) = self
             .warp
             .map_or((a, b), |warp| (warp.point(a), warp.point(b)));
-        if let Some((p, n)) = self.clip_plane {
-            let da = (a - p).dot(n);
-            let db = (b - p).dot(n);
-            if da < 0.0 && db < 0.0 {
-                return;
-            }
-            if da < 0.0 {
-                a = a.lerp(b, da / (da - db));
-            } else if db < 0.0 {
-                b = a.lerp(b, da / (da - db));
-            }
-        }
         if let (Some((a, da, _)), Some((b, db, _))) = (camera.project(a), camera.project(b)) {
             if a.distance(b) > self.full_width.max(1200) as f32 * 2.0 {
                 return;
@@ -72,40 +60,34 @@ impl Renderer {
     fn surface(&mut self, camera: &Camera, points: [Vec3; 3], color: u32, stone: bool) {
         let points = points.map(|point| self.warp.map_or(point, |warp| warp.point(point)));
         let forward = camera.forward;
-        let near = camera.position
-            + forward
-                * if camera.q > 0.00001 {
-                    -0.879 / camera.q
-                } else {
-                    -1e8
-                };
-        if points.iter().all(|p| {
-            (*p - near).dot(forward) >= 0.0
-                && self
-                    .clip_plane
-                    .is_none_or(|(origin, normal)| (*p - origin).dot(normal) >= 0.0)
-        }) {
+        let near_depth = if camera.q > 0.00001 {
+            -0.879 / camera.q
+        } else {
+            -1e8
+        }
+        .max(self.near_depth);
+        let near = camera.position + forward * near_depth;
+        if points.iter().all(|p| (*p - near).dot(forward) >= 0.0) {
             self.raster_triangle(camera, points, color, stone);
             return;
         }
-        let mut polygon = points.to_vec();
-        for (origin, normal) in std::iter::once((near, forward)).chain(self.clip_plane) {
-            let mut clipped = Vec::with_capacity(5);
-            for i in 0..polygon.len() {
-                let a = polygon[i];
-                let b = polygon[(i + 1) % polygon.len()];
-                let da = (a - origin).dot(normal);
-                let db = (b - origin).dot(normal);
-                if da >= 0.0 {
-                    clipped.push(a);
-                }
-                if (da >= 0.0) != (db >= 0.0) {
-                    clipped.push(a.lerp(b, da / (da - db)));
-                }
+        let mut polygon = [Vec3::ZERO; 4];
+        let mut count = 0;
+        for i in 0..3 {
+            let a = points[i];
+            let b = points[(i + 1) % 3];
+            let da = (a - near).dot(forward);
+            let db = (b - near).dot(forward);
+            if da >= 0.0 {
+                polygon[count] = a;
+                count += 1;
             }
-            polygon = clipped;
+            if (da >= 0.0) != (db >= 0.0) {
+                polygon[count] = a.lerp(b, da / (da - db));
+                count += 1;
+            }
         }
-        for i in 1..polygon.len().saturating_sub(1) {
+        for i in 1..count.saturating_sub(1) {
             self.raster_triangle(
                 camera,
                 [polygon[0], polygon[i], polygon[i + 1]],
@@ -176,12 +158,7 @@ impl Renderer {
                         u * da + v * db + w * dc
                     };
                     let at = x as usize * self.h + y as usize;
-                    if depth > self.depth[at] + 1.0
-                        || self
-                            .clip_depth
-                            .get(at)
-                            .is_some_and(|near| depth < *near - 1.0)
-                    {
+                    if depth > self.depth[at] + 1.0 {
                         continue;
                     }
                     let shaded = if stone {
@@ -218,16 +195,11 @@ impl Renderer {
                     && yy >= 0
                     && xx < self.w as i32
                     && yy < self.h as i32
-                    && (self.clip_depth.is_empty()
+                    && (self.near_depth == f32::NEG_INFINITY
                         || (yy >= self.visible[xx as usize].0 && yy < self.visible[xx as usize].1))
                 {
                     let at = xx as usize * self.h + yy as usize;
-                    if self.depth[at] >= depth - 1.0
-                        && self
-                            .clip_depth
-                            .get(at)
-                            .is_none_or(|near| depth >= *near - 1.0)
-                    {
+                    if self.depth[at] >= depth - 1.0 && depth >= self.near_depth - 1.0 {
                         self.pixels[at] = color;
                         self.mask[at] = mark;
                         if mark == 1 {

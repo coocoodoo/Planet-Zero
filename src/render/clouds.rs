@@ -30,7 +30,8 @@ impl Renderer {
             -0.88 / camera.q
         } else {
             -1e8
-        };
+        }
+        .max(self.near_depth);
         let upper = flight.weather.shade(grade(rgb(240, 248, 255), theme));
         let lower = flight.weather.shade(grade(rgb(153, 180, 214), theme));
         let rows: Vec<_> = (0..self.h)
@@ -75,7 +76,7 @@ impl Renderer {
                 if 1.0 + camera.q * depth < 0.12
                     || depth > far
                     || depth >= self.depth[at]
-                    || self.clip_depth.get(at).is_some_and(|d| depth < *d)
+                    || depth < self.near_depth
                 {
                     continue;
                 }

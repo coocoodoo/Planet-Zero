@@ -200,12 +200,6 @@ impl Renderer {
                     continue;
                 }
             }
-            if self
-                .clip_plane
-                .is_some_and(|(p, n)| (object.position - p).dot(n) < -100.0 * object.scale)
-            {
-                continue;
-            }
             self.structure(camera, object, time);
         }
     }

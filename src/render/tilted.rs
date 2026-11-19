@@ -386,7 +386,7 @@ impl Renderer {
                 } else {
                     orthographic_depth
                 };
-                if depth >= self.depth[at] || self.clip_depth.get(at).is_some_and(|d| depth < *d) {
+                if depth >= self.depth[at] || depth < self.near_depth {
                     continue;
                 }
                 // 视距越远按越大跨度做双线性采样，细碎纹样平均成较缓的明暗
