@@ -21,10 +21,10 @@ impl Body {
         if self == Self::Moon { 640.0 } else { 960.0 }
     }
     pub fn surface_altitude(self) -> f32 {
-        self.radius() * 1.5
+        self.radius()
     }
     pub fn orbit_altitude(self) -> f32 {
-        self.radius() * 4.0
+        self.radius() * (8.0 / 3.0)
     }
     pub fn attitude_freedom(self, altitude: f32) -> f32 {
         let high = self.surface_altitude();
@@ -194,7 +194,7 @@ pub fn smooth(t: f32) -> f32 {
 
 /// 高空大气稀薄度，0 表示海平面密度，1 表示真空
 pub fn thin_air(altitude: f32) -> f32 {
-    smooth((altitude - 500.0) / 700.0)
+    smooth((altitude - 1000.0 / 3.0) / (1400.0 / 3.0))
 }
 
 #[cfg(test)]

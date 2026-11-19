@@ -143,7 +143,7 @@ fn high_altitude_climb_accelerates_with_or_without_shift() {
     let mut app = app(MapKind::Moon);
     app.flight.pitch = 0.5;
     for (height, boost, climb, expected) in [
-        (450.0, true, 1.0, false),
+        (ARM_ALTITUDE - 10.0, true, 1.0, false),
         (700.0, false, 1.0, true),
         (700.0, true, 0.0, false),
         (700.0, true, 1.0, true),
@@ -247,7 +247,7 @@ fn ascent_and_descent_follow_manual_flight_and_preserve_velocity() {
 #[test]
 fn transition_holds_altitude_accepts_turns_reverses_and_pauses() {
     let mut app = ready_ascent(MapKind::Moon);
-    app.flight.position.z = 1800.0;
+    app.flight.position.z = 1200.0;
     app.flight.pitch = 0.0;
     let controls = Controls {
         manual: true,
@@ -264,7 +264,7 @@ fn transition_holds_altitude_accepts_turns_reverses_and_pauses() {
         forward = next;
     }
     assert!(app.orbit.transition.is_some());
-    assert!((app.flight.position.z - 1800.0).abs() < 0.01);
+    assert!((app.flight.position.z - 1200.0).abs() < 0.01);
     assert!(turning > 1.0);
     app.help_return = Page::Playing;
     for page in [Page::Paused, Page::Chart, Page::Help] {
@@ -576,7 +576,7 @@ fn descent_keeps_camera_scale_and_heading_stable() {
 #[test]
 fn curvature_depends_on_altitude_through_reversal() {
     let mut app = ready_ascent(MapKind::Moon);
-    for height in [1300.0, 1800.0, 2400.0, 1800.0, 1300.0] {
+    for height in [850.0, 1200.0, 1600.0, 1200.0, 850.0] {
         app.flight.position.z = height;
         let expected = Body::Moon.curvature(height);
         for pitch in [-0.6, 0.6, 0.0, -0.6] {
@@ -595,10 +595,10 @@ fn level_surface_flight_keeps_altitude_and_heading_across_a_pole() {
         1000.0,
         std::f32::consts::FRAC_PI_2 * crate::world::orbit::UV_SCALE - 10.0,
     );
-    let bend = Body::Moon.curvature(1800.0);
+    let bend = Body::Moon.curvature(1200.0);
     app.flight.surface = Some(SurfaceWarp::new(Body::Moon, glam::Vec2::ZERO, anchor, bend));
     app.flight
-        .translate(anchor.extend(1800.0) - app.flight.position);
+        .translate(anchor.extend(1200.0) - app.flight.position);
     app.flight.follow = app.flight.position;
     app.flight.yaw = std::f32::consts::PI;
     app.flight.pitch = 0.0;
@@ -619,7 +619,7 @@ fn level_surface_flight_keeps_altitude_and_heading_across_a_pole() {
                 .distance(app.flight.position)
                 < 0.01
         );
-        assert!((app.flight.position.z - 1800.0).abs() < 0.01);
+        assert!((app.flight.position.z - 1200.0).abs() < 0.01);
         let forward = surface.basis * app.flight.axes()[1];
         if let Some(before) = previous {
             assert!(forward.dot(before) > 0.99);

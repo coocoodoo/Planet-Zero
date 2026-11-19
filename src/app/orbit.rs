@@ -7,7 +7,7 @@ use crate::world::{
 use glam::{Quat, Vec3, vec3};
 use std::sync::Arc;
 
-pub const ARM_ALTITUDE: f32 = 500.0;
+pub const ARM_ALTITUDE: f32 = 1000.0 / 3.0;
 
 #[derive(Default)]
 pub struct Orbit {

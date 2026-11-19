@@ -1,44 +1,54 @@
 use super::*;
 
-pub(super) const HELP_PAGES: [[&str; 8]; 14] = [
+const HELP_PAGES: [[&str; 8]; 9] = [
     [
         "FLIGHT",
-        "UP PITCH UP",
-        "DOWN PITCH DOWN",
-        "LEFT TURN LEFT",
-        "RIGHT TURN RIGHT",
-        "SHIFT HOLD TO BOOST",
-        "Q ROLL LEFT",
-        "E ROLL RIGHT",
+        "UP / DOWN PITCH",
+        "LEFT / RIGHT TURN",
+        "SHIFT BOOST / LEAVE HOVER",
+        "ALT HOVER ON/OFF",
+        "Q / E ROLL LEFT / RIGHT",
+        "W A S D LOOK AROUND",
+        "SPACE CHANGE VIEW",
     ],
     [
         "INTERFACE",
-        "SPACE CHANGE VIEW",
-        "M NAVIGATION CHART",
-        "U HUD ON/OFF",
         "P PAUSE / RESUME",
+        "U HUD ON/OFF",
         "R RETRY CURRENT STAGE",
-        "F1 HELP ON/OFF",
-        "F2 SETTINGS ON/OFF",
+        "F1 HELP / F2 SETTINGS",
+        "F9 CHANGE SOUND MODE",
+        "F10 PERFORMANCE PANEL",
+        "ESC BACK / HOLD 2S TO EXIT",
     ],
     [
-        "FREE FLIGHT / EXPLORATION",
+        "DISPLAY / AEROBATICS",
+        "F11 FULLSCREEN",
+        "F12 NEXT HD SCALE",
+        "SHIFT+F12 PREVIOUS HD SCALE",
+        "UP / DOWN HOLD 3S, RELEASE",
+        "THEN TAP TWICE TO LOOP",
+        "LOOPS REQUIRE GROUND CLEARANCE",
+        "ENTER RETURN FROM HELP",
+    ],
+    [
+        "FREE FLIGHT",
         "1 CHANGE WEATHER",
         "2 CHANGE TIME OF DAY",
-        "3 SUMMON ONE WORMHOLE",
+        "3 SUMMON WORMHOLE",
         "4 CHANGE AIRCRAFT",
         "5 CHANGE WINGMEN COUNT",
-        "6 MODEL EXPANSION ON/OFF",
+        "6 EXPAND AIRCRAFT MODEL",
         "7 AUTOPILOT ON/OFF",
     ],
     [
-        "FREE FLIGHT / DIRECTOR",
+        "FREE FLIGHT / WORLD",
         "8 DIRECTOR SHOW ON/OFF",
         "9 CHANGE MAP",
         "0 GENERATE NEW TERRAIN",
-        "PORTAL APPEARS BEHIND CAMERA",
-        "CAMERA TURNS BEFORE WARP ENTRY",
-        "DIRECTOR : TWO WARP SEQUENCES",
+        "M OPEN NAVIGATION CHART",
+        "UP CLIMB TOWARD SPACE",
+        "FLY TOWARD A PLANET TO LAND",
         "DIRECTION KEYS TAKE CONTROL",
     ],
     [
@@ -48,100 +58,52 @@ pub(super) const HELP_PAGES: [[&str; 8]; 14] = [
         "3 RELEASE NOVA",
         "4 ACTIVATE OVERDRIVE",
         "5 AUTO FIRE ON/OFF",
-        "GRAZE BULLETS TO CHARGE OVERDRIVE",
-        "COLLECT WEAPONS SHIELDS ENERGY",
+        "LEFT / RIGHT SELECT WIN UPGRADE",
+        "ENTER NEXT STAGE / RETRY",
     ],
     [
-        "MISSIONS",
-        "RACE : CROSS GREEN GATES IN ORDER",
-        "COINS : 3-5 SECOND CHAIN / X10",
+        "RACE",
+        "FLY THROUGH GREEN GATES IN ORDER",
+        "SHIFT BOOST",
+        "ALT HOVER ON/OFF",
+        "P PAUSE / RESUME",
+        "R RESTART RACE",
         "ENTER NEXT STAGE AFTER WIN",
         "ENTER RETRY AFTER FAILURE",
-        "LEFT PREVIOUS COMBAT UPGRADE",
-        "RIGHT NEXT COMBAT UPGRADE",
-        "R REPLAY CURRENT STAGE",
     ],
     [
-        "MENU / SETTINGS",
-        "UP SELECT PREVIOUS ROW",
-        "DOWN SELECT NEXT ROW",
-        "LEFT SELECT PREVIOUS VALUE",
-        "RIGHT SELECT NEXT VALUE",
-        "ENTER ACTIVATE SELECTION",
-        "ENTER ON CONFIG : GO TO START",
-        "ESC RETURN",
+        "COIN RUN",
+        "COLLECT COINS TO BUILD A CHAIN",
+        "SHIFT BOOST",
+        "ALT HOVER ON/OFF",
+        "P PAUSE / RESUME",
+        "R RESTART COIN RUN",
+        "ENTER NEXT STAGE AFTER WIN",
+        "ENTER RETRY AFTER FAILURE",
     ],
     [
         "NAVIGATION CHART",
-        "UP PAN NORTH",
-        "DOWN PAN SOUTH",
-        "LEFT PAN WEST",
-        "RIGHT PAN EAST",
-        "1 ZOOM IN / MAX 512X",
-        "2 ZOOM OUT",
-        "SPACE MARK CROSSHAIR",
-    ],
-    [
-        "WAYPOINT NAVIGATION",
-        "3 FIND NEXT PORTAL",
-        "4 CENTER ON AIRCRAFT",
-        "ENTER AUTO NAV TO MARKER",
+        "ARROWS PAN / 1 AND 2 ZOOM",
+        "3 NEXT PORTAL / 4 CENTER",
+        "SPACE MARK / ENTER NAVIGATE",
+        "5 EARTH / 6 MOON IN SPACE",
+        "7 CHANGE LANDING IN SPACE",
         "M RETURN TO FLIGHT",
-        "DIRECTION KEY TAKES CONTROL",
-        "RING ARROW : FULL BEARING",
-        "CENTER ARROW : HEIGHT OFFSET",
-    ],
-    [
-        "AEROBATICS / DESKTOP",
-        "UP INSIDE LOOP",
-        "DOWN OUTSIDE LOOP",
-        "HOLD THE SAME DIRECTION 3S",
-        "RELEASE THEN TAP TWICE IN 0.3S",
-        "HIGH ALTITUDE REQUIRED",
-        "LONG HOLD : NORMAL PITCH",
-        "LOOP CONTINUES AFTER RELEASE",
-    ],
-    [
-        "DESKTOP / DISPLAY / SOUND",
-        "F10 CHANGE SOUND MODE",
-        "F11 FULLSCREEN",
-        "F12 NEXT HD SCALE",
-        "SHIFT+F12 PREVIOUS HD SCALE",
-        "HD SCALE : 1X / 2X / 4X / 8X",
-        "ESC BACK / PAUSE / RESUME",
-        "ESC HOLD 2S TO EXIT",
-    ],
-    [
-        "ORBIT / FREE FLIGHT",
-        "SHIFT HOLD TO BOOST",
-        "UP HOLD TO CLIMB",
-        "ALT 500 : ORBIT ENGINE",
-        "ALT 1200-3000 : ASCENT",
-        "FLY TOWARD EARTH OR MOON",
-        "APPROACH TO ENTER THE SURFACE",
-        "EARTH : RANDOM SURFACE MAP",
-    ],
-    [
-        "SPACE / FREE ROTATION",
-        "UP HOLD : PITCH UP",
-        "DOWN HOLD : PITCH DOWN",
-        "M OPEN ORBITAL CHART",
-        "5 SELECT EARTH ON CHART",
-        "6 SELECT MOON ON CHART",
-        "7 CHANGE LANDING ON CHART",
-        "ENTER START AUTO LANDING",
-    ],
-    [
-        "CAMERA LOOK",
-        "W LOOK UP",
-        "A LOOK LEFT",
-        "S LOOK DOWN",
-        "D LOOK RIGHT",
-        "MAX LOOK ANGLE : 30 DEGREES",
-        "RELEASE TO CENTER SMOOTHLY",
-        "AIRCRAFT HEADING STAYS THE SAME",
+        "DIRECTION KEYS TAKE CONTROL",
     ],
 ];
+
+fn help_pages(mode: Mode) -> &'static [usize] {
+    match mode {
+        Mode::Free => &[0, 1, 2, 3, 4, 8],
+        Mode::Combat => &[0, 1, 2, 5],
+        Mode::Race => &[0, 1, 2, 6],
+        Mode::Coins => &[0, 1, 2, 7],
+    }
+}
+pub(crate) fn help_page_count(mode: Mode) -> usize {
+    help_pages(mode).len()
+}
 
 fn control_label(line: &str) -> String {
     for (direction, key) in [
@@ -156,39 +118,21 @@ fn control_label(line: &str) -> String {
     }
     line.to_owned()
 }
-fn help_page(index: usize, device: bool) -> [&'static str; 8] {
-    if device && index == 9 {
+fn help_page(mode: Mode, index: usize, device: bool) -> [&'static str; 8] {
+    let index = help_pages(mode)[index];
+    if device && index == 2 {
         [
-            "AEROBATICS / CARDPUTER",
-            "UP INSIDE LOOP",
-            "DOWN OUTSIDE LOOP",
-            "HOLD THE SAME DIRECTION 3S",
-            "RELEASE THEN TAP TWICE IN 0.3S",
-            "HIGH ALTITUDE REQUIRED",
-            "IMU TILT : NORMAL FLIGHT",
-            "LOOP CONTINUES AFTER RELEASE",
-        ]
-    } else if device && index == 10 {
-        [
-            "CARDPUTER / MOTION / SOUND",
+            "MOTION / AEROBATICS",
             "I IMU ON/OFF",
             "K RECENTER IMU",
             "HOLD STILL WHILE CALIBRATING",
-            "F10 CHANGE SOUND MODE",
-            "DISPLAY : NATIVE 320 X 170",
-            "ESC BACK / PAUSE / RESUME",
-            "ESC HOLD 2S TO LAUNCHER",
+            "UP / DOWN HOLD 3S, RELEASE",
+            "THEN TAP TWICE TO LOOP",
+            "LOOPS REQUIRE GROUND CLEARANCE",
+            "ENTER RETURN FROM HELP",
         ]
     } else {
-        let mut page = HELP_PAGES[index];
-        if index == 0 {
-            page[0] = if device {
-                "FLIGHT / CARDPUTER"
-            } else {
-                "FLIGHT / DESKTOP"
-            };
-        }
-        page
+        HELP_PAGES[index]
     }
 }
 
@@ -292,12 +236,12 @@ pub fn draw(app: &mut App) {
     if app.page == Page::Help {
         c.shade(6, 6, 308, 158);
         c.rect(6, 6, 2, 158, CYAN);
-        let page = help_page(app.help_page, app.device_controls);
+        let page = help_page(app.mode, app.help_page, app.device_controls);
         c.text(14, 16, page[0], GOLD);
         c.text(
             266,
             16,
-            &format!("{}/{}", app.help_page + 1, HELP_PAGES.len()),
+            &format!("{}/{}", app.help_page + 1, help_page_count(app.mode)),
             GOLD,
         );
         for (i, line) in page[1..].iter().enumerate() {

@@ -423,7 +423,7 @@ impl Flight {
             return;
         }
         let high_altitude = if self.orbit_flight {
-            crate::world::orbit::smooth((self.position.z - 500.0) / 700.0)
+            crate::world::orbit::thin_air(self.position.z)
         } else {
             0.0
         };
@@ -475,8 +475,10 @@ impl Flight {
                 let pitch_error = angle(input * NORMAL_PITCH - self.pitch);
                 let target_rate = if self.loop_remaining > 0.0 {
                     self.loop_direction * LOOP_RATE
-                } else {
+                } else if controls.pitch_target.is_some() || input == 0.0 {
                     pitch_error * 2.0
+                } else {
+                    input * 1.15
                 };
                 self.pitch_rate += (target_rate - self.pitch_rate) * ease(5.0, dt);
                 let mut rotation = self.pitch_rate * dt;
@@ -484,6 +486,12 @@ impl Flight {
                     rotation = self.loop_direction * rotation.abs().min(self.loop_remaining);
                     self.loop_remaining = (self.loop_remaining - rotation.abs()).max(0.0);
                     if self.loop_remaining == 0.0 {
+                        self.pitch_rate = 0.0;
+                    }
+                } else if controls.pitch_target.is_none() && input != 0.0 {
+                    rotation =
+                        (self.pitch + rotation).clamp(-NORMAL_PITCH, NORMAL_PITCH) - self.pitch;
+                    if rotation == 0.0 {
                         self.pitch_rate = 0.0;
                     }
                 } else if rotation * pitch_error > 0.0 && rotation.abs() > pitch_error.abs() {

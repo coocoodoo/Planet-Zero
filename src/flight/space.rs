@@ -52,7 +52,11 @@ impl Flight {
             let loop_active = self.loop_remaining > 0.0;
             let limit = NORMAL_PITCH + freedom * (std::f32::consts::FRAC_PI_2 - NORMAL_PITCH);
             let input = controls.climb.clamp(-1.0, 1.0);
-            let leveling = angle(input * limit - self.pitch) * 2.0 * (1.0 - freedom);
+            let leveling = if controls.pitch_target.is_some() || input == 0.0 {
+                angle(input * limit - self.pitch) * 2.0 * (1.0 - freedom)
+            } else {
+                0.0
+            };
             let goal = if controls.heading_only {
                 0.0
             } else if loop_active {
@@ -60,7 +64,7 @@ impl Flight {
             } else if controls.pitch_target.is_some() {
                 leveling
             } else {
-                leveling + input * 1.15 * freedom
+                leveling + input * 1.15
             };
             if freedom == 1.0 && goal == 0.0 {
                 self.pitch_rate = 0.0;

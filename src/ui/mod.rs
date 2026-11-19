@@ -14,7 +14,7 @@ use crate::gameplay::Mode;
 use canvas::*;
 use combat::combat_hud;
 
-pub(crate) const HELP_PAGE_COUNT: usize = menus::HELP_PAGES.len();
+pub(crate) use menus::help_page_count;
 
 pub fn draw(app: &mut App) {
     if app.page == Page::Chart {

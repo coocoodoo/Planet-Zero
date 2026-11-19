@@ -173,11 +173,13 @@ impl App {
             Page::Help => {
                 match code {
                     LEFT => {
-                        self.help_page = (self.help_page + crate::ui::HELP_PAGE_COUNT - 1)
-                            % crate::ui::HELP_PAGE_COUNT;
+                        self.help_page = (self.help_page + crate::ui::help_page_count(self.mode)
+                            - 1)
+                            % crate::ui::help_page_count(self.mode);
                     }
                     RIGHT => {
-                        self.help_page = (self.help_page + 1) % crate::ui::HELP_PAGE_COUNT;
+                        self.help_page =
+                            (self.help_page + 1) % crate::ui::help_page_count(self.mode);
                     }
                     ENTER | HELP => self.page = self.help_return,
                     _ => {}
