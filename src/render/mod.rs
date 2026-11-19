@@ -94,6 +94,7 @@ fn grade(c: u32, theme: usize) -> u32 {
 
 pub struct Renderer {
     light: lighting::Lighting,
+    scenery_fog: Option<(f32, f32, u32)>,
     warp: Option<crate::world::orbit::SurfaceWarp>,
     terrain_cache: terrain_cache::TerrainCache,
     workers: Vec<Renderer>,
@@ -166,6 +167,7 @@ impl Renderer {
         }
         Self {
             light: lighting::Lighting::default(),
+            scenery_fog: None,
             warp: None,
             terrain_cache: terrain_cache::TerrainCache::default(),
             workers: vec![],
@@ -403,7 +405,14 @@ impl Renderer {
             self.orbital_bodies(world, camera, flight);
         }
         let started = std::time::Instant::now();
+        if !world.kind.vacuum() {
+            let (start, end) = flight.weather.visibility(camera.position.z);
+            let bend = self.warp.map_or(0.0, |warp| warp.bend) * 10000.0;
+            let (start, end) = (start.min(3900.0) + bend, end.min(4200.0) + bend);
+            self.scenery_fog = Some((start, 1.0 / (end - start), self.light.haze(flight.weather)));
+        }
         self.scenery(world, camera, flight.time, 1.0);
+        self.scenery_fog = None;
         self.warp = None;
         if let (Some(space), Some(surface)) = (&flight.orbital_scenery, flight.surface) {
             let mut view = *camera;
@@ -628,5 +637,36 @@ mod parallel_tests {
             }
         }
         assert_ne!(renderer.pixels, before);
+    }
+
+    #[test]
+    fn fog_hides_distant_buildings_and_keeps_nearby_geometry() {
+        use crate::world::celestial::{Scenery, Structure};
+        let mut world = World::generate(crate::world::MapKind::City, 7);
+        world.scenery.clear();
+        world.portals.clear();
+        world.clouds.clear();
+        let mut flight = Flight::new(&world);
+        flight.position.z = 240.0;
+        flight.follow = flight.position;
+        flight.weights = [0.0, 1.0, 0.0];
+        flight.wing_count = 0;
+        flight.weather =
+            crate::content::weather::WeatherState::new(Weather::Fog, world.kind, world.seed);
+        let camera = Camera::new(&flight, 320, 170);
+        let mut renderer = Renderer::single();
+        renderer.render(&world, &flight, 320, 170, 0);
+        let empty = renderer.rgba.clone();
+        world.scenery.push(Scenery {
+            position: camera.position + camera.forward * 600.0,
+            yaw: 0.0,
+            scale: 1.0,
+            kind: Structure::Building,
+        });
+        renderer.render(&world, &flight, 320, 170, 0);
+        assert_eq!(renderer.rgba, empty);
+        world.scenery[0].position = camera.position + camera.forward * 100.0;
+        renderer.render(&world, &flight, 320, 170, 0);
+        assert_ne!(renderer.rgba, empty);
     }
 }

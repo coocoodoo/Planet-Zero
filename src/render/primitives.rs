@@ -33,6 +33,13 @@ impl TriangleColumns {
 }
 
 impl Renderer {
+    fn fogged_scenery(&self, color: u32, depth: f32) -> u32 {
+        self.scenery_fog
+            .map_or(color, |(start, inverse_range, haze)| {
+                mix(color, haze, (depth - start) * inverse_range)
+            })
+    }
+
     pub(super) fn world_line(&mut self, camera: &Camera, a: Vec3, b: Vec3, color: u32) {
         let (a, b) = self
             .warp
@@ -217,7 +224,7 @@ impl Renderer {
                     } else {
                         color
                     };
-                    self.pixels[at] = shaded;
+                    self.pixels[at] = self.fogged_scenery(shaded, depth);
                     self.mask[at] = 1;
                     self.depth[at] = self.depth[at].min(depth);
                 }
@@ -234,6 +241,7 @@ impl Renderer {
         }
     }
     pub(super) fn point(&mut self, p: Vec2, depth: f32, color: u32, radius: i32, mark: u8) {
+        let color = self.fogged_scenery(color, depth);
         let x = p.x.round() as i32;
         let y = p.y.round() as i32;
         for yy in y - radius..=y + radius {

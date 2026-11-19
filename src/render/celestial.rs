@@ -253,6 +253,12 @@ impl Renderer {
             } {
                 let half = bounds * object.scale;
                 let delta = object.position + Vec3::Z * half.z - camera.position;
+                if let Some((start, inverse_range, _)) = self.scenery_fog
+                    && delta.dot(camera.forward) - half.dot(camera.forward.abs())
+                        >= start + inverse_range.recip()
+                {
+                    continue;
+                }
                 let bounds = [
                     (camera.right * camera.scale, camera.center.x),
                     (
