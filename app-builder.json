@@ -1,6 +1,6 @@
 {
   "package_name": "flight-club",
-  "version": "0.19.7",
+  "version": "0.19.8",
   "app_name": "Flight Club",
   "bin_name": "flight-club-cardputer",
   "description": "Pixel flight game for Cardputer Zero",
