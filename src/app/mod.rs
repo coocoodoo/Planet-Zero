@@ -441,16 +441,16 @@ impl App {
         .clamp_length_max(1.0)
             * 30.0_f32.to_radians();
         self.flight.camera_look += (look - self.flight.camera_look) * crate::flight::ease(7.0, dt);
-        let mut controls = self
-            .navigation_controls()
-            .unwrap_or_else(|| external.unwrap_or_else(|| self.controls()));
-        // 俯瞰视角只调整航向，屏蔽俯仰和高度输入
-        self.flight.overhead = self.flight.weights[0] > 0.5;
-        if self.flight.overhead && controls.manual {
+        let mut controls = external.unwrap_or_else(|| self.controls());
+        // 俯瞰限制作用于玩家输入，导航与地形保护保持完整控制
+        controls.heading_only = self.flight.weights[0] > 0.5 && controls.manual;
+        if controls.heading_only {
             controls.climb = 0.0;
             controls.bank = None;
+            controls.pitch_target = None;
         }
-        // 悬停中按加速（开始移动）自动退出悬停并恢复油门；方向键只调整姿态
+        let mut controls = self.navigation_controls().unwrap_or(controls);
+        // 悬停中按加速恢复油门，方向键调整姿态
         if self.flight.hover && controls.manual && controls.boost {
             self.flight.hover = false;
             controls.throttle = Some(1.0);

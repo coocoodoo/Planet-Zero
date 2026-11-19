@@ -35,6 +35,8 @@ pub struct Controls {
     pub direction: Option<Vec3>,
     pub throttle: Option<f32>,
     pub bank: Option<f32>,
+    pub pitch_target: Option<f32>,
+    pub heading_only: bool,
     pub aerobatic: bool,
     pub turn: f32,
     pub climb: f32,
@@ -56,8 +58,6 @@ pub struct Flight {
     pub space: bool,
     /// 悬停模式：油门归零，保持当前高度，可自由转向
     pub hover: bool,
-    /// 俯瞰视角：只调整航向，不改变俯仰和高度
-    pub overhead: bool,
     pub warp_flash: f32,
     pub portal_transit: Option<PortalTransit>,
     portal_cooldown: f32,
@@ -126,7 +126,6 @@ impl Flight {
             wingmen: Vec::new(),
             space: world.kind == crate::world::MapKind::Space,
             hover: false,
-            overhead: false,
             warp_flash: 0.0,
             portal_transit: None,
             portal_cooldown: 0.0,
@@ -328,6 +327,8 @@ impl Flight {
             boost,
             manual: true,
             bank: None,
+            pitch_target: None,
+            heading_only: false,
             aerobatic: false,
             orbital: false,
         }
@@ -373,6 +374,10 @@ impl Flight {
             None
         };
         let controls = scripted.as_ref().unwrap_or(controls);
+        if controls.heading_only {
+            self.loop_remaining = 0.0;
+            self.pitch_rate = 0.0;
+        }
         self.time += dt;
         self.frame_drift *= (-dt * 3.0).exp();
         if let Some(adjustment) = &mut self.camera_adjustment {
@@ -433,7 +438,7 @@ impl Flight {
             .unwrap_or(self.rate / self.vehicle.turn() * 52.0_f32.to_radians())
             - self.bank)
             * ease(5.0, dt);
-        let manual_attitude = controls.manual && controls.aerobatic;
+        let manual_attitude = controls.manual && controls.aerobatic && !controls.heading_only;
         if manual_attitude {
             let input = controls.climb.clamp(-1.0, 1.0);
             if self.hover && self.loop_remaining <= 0.0 {
@@ -478,7 +483,7 @@ impl Flight {
         let proposed = self.position + (horizontal * self.speed + self.frame_drift) * dt;
         let (_, ahead_climb) =
             flight_floor(world, self.position, horizontal, self.speed, self.rate);
-        let mut climb = if (self.hover || self.overhead) && self.loop_remaining <= 0.0 {
+        let mut climb = if (self.hover || controls.heading_only) && self.loop_remaining <= 0.0 {
             0.0
         } else if manual_attitude {
             forward.z * self.speed
@@ -488,7 +493,7 @@ impl Flight {
             (110.0 - self.position.z) * 0.6
         };
         // 悬停时不按前方地形抬高，保持当前高度
-        let terrain_guard = !self.overhead && throttle > 0.0 && ahead_climb > climb;
+        let terrain_guard = throttle > 0.0 && ahead_climb > climb;
         if terrain_guard {
             climb = ahead_climb;
         }
@@ -506,7 +511,7 @@ impl Flight {
         } else {
             24.0
         };
-        if self.hover {
+        if self.hover || (controls.heading_only && !terrain_guard) {
             self.vertical_speed = 0.0;
         } else {
             self.vertical_speed +=
@@ -532,7 +537,7 @@ impl Flight {
             self.vertical_speed = actual_climb;
         }
         self.view_altitude += (self.position.z - self.view_altitude) * ease(3.0, dt);
-        if !manual_attitude && !guarded {
+        if !manual_attitude && !guarded && !controls.heading_only {
             self.pitch += angle((actual_climb / self.speed).clamp(-0.7, 0.9).asin() - self.pitch)
                 * ease(4.0, dt);
         }

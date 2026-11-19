@@ -104,6 +104,9 @@ impl Game {
             }
             if controls.climb == 0.0 {
                 controls.climb = pitch;
+                if self.flight.space {
+                    controls.pitch_target = Some(pitch * (std::f32::consts::FRAC_PI_2 - 0.02));
+                }
             }
             controls.manual = true;
         }

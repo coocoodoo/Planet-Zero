@@ -502,6 +502,7 @@ fn overhead_view_controls_only_heading() {
     app.navigation.active = false;
     app.flight.space = false;
     app.flight.surface = None;
+    app.flight.pitch = 0.4;
     app.flight.weights = [1.0, 0.0, 0.0];
     app.flight.position = glam::vec3(0.0, 0.0, 3000.0);
     app.flight.follow = app.flight.position;
@@ -512,6 +513,7 @@ fn overhead_view_controls_only_heading() {
             1.0 / 30.0,
             Some(Controls {
                 manual: true,
+                aerobatic: true,
                 turn: 0.5,
                 climb: 1.0,
                 bank: Some(0.5),
@@ -528,4 +530,29 @@ fn overhead_view_controls_only_heading() {
         (app.flight.pitch - pitch).abs() < 0.01,
         "俯瞰视角不应改变俯仰"
     );
+}
+
+#[test]
+fn overhead_navigation_keeps_altitude_control() {
+    use crate::world::{MapKind, network::MapKey};
+    let mut app = App::new(World::generate(MapKind::Desert, 1999));
+    app.start();
+    app.auto = false;
+    app.record_path = None;
+    app.flight.view = 0;
+    app.flight.weights = [1.0, 0.0, 0.0];
+    app.flight.position = glam::vec3(0.0, 0.0, 500.0);
+    app.flight.follow = app.flight.position;
+    app.flight.yaw = 0.0;
+    app.navigation.target = Some(super::navigation::Waypoint {
+        map: MapKey::of(&app.world),
+        position: glam::vec3(0.0, -600.0, 700.0),
+        portal: None,
+        body: None,
+    });
+    app.navigation.active = true;
+    for _ in 0..90 {
+        app.step(1.0 / 30.0, None);
+    }
+    assert!(app.flight.position.z > 600.0);
 }

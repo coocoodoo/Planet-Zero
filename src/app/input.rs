@@ -54,6 +54,8 @@ impl App {
                 Some(1.0)
             },
             bank: None,
+            pitch_target: None,
+            heading_only: false,
             aerobatic: true,
             turn: held(RIGHT) - held(LEFT),
             climb: held(UP) - held(DOWN),

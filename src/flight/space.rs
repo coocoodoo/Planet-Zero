@@ -43,8 +43,12 @@ impl Flight {
             self.rate +=
                 (controls.turn.clamp(-1.0, 1.0) * self.vehicle.turn() - self.rate) * ease(5.0, dt);
             let loop_active = self.loop_remaining > 0.0;
-            let goal = if loop_active {
+            let goal = if controls.heading_only {
+                0.0
+            } else if loop_active {
                 self.loop_direction * LOOP_RATE
+            } else if let Some(target) = controls.pitch_target {
+                (target - self.pitch) * 2.0
             } else {
                 controls.climb.clamp(-1.0, 1.0) * 1.15
             };
@@ -57,8 +61,8 @@ impl Flight {
             q = q * Quat::from_rotation_z(self.rate * dt) * Quat::from_rotation_x(-pitch);
             // 太空跟随 IMU 的机翼滚转，让左右倾斜与大气内一致
             if let Some(target) = controls.bank {
-                let delta = (target - self.bank) * ease(6.0, dt);
-                q = q * Quat::from_rotation_y(delta);
+                let delta = angle(target - self.bank) * ease(6.0, dt);
+                q *= Quat::from_rotation_y(delta);
             }
         }
         self.space_attitude = Some(q.normalize());
@@ -66,7 +70,7 @@ impl Flight {
         let base = self.vehicle.speed() * (1.0 + self.boost * 0.8 + self.orbital_thrust * 3.0);
         // 悬停模式油门为 0，速度归零并保持位置
         let throttle = controls.throttle.unwrap_or(1.0).clamp(0.0, 1.0);
-        // 悬停（油门归零）时快速制动，避免长时间滑行
+        // 油门归零时快速制动
         let rate = if throttle > 0.0 { 4.0 } else { 10.0 };
         self.speed += (base * throttle - self.speed) * ease(rate, dt);
         let velocity = self.axes()[1] * self.speed + self.frame_drift;

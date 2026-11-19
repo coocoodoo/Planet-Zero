@@ -702,11 +702,14 @@ fn overhead_blocks_climb_and_keeps_pitch() {
     let mut flight = Flight::new(&world);
     flight.space = false;
     flight.surface = None;
-    flight.overhead = true;
+    flight.pitch = 0.4;
+    flight.vertical_speed = -40.0;
     flight.position = glam::vec3(0.0, 0.0, 3000.0);
     flight.follow = flight.position;
     let controls = Controls {
         manual: true,
+        aerobatic: true,
+        heading_only: true,
         turn: 0.5,
         climb: 1.0,
         ..Default::default()

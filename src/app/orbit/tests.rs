@@ -5,6 +5,8 @@ fn app(kind: MapKind) -> App {
     app.start();
     app.auto = false;
     app.record_path = None;
+    app.flight.view = 1;
+    app.flight.weights = [0.0, 1.0, 0.0];
     app
 }
 
@@ -20,6 +22,38 @@ fn ready_ascent(kind: MapKind) -> App {
         .remember(World::generate(MapKind::Space, MapKind::Space.seed()).into());
     assert!(app.step_orbit(0.03));
     app
+}
+
+#[cfg(feature = "cardputer")]
+#[test]
+fn steady_imu_pitch_settles_after_ascent_without_keyboard_input() {
+    let mut game = crate::cardputer::Game {
+        app: ready_ascent(MapKind::Moon),
+        motion: crate::cardputer::imu::Motion {
+            pitch: 0.5,
+            available: true,
+            ready: true,
+            ..Default::default()
+        },
+        imu_enabled: true,
+        calibrate_imu: false,
+    };
+    for _ in 0..1800 {
+        game.step(1.0 / 30.0);
+        if game.world.kind == MapKind::Space {
+            break;
+        }
+    }
+    assert_eq!(game.world.kind, MapKind::Space);
+    for _ in 0..300 {
+        game.step(1.0 / 30.0);
+    }
+    let forward = game.flight.axes()[1];
+    for _ in 0..300 {
+        game.step(1.0 / 30.0);
+        assert!(forward.distance(game.flight.axes()[1]) < 0.01);
+    }
+    assert!(game.flight.pitch > 1.4);
 }
 
 #[test]
