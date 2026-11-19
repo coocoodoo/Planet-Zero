@@ -4,6 +4,7 @@ mod clouds;
 mod cockpit;
 mod geology;
 mod landmarks;
+mod monuments;
 mod objects;
 mod orbit;
 mod palette;

@@ -38,6 +38,22 @@ fn maps_have_distinct_terrain_and_valid_periodic_samples() {
             world.height(124.0, 71.0)
         );
         assert!(world.height(world.spawn.0, world.spawn.1) < 200.0);
+        for object in &world.scenery {
+            if let Some(size) = object.kind.landmark_size() {
+                let ground = world.heights
+                    [index(object.position.x as i32, object.position.y as i32, SIZE)]
+                    as f32;
+                assert!((object.position.z - ground).abs() < 1.0);
+                assert!(
+                    world.height(object.position.x, object.position.y)
+                        >= object.position.z + size.z * object.scale - 1.0
+                );
+            }
+        }
+        if kind == MapKind::Alpine {
+            assert!(world.height(2048.0, 2200.0) > 220.0);
+            assert_eq!(world.materials[index(2048, 2200, SIZE)], 15);
+        }
     }
 }
 

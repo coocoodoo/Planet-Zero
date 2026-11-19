@@ -171,7 +171,9 @@ impl Renderer {
                 Structure::House => Some(vec3(22.0, 22.0, 10.0)),
                 Structure::Warehouse => Some(vec3(40.0, 40.0, 12.0)),
                 Structure::IceSpire | Structure::Boulder => Some(vec3(12.0, 12.0, 24.0)),
-                _ => None,
+                kind => kind
+                    .landmark_size()
+                    .map(|size| vec3(size.x + size.y, size.x + size.y, size.z / 2.0)),
             } {
                 let half = bounds * object.scale;
                 let delta = object.position + Vec3::Z * half.z - camera.position;
@@ -214,6 +216,16 @@ impl Renderer {
         let panel = rgb(37, 73, 137);
         let light = rgb(118, 232, 248);
         match object.kind {
+            Structure::Pyramid
+            | Structure::Eiffel
+            | Structure::Torii
+            | Structure::Pavilion
+            | Structure::StaveChurch
+            | Structure::Castle
+            | Structure::Temple
+            | Structure::SplitGate
+            | Structure::PolarStation => self.monument(camera, object),
+            Structure::Fuji => {}
             Structure::House | Structure::Warehouse => self.settlement(camera, object),
             Structure::Arch
             | Structure::Cave

@@ -53,3 +53,9 @@ kind = "windmill"
 position = [2800.0, 2850.0, 0.0]
 yaw = 0.2
 scale = 1.2
+
+[[landmarks]]
+kind = "castle"
+position = [2180.0, 2450.0, 0.0]
+yaw = 3.1415927
+scale = 1.0

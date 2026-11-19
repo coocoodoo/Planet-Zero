@@ -35,3 +35,9 @@ kind = "rockstack"
 position = [2420.0, 1820.0, 0.0]
 yaw = 0.2
 scale = 1.2
+
+[[landmarks]]
+kind = "temple"
+position = [2400.0, 2600.0, 0.0]
+yaw = 3.1415927
+scale = 1.0

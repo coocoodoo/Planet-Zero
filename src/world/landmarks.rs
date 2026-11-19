@@ -6,13 +6,84 @@ impl World {
     pub(super) fn add_landmarks(&mut self) {
         for landmark in &crate::content::maps::definition(self.kind).landmarks {
             let mut position = Vec3::from_array(landmark.position);
-            position.z += self.height(position.x, position.y);
+            if landmark.kind == Structure::Fuji {
+                self.mount_fuji(position.x, position.y);
+                continue;
+            }
+            position.z += if let Some(size) = landmark.kind.landmark_size() {
+                self.landmark_site(position.x, position.y, size * landmark.scale)
+            } else {
+                self.height(position.x, position.y)
+            };
             self.place_landmark(Scenery {
                 position,
                 yaw: landmark.yaw,
                 scale: landmark.scale,
                 kind: landmark.kind,
             });
+        }
+        let scenery = std::mem::take(&mut self.scenery);
+        self.obstacles.clear();
+        for object in scenery {
+            self.place_landmark(object);
+        }
+    }
+    fn landmark_site(&mut self, x: f32, y: f32, size: Vec3) -> f32 {
+        let radius = size.truncate().length() + 8.0;
+        let height = (self.heights[index(x as i32, y as i32, SIZE)] as f32)
+            .max(6.0)
+            .min(254.0 - size.z);
+        self.scenery.retain(|object| {
+            let delta = object.position.truncate() - glam::vec2(x, y);
+            delta.length() > radius + 45.0 * object.scale
+        });
+        let material = match self.kind {
+            MapKind::Desert => 17,
+            MapKind::City => 33,
+            MapKind::Icebergs => 15,
+            MapKind::Canyon => 19,
+            MapKind::Volcanic => 21,
+            _ => 12,
+        };
+        let extent = (radius + 24.0).ceil() as i32;
+        for dy in -extent..=extent {
+            for dx in -extent..=extent {
+                let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                let blend = ((radius + 24.0 - distance) / 24.0).clamp(0.0, 1.0);
+                if blend == 0.0 {
+                    continue;
+                }
+                let at = index(x as i32 + dx, y as i32 + dy, SIZE);
+                let old = self.heights[at] as f32;
+                self.heights[at] = (old + (height - old) * blend).round() as u8;
+                if distance <= radius {
+                    self.materials[at] = material;
+                }
+            }
+        }
+        height
+    }
+    fn mount_fuji(&mut self, x: f32, y: f32) {
+        let radius = 400;
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let r = ((dx * dx + dy * dy) as f32).sqrt() / radius as f32;
+                if r >= 1.0 {
+                    continue;
+                }
+                let at = index(x as i32 + dx, y as i32 + dy, SIZE);
+                let angle = (dy as f32).atan2(dx as f32);
+                let cone = 42.0 + 194.0 * (1.0 - r).powf(1.25) - (1.0 - r / 0.06).max(0.0) * 12.0;
+                let blend = ((1.0 - r) * 4.0).min(1.0);
+                self.heights[at] = (self.heights[at] as f32 * (1.0 - blend) + cone * blend) as u8;
+                if r < 0.75 {
+                    self.materials[at] = if cone > 171.0 + (angle * 7.0).sin() * 9.0 {
+                        15 + u8::from(dx + dy > 0)
+                    } else {
+                        12 + u8::from(dx + dy > 0)
+                    };
+                }
+            }
         }
     }
     pub(super) fn place_landmark(&mut self, object: Scenery) {
@@ -25,10 +96,13 @@ impl World {
             Structure::Windmill => (3.0, 3.0, 70.0),
             Structure::Lighthouse => (6.0, 6.0, 36.0),
             Structure::RockStack => (10.0, 10.0, 50.0),
-            _ => {
-                self.scenery.push(object);
-                return;
-            }
+            _ => match object.kind.landmark_size() {
+                Some(size) => (size.x, size.y, size.z),
+                None => {
+                    self.scenery.push(object);
+                    return;
+                }
+            },
         };
         if self.obstacles.is_empty() {
             self.obstacles = vec![0; 256 * 256];

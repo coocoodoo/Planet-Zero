@@ -26,6 +26,33 @@ pub enum Structure {
     Stairs,
     IceSpire,
     Boulder,
+    Pyramid,
+    Eiffel,
+    Torii,
+    Pavilion,
+    StaveChurch,
+    Castle,
+    Temple,
+    SplitGate,
+    PolarStation,
+    Fuji,
+}
+
+impl Structure {
+    pub fn landmark_size(self) -> Option<Vec3> {
+        Some(match self {
+            Self::Pyramid => vec3(65.0, 65.0, 90.0),
+            Self::Eiffel => vec3(46.0, 46.0, 155.0),
+            Self::Torii => vec3(34.0, 9.0, 48.0),
+            Self::Pavilion => vec3(30.0, 30.0, 55.0),
+            Self::StaveChurch => vec3(24.0, 34.0, 78.0),
+            Self::Castle => vec3(48.0, 38.0, 65.0),
+            Self::Temple => vec3(44.0, 24.0, 61.0),
+            Self::SplitGate => vec3(32.0, 12.0, 62.0),
+            Self::PolarStation => vec3(52.0, 22.0, 26.0),
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Clone, Copy)]

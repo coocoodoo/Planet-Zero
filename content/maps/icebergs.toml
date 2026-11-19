@@ -5,3 +5,9 @@ height_scale = 1.0
 tree_threshold = 0
 cloud_clusters = 90
 elevation_octaves = [[128, 1.0], [64, 0.6], [32, 0.3], [8, 0.08]]
+
+[[landmarks]]
+kind = "polarstation"
+position = [2048.0, 2650.0, 0.0]
+yaw = 3.1415927
+scale = 1.0

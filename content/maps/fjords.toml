@@ -29,3 +29,9 @@ kind = "lighthouse"
 position = [2650.0, 1200.0, 0.0]
 yaw = 0.2
 scale = 1.0
+
+[[landmarks]]
+kind = "stavechurch"
+position = [1200.0, 2600.0, 0.0]
+yaw = 3.1415927
+scale = 1.0

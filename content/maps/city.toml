@@ -5,3 +5,9 @@ height_scale = 1.0
 tree_threshold = 0
 cloud_clusters = 130
 elevation_octaves = [[128, 1.0], [64, 0.6], [32, 0.3], [8, 0.08]]
+
+[[landmarks]]
+kind = "eiffel"
+position = [2380.0, 2750.0, 0.0]
+yaw = 0.0
+scale = 1.0

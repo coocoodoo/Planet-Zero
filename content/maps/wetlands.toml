@@ -5,3 +5,9 @@ height_scale = 1.0
 tree_threshold = 170
 cloud_clusters = 800
 elevation_octaves = [[128, 0.7], [64, 1.0], [32, 0.5], [16, 0.24], [8, 0.1], [4, 0.04]]
+
+[[landmarks]]
+kind = "pavilion"
+position = [2080.0, 2690.0, 0.0]
+yaw = 0.0
+scale = 1.0
