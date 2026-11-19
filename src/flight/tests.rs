@@ -3,13 +3,14 @@ use crate::world::SIZE;
 
 fn terrain() -> World {
     World {
+        height_bounds: Default::default(),
         obstacles: vec![],
         ceiling: 40,
         cloud_levels: vec![],
         cloud_slopes: vec![],
         airspace: Default::default(),
-        heights: vec![0; SIZE * SIZE],
-        materials: vec![0; SIZE * SIZE],
+        heights: vec![0; SIZE * SIZE].into(),
+        materials: vec![0; SIZE * SIZE].into(),
         clouds: vec![],
         spawn: (256.0, 350.0),
         kind: crate::world::MapKind::Islands,
@@ -75,7 +76,9 @@ fn space_flight_can_descend_below_the_surface_reference() {
 #[test]
 fn descent_keeps_the_formation_above_terrain() {
     let mut world = terrain();
-    world.heights[..220 * SIZE].fill(40);
+    for i in 0..220 * SIZE {
+        world.heights[i] = 40;
+    }
     let mut flight = Flight::new(&world);
     flight.position.z = 60.0;
     flight.yaw = 0.0;
@@ -207,7 +210,9 @@ fn flat_ground_clearance_stays_low_and_high_terrain_triggers_early_climb() {
     );
     f.position = vec3(256.0, 450.0, 30.0);
     f.pitch = 0.0;
-    world.heights[..260 * SIZE].fill(130);
+    for i in 0..260 * SIZE {
+        world.heights[i] = 130;
+    }
     let mut rose_before_ridge = false;
     for _ in 0..180 {
         f.step(
@@ -225,7 +230,9 @@ fn flat_ground_clearance_stays_low_and_high_terrain_triggers_early_climb() {
     }
     assert!(rose_before_ridge);
     world.heights.fill(0);
-    world.heights[..260 * SIZE].fill(5);
+    for i in 0..260 * SIZE {
+        world.heights[i] = 5;
+    }
     let mut f = Flight::new(&world);
     f.position = vec3(256.0, 450.0, MIN_CLEARANCE);
     f.yaw = 0.0;

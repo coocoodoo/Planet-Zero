@@ -564,6 +564,7 @@ fn cloud_setting_survives_world_changes_and_menu_navigation() {
     app.settings_path = None;
     app.open_settings();
     app.selection = 2;
+    app.settings_advanced = true;
     app.flight.dynamic_clouds = true;
     app.key(crate::keys::ENTER, 1);
     app.key(crate::keys::ENTER, 0);
@@ -573,7 +574,7 @@ fn cloud_setting_survives_world_changes_and_menu_navigation() {
     app.selection = 0;
     app.key(crate::keys::UP, 1);
     app.key(crate::keys::UP, 0);
-    assert_eq!(app.selection, 7);
+    assert_eq!(app.selection, 5);
     app.key(crate::keys::ENTER, 1);
     assert_eq!(app.page, Page::Menu);
     let settings: super::settings::Settings = toml::from_str("dynamic_clouds = false").unwrap();
@@ -624,4 +625,30 @@ fn performance_samples_unclamped_time_only_while_visible() {
     let count = app.perf.frames.len();
     app.step(0.1, None);
     assert_eq!(app.perf.frames.len(), count);
+}
+
+#[test]
+fn settings_categories_route_controls_and_persist_portal_preview() {
+    let mut app = App::new(World::generate(crate::world::MapKind::Space, 7));
+    let path = std::env::temp_dir().join(format!("flight-settings-{}.toml", std::process::id()));
+    app.settings_path = Some(path.clone());
+    app.open_settings();
+    app.adjust_setting(1);
+    assert!(app.settings_advanced);
+    app.selection = 4;
+    app.flight.portal_preview = true;
+    app.adjust_setting(-1);
+    assert!(!app.flight.portal_preview);
+    assert!(!super::settings::Settings::load(Some(&path)).portal_preview);
+    app.flight.change_world(&app.world);
+    assert!(!app.flight.portal_preview);
+    app.selection = 0;
+    app.adjust_setting(-1);
+    assert!(!app.settings_advanced);
+    app.selection = 4;
+    let volume = app.audio_settings.volume;
+    app.adjust_setting(-1);
+    assert_eq!(app.audio_settings.volume, volume.saturating_sub(1));
+    assert!(!app.flight.portal_preview);
+    std::fs::remove_file(path).unwrap();
 }

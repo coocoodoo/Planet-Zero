@@ -356,12 +356,26 @@ impl Renderer {
         if !world.kind.vacuum() {
             self.precipitation(world, flight, &camera);
         }
-        for i in 0..width * height {
-            self.output[i] = if has_panel && self.cockpit.pixels[i] != 0 {
-                self.cockpit.pixels[i]
-            } else {
-                self.pixels[self.mapping[i]]
-            };
+        if rolled {
+            for (i, dest) in self.output.iter_mut().enumerate() {
+                *dest = if has_panel && self.cockpit.pixels[i] != 0 {
+                    self.cockpit.pixels[i]
+                } else {
+                    self.pixels[self.mapping[i]]
+                };
+            }
+        } else {
+            for by in (0..height).step_by(16) {
+                for bx in (0..width).step_by(16) {
+                    for y in by..(by + 16).min(height) {
+                        let row =
+                            &mut self.output[y * width + bx..y * width + (bx + 16).min(width)];
+                        for (x, dest) in row.iter_mut().enumerate() {
+                            *dest = self.pixels[(bx + x) * height + y];
+                        }
+                    }
+                }
+            }
         }
         if has_panel {
             self.cockpit.glass(&mut self.output, width, height, flight);
@@ -482,6 +496,11 @@ impl Renderer {
                         .copy_from_slice(&self.depth[start * h..end * h]);
                     worker.visible.clear();
                     worker.visible.extend_from_slice(&visible[start..end]);
+                    if worker.visible.iter().all(|&(top, bottom)| top >= bottom) {
+                        worker.detail = [0.0; 4];
+                        worker.triangles = 0;
+                        continue;
+                    }
                     worker.column.clear();
                     worker
                         .column

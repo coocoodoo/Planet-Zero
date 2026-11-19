@@ -8,6 +8,10 @@ impl Renderer {
         camera: &Camera,
         weather: crate::content::weather::WeatherState,
     ) {
+        let ground_height =
+            world.heights[index(camera.position.x as i32, camera.position.y as i32, SIZE)] as f32;
+        self.terrain_cache.altitude_fade =
+            ((camera.position.z - ground_height - 500.0) / 700.0).clamp(0.0, 1.0);
         let weather = if world.kind.vacuum() {
             crate::content::weather::WeatherState::new(Weather::Clear, world.kind, world.seed)
         } else {
@@ -91,12 +95,17 @@ impl Renderer {
         }
         let mut leaves = Vec::new();
         while let Some((x, y, size)) = cells.pop() {
+            let [low, high] = if self.warp.is_some() {
+                [0, world.ceiling]
+            } else {
+                world.height_range(x, y, size)
+            };
             let half = vec3(
                 size as f32 * 0.5,
                 size as f32 * 0.5,
-                world.ceiling as f32 * 0.5,
+                (high - low) as f32 * 0.5,
             );
-            let mut center = vec3(x as f32 + half.x, y as f32 + half.y, half.z);
+            let mut center = vec3(x as f32 + half.x, y as f32 + half.y, low as f32 + half.z);
             let mut half = half;
             if let Some(warp) = self.warp {
                 if !warp.contains(center.truncate(), size as f32 * 0.6) {
@@ -128,8 +137,13 @@ impl Renderer {
             {
                 continue;
             }
+            let lod_center = if self.warp.is_some() {
+                center
+            } else {
+                center.with_z(world.ceiling as f32 * 0.5)
+            };
             let footprint = camera.scale * size as f32 * footprint_scale
-                / (1.0 + camera.q * delta.dot(camera.forward)).max(0.15);
+                / (1.0 + camera.q * (lod_center - camera.position).dot(camera.forward)).max(0.15);
             if size > 8 && footprint > 10.0 {
                 let h = size / 2;
                 cells.extend([(x, y, h), (x + h, y, h), (x, y + h, h), (x + h, y + h, h)]);
@@ -137,14 +151,10 @@ impl Renderer {
             }
             leaves.push((x, y, size));
         }
-        self.terrain_cache.topology(
-            &leaves,
-            ((cx - reach) * 64, (cy - reach) * 64),
-            (reach * 2 + 1) * 64,
-        );
+        self.terrain_cache.topology(&leaves);
         let mut boundary = Vec::with_capacity(16);
         for (x, y, size) in leaves {
-            let sample = |x, y| vec3(x as f32, y as f32, world.heights[index(x, y, SIZE)] as f32);
+            let sample = |x, y| vec3(x as f32, y as f32, world.mesh_height(x, y));
             let center = sample(x + size / 2, y + size / 2);
             boundary.clear();
             for edge in 0..4 {
@@ -236,21 +246,24 @@ impl Renderer {
             .any(|p| 1.0 + camera.q * (*p - camera.position).dot(camera.forward) < 0.121)
         {
             let near = camera.position - camera.forward * (0.878 / camera.q);
-            let mut clipped = Vec::with_capacity(4);
+            let mut clipped = [(Vec3::ZERO, Vec3::ZERO); 4];
+            let mut count = 0;
             for i in 0..3 {
                 let a = points[i];
                 let b = points[(i + 1) % 3];
                 let da = (a - near).dot(camera.forward);
                 let db = (b - near).dot(camera.forward);
                 if da >= 0.0 {
-                    clipped.push((a, vertices[i]));
+                    clipped[count] = (a, vertices[i]);
+                    count += 1;
                 }
                 if (da >= 0.0) != (db >= 0.0) {
                     let t = da / (da - db);
-                    clipped.push((a.lerp(b, t), vertices[i].lerp(vertices[(i + 1) % 3], t)));
+                    clipped[count] = (a.lerp(b, t), vertices[i].lerp(vertices[(i + 1) % 3], t));
+                    count += 1;
                 }
             }
-            for i in 1..clipped.len().saturating_sub(1) {
+            for i in 1..count.saturating_sub(1) {
                 self.ground_polygon(
                     camera,
                     world,
@@ -263,9 +276,7 @@ impl Renderer {
             return;
         }
         // 低空保持原始采样精度，海拔升高后才逐步放大采样跨度
-        let ground_height =
-            world.heights[index(camera.position.x as i32, camera.position.y as i32, SIZE)] as f32;
-        let altitude_fade = ((camera.position.z - ground_height - 500.0) / 700.0).clamp(0.0, 1.0);
+        let altitude_fade = self.terrain_cache.altitude_fade;
 
         self.triangles = self.triangles.wrapping_add(1);
         let [Some((a, da, _)), Some((b, db, _)), Some((c, dc, _))] =
@@ -419,33 +430,63 @@ impl Renderer {
                 let gy = (pos.y / cell).floor();
                 let fx = pos.x / cell - gx;
                 let fy = pos.y / cell - gy;
-                let (mut red, mut green, mut blue) = (0.0f32, 0.0f32, 0.0f32);
-                for (ix, iy, weight) in [
+                let samples = [
                     (gx, gy, (1.0 - fx) * (1.0 - fy)),
                     (gx + 1.0, gy, fx * (1.0 - fy)),
                     (gx, gy + 1.0, (1.0 - fx) * fy),
                     (gx + 1.0, gy + 1.0, fx * fy),
-                ] {
-                    let sample = vec3(ix * cell, iy * cell, pos.z);
-                    let material =
-                        world.materials[index(sample.x as i32, sample.y as i32, SIZE)] as usize;
-                    let detail = if matches!(material, 12..=14 | 19..=20)
+                ];
+                let x0 = (gx * cell) as i32;
+                let x1 = ((gx + 1.0) * cell) as i32;
+                let y0 = (gy * cell) as i32;
+                let y1 = ((gy + 1.0) * cell) as i32;
+                let a = world.materials[index(x0, y0, SIZE)] as usize;
+                let b = if x0 == x1 {
+                    a
+                } else {
+                    world.materials[index(x1, y0, SIZE)] as usize
+                };
+                let c = if y0 == y1 {
+                    a
+                } else {
+                    world.materials[index(x0, y1, SIZE)] as usize
+                };
+                let d = if x0 == x1 {
+                    c
+                } else if y0 == y1 {
+                    b
+                } else {
+                    world.materials[index(x1, y1, SIZE)] as usize
+                };
+                let materials = [a, b, c, d];
+                let rocky = |material| {
+                    matches!(material, 12..=14 | 19..=20)
                         || (world.kind == crate::world::MapKind::Canyon
                             && matches!(material, 17..=20))
-                    {
-                        0.65 + super::geology::stone_texel_lod(sample, lod) * 0.035
-                    } else {
-                        1.0
-                    };
-                    let [r, g, b, _] = self
-                        .terrain_cache
-                        .shade(material, shade * detail)
-                        .to_le_bytes();
-                    red += r as f32 * weight;
-                    green += g as f32 * weight;
-                    blue += b as f32 * weight;
-                }
-                let mut color = rgb(red as u8, green as u8, blue as u8);
+                };
+                let mut color = if !rocky(materials[0])
+                    && materials.iter().all(|&material| material == materials[0])
+                {
+                    self.terrain_cache.shade(materials[0], shade)
+                } else {
+                    let (mut red, mut green, mut blue) = (0.0_f32, 0.0_f32, 0.0_f32);
+                    for ((ix, iy, weight), material) in samples.into_iter().zip(materials) {
+                        let detail = if rocky(material) {
+                            let sample = vec3(ix * cell, iy * cell, pos.z);
+                            0.65 + super::geology::stone_texel_lod(sample, lod) * 0.035
+                        } else {
+                            1.0
+                        };
+                        let [r, g, b, _] = self
+                            .terrain_cache
+                            .shade(material, shade * detail)
+                            .to_le_bytes();
+                        red += r as f32 * weight;
+                        green += g as f32 * weight;
+                        blue += b as f32 * weight;
+                    }
+                    rgb(red as u8, green as u8, blue as u8)
+                };
                 if let Some(warp) = self.warp {
                     color = super::orbit::earth_color(
                         warp,
@@ -474,7 +515,7 @@ mod tests {
         world.clouds.clear();
         world.scenery.clear();
         world.portals.clear();
-        world.ceiling = 60;
+        world.update_ceiling();
         let mut flight = Flight::new(&world);
         flight.position.z = 180.0;
         flight.follow = flight.position;

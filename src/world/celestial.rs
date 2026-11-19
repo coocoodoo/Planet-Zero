@@ -68,16 +68,19 @@ impl World {
         let profile = crate::content::maps::definition(kind);
         let layout = profile.cosmic.as_ref().expect("月球和太空需要场景配置");
         let mut world = Self {
-            heights: if kind == MapKind::Moon {
+            height_bounds: height_bounds::HeightBounds::default(),
+            heights: (if kind == MapKind::Moon {
                 vec![0; SIZE * SIZE]
             } else {
                 vec![]
-            },
-            materials: if kind == MapKind::Moon {
+            })
+            .into(),
+            materials: (if kind == MapKind::Moon {
                 vec![27; SIZE * SIZE]
             } else {
                 vec![]
-            },
+            })
+            .into(),
             obstacles: vec![],
             ceiling: 0,
             cloud_levels: vec![],

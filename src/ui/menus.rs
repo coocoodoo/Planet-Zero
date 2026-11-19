@@ -258,16 +258,25 @@ pub fn draw(app: &mut App) {
         c.rect(24, 16, 2, 141, CYAN);
         c.text_scale(43, 23, "SETTINGS", WHITE, 2);
         let toggle = |value| if value { "ON" } else { "OFF" };
-        let rows = [
-            format!("FACETED TERRAIN   {}", toggle(f.faceted)),
-            format!("PORTAL LABELS     {}", toggle(app.portal_labels)),
-            format!("DYNAMIC CLOUDS    {}", toggle(f.dynamic_clouds)),
-            format!("DYNAMIC LIGHTING  {}", toggle(f.dynamic_lighting)),
-            format!("FLIGHT HUD        {}", toggle(f.hud)),
-            format!("SOUND   {}", app.audio_settings.name()),
-            format!("VOLUME           {:3}%", app.audio_settings.volume * 10),
-            "BACK".to_owned(),
-        ];
+        let rows = if app.settings_advanced {
+            [
+                "CATEGORY  < ADVANCED >".to_owned(),
+                format!("FACETED TERRAIN   {}", toggle(f.faceted)),
+                format!("DYNAMIC CLOUDS    {}", toggle(f.dynamic_clouds)),
+                format!("DYNAMIC LIGHTING  {}", toggle(f.dynamic_lighting)),
+                format!("PORTAL PREVIEW    {}", toggle(f.portal_preview)),
+                "BACK".to_owned(),
+            ]
+        } else {
+            [
+                "CATEGORY  < GENERAL >".to_owned(),
+                format!("FLIGHT HUD        {}", toggle(f.hud)),
+                format!("PORTAL LABELS     {}", toggle(app.portal_labels)),
+                format!("SOUND   {}", app.audio_settings.name()),
+                format!("VOLUME           {:3}%", app.audio_settings.volume * 10),
+                "BACK".to_owned(),
+            ]
+        };
         for (i, line) in rows.iter().enumerate() {
             let y = 45 + i as i32 * 13;
             if i == app.selection {
@@ -276,16 +285,15 @@ pub fn draw(app: &mut App) {
             }
             c.text(47, y, line, if i == app.selection { GOLD } else { WHITE });
         }
-        c.text(
-            34,
-            149,
-            if app.selection == 2 {
-                "OFF: SIMPLE CLOUDS"
-            } else {
-                "ESC RETURN"
-            },
-            MUTED,
-        );
+        let hint = match (app.settings_advanced, app.selection) {
+            (_, 0) => "LEFT / RIGHT CHANGE CATEGORY",
+            (true, 2) => "OFF: SIMPLE CLOUDS / FASTER",
+            (true, 3) => "OFF: FREEZE SUN POSITION",
+            (true, 4) => "OFF: ENERGY FIELD / FASTER",
+            _ => "LEFT / RIGHT ADJUST",
+        };
+        c.text(34, 132, hint, CYAN);
+        c.text(34, 149, "ESC RETURN", MUTED);
         return;
     }
     if app.page == Page::Paused {

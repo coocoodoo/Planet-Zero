@@ -72,6 +72,7 @@ pub struct Flight {
     pub hud: bool,
     pub faceted: bool,
     pub dynamic_clouds: bool,
+    pub portal_preview: bool,
     pub dynamic_lighting: bool,
     pub day_time: f32,
     pub vehicle: crate::content::vehicles::Vehicle,
@@ -145,6 +146,7 @@ impl Flight {
             hud: true,
             faceted: true,
             dynamic_clouds: true,
+            portal_preview: true,
             dynamic_lighting: true,
             day_time: 0.0,
             vehicle: crate::content::vehicles::Vehicle::Falcon,
@@ -208,6 +210,7 @@ impl Flight {
         let hud = self.hud;
         let faceted = self.faceted;
         let dynamic_clouds = self.dynamic_clouds;
+        let portal_preview = self.portal_preview;
         let (dynamic_lighting, day_time) = (self.dynamic_lighting, self.day_time);
         let vehicle = self.vehicle;
         let (view, weights, demo, wing_count) =
@@ -222,6 +225,7 @@ impl Flight {
         self.hud = hud;
         self.faceted = faceted;
         self.dynamic_clouds = dynamic_clouds;
+        self.portal_preview = portal_preview;
         self.dynamic_lighting = dynamic_lighting;
         self.day_time = day_time;
         self.vehicle = vehicle;

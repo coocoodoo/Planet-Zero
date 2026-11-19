@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Default)]
 pub(super) struct TerrainCache {
+    pub altitude_fade: f32,
     colors: Option<[u32; MATERIAL_COUNT]>,
     shades: Vec<u32>,
     lod: Vec<u8>,
@@ -55,12 +56,28 @@ impl TerrainCache {
     pub fn shade(&self, material: usize, light: f32) -> u32 {
         self.shades[material * 257 + (light.clamp(0.0, 1.0) * 256.0) as usize]
     }
-    pub fn topology(&mut self, leaves: &[(i32, i32, i32)], origin: (i32, i32), side: i32) {
+    pub fn topology(&mut self, leaves: &[(i32, i32, i32)]) {
+        let Some(&(x, y, size)) = leaves.first() else {
+            return;
+        };
+        let bounds = leaves
+            .iter()
+            .fold([x, y, x + size, y + size], |b, &(x, y, size)| {
+                [
+                    b[0].min(x),
+                    b[1].min(y),
+                    b[2].max(x + size),
+                    b[3].max(y + size),
+                ]
+            });
+        let origin = (bounds[0] / 8, bounds[1] / 8);
+        let side = (bounds[2] - bounds[0]) / 8;
+        let height = (bounds[3] - bounds[1]) as usize / 8;
         self.origin = origin;
-        if self.side != side {
-            self.lod.resize((side * side) as usize, 0);
+        if self.side != side || self.dirty_rows.len() != height {
+            self.lod.resize(side as usize * height, 0);
             self.lod.fill(0);
-            self.dirty_rows = vec![(side as usize, 0); side as usize];
+            self.dirty_rows = vec![(side as usize, 0); height];
         } else {
             for (row, (start, end)) in self.dirty_rows.iter_mut().enumerate() {
                 if *start < *end {
@@ -90,7 +107,7 @@ impl TerrainCache {
             x.div_euclid(8) - self.origin.0,
             y.div_euclid(8) - self.origin.1,
         );
-        if x < 0 || y < 0 || x >= self.side || y >= self.side {
+        if x < 0 || y < 0 || x >= self.side || y >= self.dirty_rows.len() as i32 {
             return fallback;
         }
         let level = self.lod[(y * self.side + x) as usize];

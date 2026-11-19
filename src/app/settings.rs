@@ -7,6 +7,7 @@ pub(super) struct Settings {
     pub portal_labels: bool,
     pub dynamic_clouds: bool,
     pub dynamic_lighting: bool,
+    pub portal_preview: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -15,6 +16,7 @@ impl Default for Settings {
             portal_labels: true,
             dynamic_clouds: true,
             dynamic_lighting: true,
+            portal_preview: true,
         }
     }
 }
@@ -35,26 +37,38 @@ impl App {
         (self.page, self.selection) = self.settings_return;
     }
     pub(super) fn adjust_setting(&mut self, direction: i32) {
-        match self.selection {
-            0 => self.flight.faceted = !self.flight.faceted,
-            1 => self.portal_labels = !self.portal_labels,
-            2 => self.flight.dynamic_clouds = !self.flight.dynamic_clouds,
-            3 => self.flight.dynamic_lighting = !self.flight.dynamic_lighting,
-            4 => self.flight.hud = !self.flight.hud,
-            5 => {
-                self.audio_settings.profile =
-                    (self.audio_settings.profile as i32 + direction).rem_euclid(4) as u8
+        if self.selection == 0 {
+            self.settings_advanced = !self.settings_advanced;
+            return;
+        }
+        if self.selection == 5 {
+            self.close_settings();
+            return;
+        }
+        if self.settings_advanced {
+            match self.selection {
+                1 => self.flight.faceted = !self.flight.faceted,
+                2 => self.flight.dynamic_clouds = !self.flight.dynamic_clouds,
+                3 => self.flight.dynamic_lighting = !self.flight.dynamic_lighting,
+                4 => self.flight.portal_preview = !self.flight.portal_preview,
+                _ => return,
             }
-            6 => {
-                self.audio_settings.volume =
-                    (self.audio_settings.volume as i32 + direction).clamp(0, 10) as u8
-            }
-            _ => {
-                self.close_settings();
-                return;
+        } else {
+            match self.selection {
+                1 => self.flight.hud = !self.flight.hud,
+                2 => self.portal_labels = !self.portal_labels,
+                3 => {
+                    self.audio_settings.profile =
+                        (self.audio_settings.profile as i32 + direction).rem_euclid(4) as u8
+                }
+                4 => {
+                    self.audio_settings.volume =
+                        (self.audio_settings.volume as i32 + direction).clamp(0, 10) as u8
+                }
+                _ => return,
             }
         }
-        if self.selection <= 3
+        if (self.settings_advanced || self.selection == 2)
             && let Some(path) = &self.settings_path
         {
             let result = (|| -> std::io::Result<()> {
@@ -64,11 +78,12 @@ impl App {
                 std::fs::write(
                     path,
                     format!(
-                        "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ndynamic_lighting = {}\n",
+                        "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ndynamic_lighting = {}\nportal_preview = {}\n",
                         self.flight.faceted,
                         self.portal_labels,
                         self.flight.dynamic_clouds,
-                        self.flight.dynamic_lighting
+                        self.flight.dynamic_lighting,
+                        self.flight.portal_preview
                     ),
                 )
             })();

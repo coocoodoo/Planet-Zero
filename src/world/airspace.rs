@@ -19,13 +19,15 @@ impl Airspace {
         }
         let mut histogram = [0_usize; 256];
         let mut floors = vec![0.0_f32; GRID * GRID];
-        for (y, row) in world.heights.chunks_exact(SIZE).enumerate() {
-            for (x, block) in row.chunks_exact(16).enumerate() {
+        for y in 0..SIZE {
+            for x in 0..GRID {
                 let at = (y / 16) * GRID + x;
-                floors[at] = floors[at].max(*block.iter().max().unwrap() as f32);
+                let start = y * SIZE + x * 16;
+                let highest = (0..16).map(|dx| world.heights[start + dx]).max().unwrap();
+                floors[at] = floors[at].max(highest as f32);
                 if y.is_multiple_of(4) {
-                    for &height in block.iter().step_by(4) {
-                        histogram[height as usize] += 1;
+                    for dx in (0..16).step_by(4) {
+                        histogram[world.heights[start + dx] as usize] += 1;
                     }
                 }
             }

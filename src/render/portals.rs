@@ -226,31 +226,32 @@ impl Renderer {
             for (column, visible) in remote.column.iter_mut().zip(&remote.visible) {
                 *column = visible.1;
             }
-            if samples.len() > 9000
+            if samples.len() > 1200
                 && (cfg!(target_os = "linux") || self.w > 640)
                 && remote.workers.is_empty()
-                && rw == self.w
             {
                 remote.workers = (0..3).map(|_| Self::single()).collect();
             }
-            let mut remote_flight = flight.clone();
-            remote_flight.position = entry.transform(exit, flight.position);
-            if let Some(network) = network.filter(|n| n.active) {
-                let environment =
-                    network.environment(crate::world::network::MapKey::of(destination));
-                remote_flight.weather = environment.weather;
-            }
-            let remote_theme = theme;
-            remote.draw_parallel(destination, &remote_flight, &view, remote_theme, false);
-            if let Some(mission) = mission.filter(|_| std::ptr::eq(world, destination)) {
-                remote.mission(mission, flight, &view);
-            }
-            remote.draw_parallel(destination, &remote_flight, &view, remote_theme, true);
-            if !destination.kind.vacuum() {
-                remote.precipitation(destination, &remote_flight, &view);
+            let live_preview = flight.portal_preview || entering;
+            if live_preview {
+                let mut remote_flight = flight.clone();
+                remote_flight.position = entry.transform(exit, flight.position);
+                if let Some(network) = network.filter(|n| n.active) {
+                    let environment =
+                        network.environment(crate::world::network::MapKey::of(destination));
+                    remote_flight.weather = environment.weather;
+                }
+                remote.draw_parallel(destination, &remote_flight, &view, theme, false);
+                if let Some(mission) = mission.filter(|_| std::ptr::eq(world, destination)) {
+                    remote.mission(mission, flight, &view);
+                }
+                remote.draw_parallel(destination, &remote_flight, &view, theme, true);
+                if !destination.kind.vacuum() {
+                    remote.precipitation(destination, &remote_flight, &view);
+                }
             }
             let base = self.pixels.clone();
-            let rim = portal_color(destination.kind, remote_theme);
+            let rim = portal_color(destination.kind, theme);
             let phase = flight.time * 1.5;
             let (s, c) = phase.sin_cos();
             let photon_color = mix(rim, rgb(255, 245, 216), 0.72);
@@ -285,7 +286,11 @@ impl Renderer {
                         .min((rw - 1) as f32) as usize;
                     let py = (sample.y.clamp(0.0, self.h as f32 - 1.0) * ratio_y)
                         .min((rh - 1) as f32) as usize;
-                    let scene = remote.pixels[px * rh + py];
+                    let scene = if live_preview {
+                        remote.pixels[px * rh + py]
+                    } else {
+                        mix(rgb(5, 10, 25), rim, 0.2 + cross * 0.08)
+                    };
                     let veil = (0.14 + ripple * 0.04 + cross * 0.03) * membrane;
                     let shaded = mix(scene, rgb(15, 24, 52), 0.13 * membrane);
                     let tinted = mix(shaded, rim, veil);

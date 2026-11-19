@@ -23,7 +23,7 @@ fn maps_have_distinct_terrain_and_valid_periodic_samples() {
         let signature = world
             .heights
             .iter()
-            .zip(&world.materials)
+            .zip(world.materials.iter())
             .step_by(997)
             .fold(0_u64, |sum, (&h, &m)| {
                 sum.wrapping_mul(31).wrapping_add(h as u64 * 32 + m as u64)

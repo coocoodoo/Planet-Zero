@@ -94,8 +94,9 @@ impl World {
             }
         }
         let mut world = Self {
-            heights: vec![0; SIZE * SIZE],
-            materials: vec![0; SIZE * SIZE],
+            height_bounds: height_bounds::HeightBounds::default(),
+            heights: vec![0; SIZE * SIZE].into(),
+            materials: vec![0; SIZE * SIZE].into(),
             obstacles: vec![],
             ceiling: 0,
             cloud_levels: vec![],
@@ -215,6 +216,9 @@ impl World {
                 };
             }
         }
+        drop(elevation);
+        drop(moisture);
+        drop(lava);
         if matches!(kind, MapKind::Islands | MapKind::Alpine | MapKind::Wetlands) {
             for gy in (0..SIZE as i32).step_by(6) {
                 for gx in (0..SIZE as i32).step_by(6) {

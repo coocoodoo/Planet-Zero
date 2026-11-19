@@ -4,8 +4,11 @@ pub mod celestial;
 mod city;
 mod clouds;
 mod generation;
+pub(crate) mod height_bounds;
 mod landmarks;
 mod loader;
+mod map_data;
+pub use map_data::MapData;
 pub mod network;
 mod noise;
 pub mod orbit;
@@ -80,11 +83,12 @@ impl MapKind {
 
 #[derive(Clone)]
 pub struct World {
+    pub(crate) height_bounds: height_bounds::HeightBounds,
     pub airspace: airspace::Airspace,
-    pub heights: Vec<u8>,
+    pub heights: MapData,
     pub obstacles: Vec<u8>,
     pub ceiling: u8,
-    pub materials: Vec<u8>,
+    pub materials: MapData,
     pub clouds: Vec<Cloud>,
     pub cloud_levels: Vec<u16>,
     pub cloud_slopes: Vec<[f32; 4]>,
@@ -100,10 +104,19 @@ impl World {
     pub fn new(seed: u32) -> Self {
         Self::generate(MapKind::Islands, seed)
     }
+    pub(crate) fn mesh_height(&self, x: i32, y: i32) -> f32 {
+        self.height_bounds.vertex(x, y)
+    }
+    pub(crate) fn height_range(&self, x: i32, y: i32, size: i32) -> [u8; 2] {
+        self.height_bounds.range(x, y, size)
+    }
     pub fn update_ceiling(&mut self) {
+        self.height_bounds = height_bounds::HeightBounds::build(&self.heights);
         self.ceiling = self.heights.iter().copied().max().unwrap_or(0);
         self.prepare_cloud_heights();
         self.airspace = airspace::Airspace::build(self);
+        self.heights.compact();
+        self.materials.compact();
     }
     pub fn height(&self, x: f32, y: f32) -> f32 {
         if self.kind == MapKind::Space {

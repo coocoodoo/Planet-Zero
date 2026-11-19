@@ -52,6 +52,7 @@ pub struct App {
     pub portal_labels: bool,
     settings_path: Option<PathBuf>,
     settings_return: (Page, usize),
+    pub settings_advanced: bool,
     pub audio_settings: crate::audio::Settings,
     pub sounds: crate::audio::Events,
     pub level: u32,
@@ -128,6 +129,7 @@ impl App {
         flight.faceted = settings.faceted;
         flight.dynamic_clouds = settings.dynamic_clouds;
         flight.dynamic_lighting = settings.dynamic_lighting;
+        flight.portal_preview = settings.portal_preview;
         Self {
             orbit: orbit::Orbit::default(),
             navigation: navigation::Navigation::default(),
@@ -140,6 +142,7 @@ impl App {
             portal_labels: settings.portal_labels,
             settings_path,
             settings_return: (Page::Menu, 0),
+            settings_advanced: false,
             director: director::Director::default(),
             audio_settings: crate::audio::Settings::default(),
             sounds: crate::audio::Events::default(),

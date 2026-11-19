@@ -36,7 +36,8 @@ pub(super) fn spawn_world(kind: MapKind, seed: u32) -> JoinHandle<World> {
     std::thread::spawn(move || {
         #[cfg(all(target_os = "linux", feature = "cardputer"))]
         unsafe {
-            libc::nice(10);
+            let priority: libc::sched_param = std::mem::zeroed();
+            libc::sched_setscheduler(0, libc::SCHED_IDLE, &priority);
         }
         World::generate(kind, seed)
     })

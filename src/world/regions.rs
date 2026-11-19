@@ -45,8 +45,9 @@ impl World {
             }
         }
         let mut world = Self {
-            heights: vec![0; SIZE * SIZE],
-            materials: vec![0; SIZE * SIZE],
+            height_bounds: height_bounds::HeightBounds::default(),
+            heights: vec![0; SIZE * SIZE].into(),
+            materials: vec![0; SIZE * SIZE].into(),
             clouds: vec![],
             obstacles: vec![],
             ceiling: 0,
