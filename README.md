@@ -42,14 +42,14 @@ bash scripts/build-cardputer.sh
 python3 scripts/package-cardputer.py
 ```
 
-This produces a static AArch64 binary at `dist/flight-club-cardputer` and an installable package at `dist/flight-club_0.19.12_arm64.deb`.
+This produces a static AArch64 binary at `dist/flight-club-cardputer` and an installable package at `dist/flight-club_0.19.13_arm64.deb`.
 
 The packaging script uses a local `dpkg-deb` installation or runs it through Docker with `ubuntu:22.04`.
 
 Copy the package to your Cardputer Zero and install it there:
 
 ```sh
-sudo apt install ./flight-club_0.19.12_arm64.deb
+sudo apt install ./flight-club_0.19.13_arm64.deb
 ```
 
 Launch Flight Club from APPLaunch using the fighter icon.
