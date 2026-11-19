@@ -29,6 +29,8 @@ pub struct Fusion {
     bias: Vec3,
     sum_accel: Vec3,
     sum_gyro: Vec3,
+    sum_accel_squared: f32,
+    sum_gyro_squared: f32,
     calibration_time: f32,
     calibration_count: usize,
     pub motion: Motion,
@@ -44,6 +46,8 @@ impl Default for Fusion {
             bias: Vec3::ZERO,
             sum_accel: Vec3::ZERO,
             sum_gyro: Vec3::ZERO,
+            sum_accel_squared: 0.0,
+            sum_gyro_squared: 0.0,
             calibration_time: 0.0,
             calibration_count: 0,
             motion: Motion::default(),
@@ -63,23 +67,22 @@ impl Fusion {
         self.motion.gyro = gyro.to_array();
         let magnitude = acceleration.length();
         if !self.motion.ready {
-            let stable = (8.5..10.8).contains(&magnitude)
-                && gyro.length() < 0.15
-                && (self.calibration_count == 0
-                    || (acceleration - self.sum_accel / self.calibration_count as f32).length()
-                        < 0.4);
-            if !stable {
-                self.sum_accel = Vec3::ZERO;
-                self.sum_gyro = Vec3::ZERO;
-                self.calibration_time = 0.0;
-                self.calibration_count = 0;
-                return self.motion;
-            }
             self.sum_accel += acceleration;
             self.sum_gyro += gyro;
+            self.sum_accel_squared += acceleration.length_squared();
+            self.sum_gyro_squared += gyro.length_squared();
             self.calibration_time += dt;
             self.calibration_count += 1;
-            if self.calibration_time >= 0.8 {
+            if self.calibration_time < 0.35 {
+                return self.motion;
+            }
+            let count = self.calibration_count as f32;
+            let mean_accel = self.sum_accel / count;
+            let variance = self.sum_accel_squared / count - mean_accel.length_squared();
+            let stable = (8.5..10.8).contains(&mean_accel.length())
+                && self.sum_gyro_squared / count < 0.15_f32.powi(2)
+                && variance < 0.4_f32.powi(2);
+            if stable {
                 self.neutral = self.sum_accel.normalize();
                 self.gravity = self.neutral;
                 self.bias = self.sum_gyro / self.calibration_count as f32;
@@ -92,6 +95,13 @@ impl Fusion {
                 }
                 self.forward = self.neutral.cross(self.right);
                 self.motion.ready = true;
+            } else {
+                self.sum_accel = Vec3::ZERO;
+                self.sum_gyro = Vec3::ZERO;
+                self.sum_accel_squared = 0.0;
+                self.sum_gyro_squared = 0.0;
+                self.calibration_time = 0.0;
+                self.calibration_count = 0;
             }
             return self.motion;
         }
@@ -303,6 +313,18 @@ mod tests {
         }
         assert!(filter.motion.ready);
         filter
+    }
+
+    #[test]
+    fn calibration_tolerates_isolated_sensor_noise() {
+        let mut filter = Fusion::default();
+        for i in 0..50 {
+            let noise = if i % 25 == 0 { 0.65 } else { 0.0 };
+            filter.update(vec3(noise, 0.0, 9.81), vec3(0.01, -0.02, 0.03), 0.01);
+        }
+        assert!(filter.motion.ready);
+        assert!(filter.motion.pitch.abs() < 0.01);
+        assert!(filter.bias.distance(vec3(0.01, -0.02, 0.03)) < 0.0001);
     }
 
     #[test]

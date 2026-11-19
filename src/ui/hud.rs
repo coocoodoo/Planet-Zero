@@ -114,6 +114,6 @@ pub fn draw(app: &mut App) {
     }
     if app.input_label == "CAL" {
         c.shade(60, 79, 200, 13);
-        c.text(64, 82, "HOLD STILL / K CALIBRATE", GOLD);
+        c.text(64, 82, "HOLD STILL / KEYS ACTIVE", GOLD);
     }
 }

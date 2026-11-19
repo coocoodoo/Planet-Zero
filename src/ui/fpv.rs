@@ -443,7 +443,7 @@ pub fn draw(app: &mut App) {
     c.icon(17, 20, status, CYAN);
     c.osd(30, 20, app.world.kind.name(), MUTED);
     if app.input_label == "CAL" {
-        let text = "HOLD STILL / K CALIBRATE";
+        let text = "HOLD STILL / KEYS ACTIVE";
         c.osd(160 - Canvas::osd_width(text) / 2, 35, text, GOLD);
     }
     if app.input_label == "FAIL" {
