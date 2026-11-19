@@ -17,8 +17,8 @@ pub(super) fn draw(app: &mut App) {
     if !app.flight.hud {
         return;
     }
-    let label = if let Some(transition) = &app.orbit.transition {
-        if transition.ascent {
+    let label = if app.orbit.transition.is_some() {
+        if app.flight.velocity().z >= 0.0 {
             "ORBITAL ASCENT"
         } else {
             "SURFACE APPROACH"

@@ -20,6 +20,18 @@ impl Body {
     pub fn radius(self) -> f32 {
         if self == Self::Moon { 640.0 } else { 960.0 }
     }
+    pub fn surface_altitude(self) -> f32 {
+        self.radius() * 1.5
+    }
+    pub fn orbit_altitude(self) -> f32 {
+        self.radius() * 4.0
+    }
+    pub fn curvature(self, altitude: f32) -> f32 {
+        smooth(
+            (altitude - self.surface_altitude())
+                / (self.orbit_altitude() - self.surface_altitude()),
+        )
+    }
     pub fn center(self) -> Vec3 {
         if self == Self::Moon {
             vec3(14000.0, -5800.0, -460.0)

@@ -2,30 +2,22 @@ use super::*;
 use crate::world::{
     MapKind,
     network::MapKey,
-    orbit::{Body, SurfaceMap, SurfaceWarp, smooth},
+    orbit::{Body, SurfaceMap, SurfaceWarp},
 };
 use glam::{Quat, Vec3, vec3};
 use std::sync::Arc;
 
 pub const ARM_ALTITUDE: f32 = 500.0;
-const EXIT_ALTITUDE: f32 = 1200.0;
-const ORBIT_ALTITUDE: f32 = 3000.0;
 
 #[derive(Default)]
 pub struct Orbit {
     pub boost: bool,
-    pub transition: Option<Transition>,
+    pub transition: Option<Arc<World>>,
     pub earth: Option<MapKey>,
     departure: Option<MapKind>,
     pub arrival_notice: f32,
     hold: f32,
     cooldown: f32,
-}
-pub struct Transition {
-    pub ascent: bool,
-    space: Arc<World>,
-    low: f32,
-    high: f32,
 }
 impl App {
     fn orbit_enabled(&self) -> bool {
@@ -63,14 +55,15 @@ impl App {
             return;
         }
         if self.world.kind == MapKind::Space {
-            let nearest = Body::ALL
+            let limit = Body::ALL
                 .into_iter()
-                .map(|body| body.altitude(self.flight.position))
-                .fold(f32::INFINITY, f32::min);
-            if nearest < 1700.0 {
-                let limit = ((nearest - 420.0) / 1200.0).clamp(0.05, 1.0);
-                controls.throttle = Some(controls.throttle.unwrap_or(1.0).min(limit));
-            }
+                .map(|body| {
+                    ((body.altitude(self.flight.position) - body.orbit_altitude()) / body.radius()
+                        + 0.5)
+                        .clamp(0.05, 1.0)
+                })
+                .fold(1.0_f32, f32::min);
+            controls.throttle = Some(controls.throttle.unwrap_or(1.0).min(limit));
         }
         let climbing = controls.climb > 0.35 && self.flight.axes()[1].z > 0.18;
         self.orbit.hold = if climbing { self.orbit.hold + dt } else { 0.0 };
@@ -116,7 +109,7 @@ impl App {
             }
             self.flight.orbit_quiet = Body::ALL
                 .into_iter()
-                .any(|body| body.altitude(self.flight.position) < 2200.0);
+                .any(|body| body.altitude(self.flight.position) < body.orbit_altitude() + 500.0);
             true
         } else if self.flight.position.z >= ARM_ALTITUDE - 100.0 {
             self.network.request(MapKey {
@@ -134,42 +127,54 @@ impl App {
         if !self.orbit_enabled() {
             return false;
         }
-        if let Some(mut transition) = self.orbit.transition.take() {
+        if let Some(space) = self.orbit.transition.take() {
             let altitude = self.flight.position.z;
-            let progress = smooth((altitude - transition.low) / (transition.high - transition.low));
-            // 下降时加速收平曲率，低空露出地平线；切换瞬间仍保持球面以衔接太空视角
-            let bend = if transition.ascent {
-                progress
-            } else {
-                let fall = (altitude / transition.high).clamp(0.0, 1.0);
-                progress * fall * fall * fall
-            };
-            if let Some(surface) = &mut self.flight.surface {
-                surface.set_bend(bend);
+            let body = Body::of(self.world.kind);
+            let bend = body.curvature(altitude);
+            if let Some(mut surface) = self.flight.surface {
+                let latitude = self.flight.position.y - surface.origin.y;
+                let pole = std::f32::consts::FRAC_PI_2 * crate::world::orbit::UV_SCALE;
+                // 越过极点后经度移半圈，纬度和切向坐标反向
+                if latitude.abs() > pole {
+                    self.flight.transform_frame(
+                        glam::Mat3::from_rotation_z(std::f32::consts::PI),
+                        vec3(
+                            self.flight.position.x * 2.0 + pole * 2.0,
+                            surface.origin.y * 2.0 + latitude.signum() * pole * 2.0,
+                            0.0,
+                        ),
+                        false,
+                    );
+                }
+                // 曲面锚点跟随飞机，局部高度沿地表法线测量
+                surface = SurfaceWarp::new(
+                    surface.body,
+                    surface.origin,
+                    self.flight.position.truncate(),
+                    bend,
+                );
+                self.flight.surface = Some(surface);
                 self.flight.sky_rotation =
-                    Quat::IDENTITY.slerp(Quat::from_mat3(&surface.basis), progress);
+                    Quat::IDENTITY.slerp(Quat::from_mat3(&surface.basis), bend);
             }
             self.flight.orbit_quiet = true;
             self.mission.elapsed += dt;
-            if altitude >= transition.high {
-                self.finish_ascent(transition.space);
+            if altitude >= body.orbit_altitude() {
+                self.finish_ascent(space);
                 self.orbit.cooldown = 0.4;
-            } else if altitude <= transition.low {
+            } else if altitude <= body.surface_altitude() {
                 self.flight.orbital_scenery = None;
                 self.flight.orbit_quiet = false;
                 self.orbit.cooldown = 0.4;
             } else {
-                if self.flight.velocity().z.abs() > 1.0 {
-                    transition.ascent = self.flight.velocity().z > 0.0;
-                }
-                self.orbit.transition = Some(transition);
+                self.orbit.transition = Some(space);
             }
             return true;
         }
         self.flight.orbit_quiet = self.world.kind == MapKind::Space
             && Body::ALL
                 .into_iter()
-                .any(|body| body.altitude(self.flight.position) < 2200.0);
+                .any(|body| body.altitude(self.flight.position) < body.orbit_altitude() + 500.0);
         if self.world.kind == MapKind::Space {
             let mut bodies = Body::ALL;
             bodies.sort_by(|a, b| {
@@ -179,7 +184,7 @@ impl App {
             for body in bodies {
                 let delta = body.center() - self.flight.position;
                 if self.orbit.cooldown <= 0.0
-                    && body.altitude(self.flight.position) < 1050.0
+                    && body.altitude(self.flight.position) < body.orbit_altitude()
                     && delta.normalize_or_zero().dot(self.flight.axes()[1]) > 0.1
                     && let Some(key) = self.orbit_key(body)
                 {
@@ -199,7 +204,7 @@ impl App {
             }
         } else if self.orbit.cooldown <= 0.0
             && self.orbit.boost
-            && self.flight.position.z >= EXIT_ALTITUDE
+            && self.flight.position.z >= Body::of(self.world.kind).surface_altitude()
         {
             let target = MapKey {
                 kind: MapKind::Space,
@@ -228,12 +233,7 @@ impl App {
                     self.orbit.departure = Some(self.world.kind);
                 }
                 self.auto = false;
-                self.orbit.transition = Some(Transition {
-                    ascent: true,
-                    space: self.network.get(target).unwrap().clone(),
-                    low: EXIT_ALTITUDE,
-                    high: ORBIT_ALTITUDE,
-                });
+                self.orbit.transition = self.network.get(target).cloned();
                 return true;
             }
         }
@@ -292,12 +292,7 @@ impl App {
             self.navigation.active = true;
         }
         self.auto = false;
-        self.orbit.transition = Some(Transition {
-            ascent: false,
-            space: previous,
-            low: altitude,
-            high: self.flight.position.z,
-        });
+        self.orbit.transition = Some(previous);
     }
     fn finish_ascent(&mut self, destination: Arc<World>) {
         self.network.take(MapKey::of(&destination));

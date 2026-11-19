@@ -74,7 +74,7 @@ impl Network {
             if world.kind == MapKind::Space {
                 while super::orbit::Body::ALL
                     .into_iter()
-                    .any(|body| body.altitude(center) < 2200.0)
+                    .any(|body| body.altitude(center) < body.orbit_altitude() + 500.0)
                 {
                     center -= direction * 1200.0;
                 }
@@ -368,9 +368,10 @@ fn safe_aperture(world: &World, aperture: &mut Portal) {
     if world.kind == MapKind::Space {
         for body in super::orbit::Body::ALL {
             let delta = aperture.center - body.center();
-            if delta.length() < body.radius() + 2200.0 {
+            if delta.length() < body.radius() + body.orbit_altitude() + 500.0 {
                 aperture.center = body.center()
-                    + delta.try_normalize().unwrap_or(Vec3::Y) * (body.radius() + 2200.0);
+                    + delta.try_normalize().unwrap_or(Vec3::Y)
+                        * (body.radius() + body.orbit_altitude() + 500.0);
             }
         }
         return;

@@ -40,7 +40,8 @@ impl Camera {
             && flight.surface.is_some()
             && chase > 0.01
         {
-            let approach = ((1200.0 - flight.view_altitude) / 1200.0).clamp(0.0, 1.0);
+            let altitude = flight.surface.unwrap().body.surface_altitude();
+            let approach = ((altitude - flight.view_altitude) / altitude).clamp(0.0, 1.0);
             let descent = (-flight.vertical_speed / 200.0).clamp(0.0, 1.0);
             let level = ((flight.pitch + 0.35) / 0.25).clamp(0.0, 1.0);
             pitch -= approach * (0.30 + 0.35 * descent) * level;
