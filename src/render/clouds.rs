@@ -19,13 +19,7 @@ impl Default for CloudPixel {
 }
 
 impl Renderer {
-    pub(super) fn draw_clouds(
-        &mut self,
-        world: &World,
-        flight: &Flight,
-        camera: &Camera,
-        theme: usize,
-    ) {
+    pub(super) fn draw_clouds(&mut self, world: &World, flight: &Flight, camera: &Camera) {
         let opacity = (1.0 - self.warp.map_or(0.0, |warp| warp.bend)).powi(4)
             * (1.0 - crate::world::orbit::thin_air(flight.position.z));
         if world.clouds.is_empty() || opacity < 0.001 {
@@ -41,9 +35,9 @@ impl Renderer {
         let mut immersion = 0.0_f32;
         let far = flight.weather.visibility(camera.position.z).1.min(1000.0);
         let drift = vec2(flight.time * 7.0, flight.time * 3.0);
-        let haze = flight.weather.haze(theme);
-        let dark = flight.weather.shade(grade(rgb(145, 172, 198), theme));
-        let light = flight.weather.shade(grade(rgb(246, 249, 250), theme));
+        let haze = self.light.haze(flight.weather);
+        let dark = flight.weather.shade(self.light.color(rgb(145, 172, 198)));
+        let light = flight.weather.shade(self.light.color(rgb(246, 249, 250)));
         let planes = [
             (camera.right * camera.scale, camera.center.x),
             (
@@ -158,7 +152,8 @@ impl Renderer {
                                 p.with_z(0.0)
                             } * scale
                     }),
-                    palette[face.shade],
+                    palette[((face.normal.dot(self.light.direction) * 0.7 + 0.3).clamp(0.0, 1.0)
+                        * 15.0) as usize],
                     false,
                     Some(face.thickness.map(|t| {
                         t * scale
@@ -226,19 +221,19 @@ mod tests {
         renderer.pixels = vec![0; 320 * 170];
         renderer.mask = vec![0; 320 * 170];
         renderer.depth = vec![f32::INFINITY; 320 * 170];
-        renderer.draw_clouds(&world, &flight, &camera, 0);
+        renderer.draw_clouds(&world, &flight, &camera);
         let at = camera.center.x as usize * 170 + camera.center.y as usize;
         let on_black = renderer.pixels[at];
         assert_ne!(on_black, 0);
         assert_eq!(renderer.depth[at], f32::INFINITY);
         let background = rgb(40, 80, 160);
         renderer.pixels.fill(background);
-        renderer.draw_clouds(&world, &flight, &camera, 0);
+        renderer.draw_clouds(&world, &flight, &camera);
         assert_ne!(renderer.pixels[at], on_black);
         assert_ne!(renderer.pixels[at], background);
         renderer.pixels.fill(background);
         renderer.depth.fill(0.0);
-        renderer.draw_clouds(&world, &flight, &camera, 0);
+        renderer.draw_clouds(&world, &flight, &camera);
         assert!(renderer.pixels.iter().all(|&pixel| pixel == background));
     }
 }

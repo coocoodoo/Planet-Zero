@@ -4,6 +4,7 @@ mod clouds;
 mod cockpit;
 mod geology;
 mod landmarks;
+mod lighting;
 mod monuments;
 mod objects;
 mod orbit;
@@ -92,6 +93,7 @@ fn grade(c: u32, theme: usize) -> u32 {
 }
 
 pub struct Renderer {
+    light: lighting::Lighting,
     warp: Option<crate::world::orbit::SurfaceWarp>,
     terrain_cache: terrain_cache::TerrainCache,
     workers: Vec<Renderer>,
@@ -163,6 +165,7 @@ impl Renderer {
             }
         }
         Self {
+            light: lighting::Lighting::default(),
             warp: None,
             terrain_cache: terrain_cache::TerrainCache::default(),
             workers: vec![],
@@ -318,7 +321,7 @@ impl Renderer {
         self.stages[0] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
         self.portal_mask(world, flight, &camera, network);
-        self.draw_parallel(world, flight, &camera, theme, height, false);
+        self.draw_parallel(world, flight, &camera, theme, false);
         let portals_started = std::time::Instant::now();
         self.portals(world, flight, &camera, mission, theme, network);
         self.detail[3] = portals_started.elapsed().as_secs_f64() * 1000.0;
@@ -339,17 +342,17 @@ impl Renderer {
             db.total_cmp(&da)
         });
         for jet in &jets {
-            self.trails(jet, &camera, theme);
+            self.trails(jet, &camera);
         }
         for jet in jets {
-            self.jet(jet, &camera, theme);
+            self.jet(jet, &camera);
         }
         if let Some(mission) = mission {
             self.mission(mission, flight, &camera);
         }
-        self.draw_parallel(world, flight, &camera, theme, height, true);
+        self.draw_parallel(world, flight, &camera, theme, true);
         if !world.kind.vacuum() {
-            self.precipitation(world, flight, &camera, theme);
+            self.precipitation(world, flight, &camera);
         }
         for i in 0..width * height {
             self.output[i] = if has_panel && self.cockpit.pixels[i] != 0 {
@@ -372,19 +375,11 @@ impl Renderer {
             dest.copy_from_slice(&color.to_le_bytes());
         }
     }
-    fn layer(
-        &mut self,
-        world: &World,
-        flight: &Flight,
-        camera: &Camera,
-        theme: usize,
-        height: usize,
-        clouds: bool,
-    ) {
+    fn layer(&mut self, world: &World, flight: &Flight, camera: &Camera, clouds: bool) {
         if clouds {
             let started = std::time::Instant::now();
             self.warp = flight.surface.filter(|surface| surface.bend > 0.00001);
-            self.draw_clouds(world, flight, camera, theme);
+            self.draw_clouds(world, flight, camera);
             self.warp = None;
             self.detail[1] = started.elapsed().as_secs_f64() * 1000.0;
             return;
@@ -393,12 +388,12 @@ impl Renderer {
         self.triangles = 0;
         self.warp = flight.surface.filter(|surface| surface.bend > 0.00001);
         if world.kind != crate::world::MapKind::Space {
-            self.world(world, flight, camera, theme);
+            self.world(world, flight, camera);
         }
         if world.kind.vacuum() {
             self.cosmos(world, camera, flight);
         } else {
-            self.sky(camera, flight, theme, height);
+            self.sky(world, camera, flight);
             let bend = self.warp.map_or(0.0, |warp| warp.bend);
             let thin_air = 1.0
                 - (1.0 - crate::world::orbit::thin_air(flight.position.z)) * (1.0 - bend).powi(2);
@@ -428,7 +423,6 @@ impl Renderer {
         flight: &Flight,
         camera: &Camera,
         theme: usize,
-        height: usize,
         clouds: bool,
     ) {
         if clouds
@@ -436,8 +430,9 @@ impl Renderer {
         {
             return;
         }
+        self.light = lighting::Lighting::new(flight, theme);
         if self.workers.is_empty() {
-            self.layer(world, flight, camera, theme, height, clouds);
+            self.layer(world, flight, camera, clouds);
         } else {
             let strip = self.w.div_ceil(self.workers.len());
             let w = self.w;
@@ -447,6 +442,7 @@ impl Renderer {
                 for (i, worker) in self.workers.iter_mut().enumerate() {
                     let start = i * strip;
                     let end = ((i + 1) * strip).min(w);
+                    worker.light = self.light;
                     worker.x_origin = start;
                     worker.full_width = self.w;
                     worker.w = end - start;
@@ -476,7 +472,7 @@ impl Renderer {
                     let mut view = *camera;
                     view.center.x -= start as f32;
                     scope.spawn(move || {
-                        worker.layer(world, flight, &view, theme, height, clouds);
+                        worker.layer(world, flight, &view, clouds);
                     });
                 }
             });
@@ -609,5 +605,28 @@ mod parallel_tests {
                 }
             }
         }
+    }
+    #[test]
+    fn aurora_preserves_moon_and_foreground_pixels() {
+        let world = World::generate(crate::world::MapKind::Icebergs, 7);
+        let mut flight = Flight::new(&world);
+        flight.position = vec3(1024.0, 1024.0, 240.0);
+        flight.follow = flight.position;
+        flight.yaw = 0.0;
+        flight.pitch = 0.2;
+        flight.weights = [0.0, 1.0, 0.0];
+        flight.wing_count = 0;
+        let mut renderer = Renderer::single();
+        renderer.render(&world, &flight, 320, 170, 2);
+        let before = renderer.pixels.clone();
+        assert!(renderer.depth.iter().any(|d| d.is_finite() && *d > 5000.0));
+        let camera = Camera::new(&flight, 320, 170);
+        renderer.aurora(&camera, &flight, 1.0);
+        for (i, depth) in renderer.depth.iter().enumerate() {
+            if depth.is_finite() {
+                assert_eq!(renderer.pixels[i], before[i]);
+            }
+        }
+        assert_ne!(renderer.pixels, before);
     }
 }

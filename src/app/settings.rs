@@ -6,6 +6,7 @@ pub(super) struct Settings {
     pub faceted: bool,
     pub portal_labels: bool,
     pub dynamic_clouds: bool,
+    pub dynamic_lighting: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -13,6 +14,7 @@ impl Default for Settings {
             faceted: true,
             portal_labels: true,
             dynamic_clouds: true,
+            dynamic_lighting: true,
         }
     }
 }
@@ -37,12 +39,13 @@ impl App {
             0 => self.flight.faceted = !self.flight.faceted,
             1 => self.portal_labels = !self.portal_labels,
             2 => self.flight.dynamic_clouds = !self.flight.dynamic_clouds,
-            3 => self.flight.hud = !self.flight.hud,
-            4 => {
+            3 => self.flight.dynamic_lighting = !self.flight.dynamic_lighting,
+            4 => self.flight.hud = !self.flight.hud,
+            5 => {
                 self.audio_settings.profile =
                     (self.audio_settings.profile as i32 + direction).rem_euclid(4) as u8
             }
-            5 => {
+            6 => {
                 self.audio_settings.volume =
                     (self.audio_settings.volume as i32 + direction).clamp(0, 10) as u8
             }
@@ -51,7 +54,7 @@ impl App {
                 return;
             }
         }
-        if self.selection <= 2
+        if self.selection <= 3
             && let Some(path) = &self.settings_path
         {
             let result = (|| -> std::io::Result<()> {
@@ -61,8 +64,11 @@ impl App {
                 std::fs::write(
                     path,
                     format!(
-                        "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\n",
-                        self.flight.faceted, self.portal_labels, self.flight.dynamic_clouds
+                        "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ndynamic_lighting = {}\n",
+                        self.flight.faceted,
+                        self.portal_labels,
+                        self.flight.dynamic_clouds,
+                        self.flight.dynamic_lighting
                     ),
                 )
             })();

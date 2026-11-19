@@ -18,6 +18,7 @@ use crate::world::World;
 
 pub const MODEL_SCALE: f32 = 0.5;
 pub const VIEW_SCALE: f32 = 0.82;
+pub const DAY_SECONDS: f32 = 900.0;
 pub const MIN_CLEARANCE: f32 = 28.0;
 const LOOP_RATE: f32 = 1.25;
 const NORMAL_PITCH: f32 = 0.55;
@@ -71,6 +72,8 @@ pub struct Flight {
     pub hud: bool,
     pub faceted: bool,
     pub dynamic_clouds: bool,
+    pub dynamic_lighting: bool,
+    pub day_time: f32,
     pub vehicle: crate::content::vehicles::Vehicle,
     pub weather: crate::content::weather::WeatherState,
     pub demo_time: f32,
@@ -142,6 +145,8 @@ impl Flight {
             hud: true,
             faceted: true,
             dynamic_clouds: true,
+            dynamic_lighting: true,
+            day_time: 0.0,
             vehicle: crate::content::vehicles::Vehicle::Falcon,
             weather: crate::content::weather::WeatherState::new(
                 crate::content::weather::Weather::Clear,
@@ -203,6 +208,7 @@ impl Flight {
         let hud = self.hud;
         let faceted = self.faceted;
         let dynamic_clouds = self.dynamic_clouds;
+        let (dynamic_lighting, day_time) = (self.dynamic_lighting, self.day_time);
         let vehicle = self.vehicle;
         let (view, weights, demo, wing_count) =
             (self.view, self.weights, self.demo, self.wing_count);
@@ -216,6 +222,8 @@ impl Flight {
         self.hud = hud;
         self.faceted = faceted;
         self.dynamic_clouds = dynamic_clouds;
+        self.dynamic_lighting = dynamic_lighting;
+        self.day_time = day_time;
         self.vehicle = vehicle;
     }
 
@@ -401,6 +409,9 @@ impl Flight {
             self.pitch_rate = 0.0;
         }
         self.time += dt;
+        if self.dynamic_lighting {
+            self.day_time = (self.day_time + dt).rem_euclid(DAY_SECONDS);
+        }
         self.frame_drift *= (-dt * 3.0).exp();
         if let Some(adjustment) = &mut self.camera_adjustment {
             adjustment.weight *= (-dt * 0.3).exp();

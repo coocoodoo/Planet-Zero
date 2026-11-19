@@ -1,5 +1,5 @@
 use super::*;
-use glam::{Vec2, Vec3, Vec4, vec2, vec3};
+use glam::{Vec2, Vec3, Vec4, vec2};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -21,7 +21,6 @@ pub struct CloudFace {
     pub points: [Vec3; 3],
     pub normal: Vec3,
     pub thickness: [f32; 3],
-    pub shade: usize,
 }
 
 impl Cloud {
@@ -91,6 +90,9 @@ impl CloudShape {
             })
             .collect();
         let faces = std::array::from_fn(|level| {
+            if layer && level == 2 {
+                return Vec::new();
+            }
             let step = if level == 0 { 2 } else { 1 };
             let mut faces = Vec::new();
             let point = |x: usize, y: usize| sample(x, y).extend(widths[y * width + x]);
@@ -186,12 +188,10 @@ impl CloudShape {
             let normal = (points[1] - points[0])
                 .cross(points[2] - points[0])
                 .normalize();
-            let shade = (normal.dot(vec3(-0.55, -0.3, 0.78)) * 0.7 + 0.3).clamp(0.0, 1.0);
             faces.push(CloudFace {
                 points,
                 normal,
                 thickness: thicknesses,
-                shade: (shade * 15.0) as usize,
             });
         }
     }

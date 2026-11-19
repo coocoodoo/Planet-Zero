@@ -10,17 +10,7 @@ fn starfield() -> &'static Vec<u32> {
         for face in 0..6 {
             for y in 0..128 {
                 for x in 0..128 {
-                    let u = x as f32 / 63.5 - 1.0;
-                    let v = y as f32 / 63.5 - 1.0;
-                    let d = match face {
-                        0 => vec3(1.0, u, v),
-                        1 => vec3(-1.0, u, v),
-                        2 => vec3(u, 1.0, v),
-                        3 => vec3(u, -1.0, v),
-                        4 => vec3(u, v, 1.0),
-                        _ => vec3(u, v, -1.0),
-                    }
-                    .normalize();
+                    let d = sky_direction(face, x, y);
                     let band = (1.0 - (d.z * 1.6 + d.x * 0.48 - d.y * 0.22).abs())
                         .max(0.0)
                         .powi(5);
@@ -50,9 +40,91 @@ fn starfield() -> &'static Vec<u32> {
     })
 }
 
+fn aurora_texture() -> &'static Vec<u32> {
+    static AURORA: OnceLock<Vec<u32>> = OnceLock::new();
+    AURORA.get_or_init(|| {
+        let mut pixels = Vec::with_capacity(6 * 128 * 128);
+        for face in 0..6 {
+            for y in 0..128 {
+                for x in 0..128 {
+                    let d = sky_direction(face, x, y);
+                    let angle = d.y.atan2(d.x);
+                    let mut glow_color = Vec3::ZERO;
+                    let mut opacity = 0.0_f32;
+                    for ribbon in 0..2 {
+                        let phase = ribbon as f32 * 1.7;
+                        let base = 0.19
+                            + ribbon as f32 * 0.25
+                            + (angle * 2.0 + phase).sin() * 0.115
+                            + (angle * 5.0 - phase).sin() * 0.035;
+                        let height = d.z - base;
+                        let filaments =
+                            0.7 + 0.3 * (angle * 89.0 + (angle * 11.0).sin() * 3.0).sin();
+                        let reach = 0.10 + 0.055 * (angle * 7.0 + phase).sin();
+                        let curtain = (height / 0.018).clamp(0.0, 1.0)
+                            * (-height.max(0.0) / reach).exp()
+                            * filaments;
+                        let hem = (-(height / 0.022).powi(2)).exp();
+                        let amount =
+                            (hem * 0.58 + curtain * 0.8).min(1.0) * (d.z * 9.0).clamp(0.0, 1.0);
+                        let cyan = vec3(46.0, 228.0, 204.0);
+                        let violet = vec3(168.0, 86.0, 231.0);
+                        let color = cyan.lerp(violet, (height / 0.14).clamp(0.0, 1.0));
+                        glow_color += color * amount;
+                        opacity += amount;
+                    }
+                    let color = glow_color / opacity.max(0.001);
+                    pixels.push(u32::from_le_bytes([
+                        color.x as u8,
+                        color.y as u8,
+                        color.z as u8,
+                        (opacity.min(1.0) * 195.0) as u8,
+                    ]));
+                }
+            }
+        }
+        pixels
+    })
+}
+
+fn sky_direction(face: usize, x: usize, y: usize) -> Vec3 {
+    let u = x as f32 / 63.5 - 1.0;
+    let v = y as f32 / 63.5 - 1.0;
+    match face {
+        0 => vec3(1.0, u, v),
+        1 => vec3(-1.0, u, v),
+        2 => vec3(u, 1.0, v),
+        3 => vec3(u, -1.0, v),
+        4 => vec3(u, v, 1.0),
+        _ => vec3(u, v, -1.0),
+    }
+    .normalize()
+}
+
 impl Renderer {
     pub(super) fn stars(&mut self, camera: &Camera, opacity: f32, rotation: glam::Quat) {
-        let texture = starfield();
+        self.sky_texture(camera, starfield(), opacity, rotation);
+    }
+
+    pub(super) fn aurora(&mut self, camera: &Camera, flight: &Flight, night: f32) {
+        let weather = flight.weather;
+        let strength = night
+            * (1.0
+                - weather.weight(Weather::Fog) * 0.95
+                - weather.weight(Weather::Storm) * 0.9
+                - weather.weight(Weather::Snow) * 0.65);
+        let rotation = glam::Quat::from_rotation_z(flight.time * 0.006)
+            * glam::Quat::from_rotation_x((flight.time * 0.035).sin() * 0.025);
+        self.sky_texture(camera, aurora_texture(), strength, rotation);
+    }
+
+    fn sky_texture(
+        &mut self,
+        camera: &Camera,
+        texture: &[u32],
+        opacity: f32,
+        rotation: glam::Quat,
+    ) {
         let mut sky_camera = *camera;
         sky_camera.q = camera.q.max(0.004);
         for x in 0..self.w {
@@ -73,6 +145,7 @@ impl Renderer {
                     let tx = ((u + 1.0) * 63.5).clamp(0.0, 127.0) as usize;
                     let ty = ((v + 1.0) * 63.5).clamp(0.0, 127.0) as usize;
                     let color = texture[face * 16384 + ty * 128 + tx];
+                    let opacity = opacity * (color >> 24) as f32 / 255.0;
                     self.pixels[at] = if opacity >= 1.0 {
                         color
                     } else {
@@ -85,17 +158,20 @@ impl Renderer {
     }
     pub(super) fn cosmos(&mut self, world: &World, camera: &Camera, flight: &Flight) {
         self.stars(camera, 1.0, flight.sky_rotation);
+        self.sun(camera, flight);
+        self.orbital_bodies(world, camera, flight);
+    }
+
+    pub(super) fn sun(&mut self, camera: &Camera, flight: &Flight) {
         if camera.q > 0.0001 {
             self.planet(
                 camera,
-                camera.position
-                    + flight.sky_rotation.conjugate() * vec3(-0.55, -0.81, 0.3) * 12000.0,
+                camera.position + self.light.direction * 12000.0,
                 480.0,
                 true,
                 flight.time,
             );
         }
-        self.orbital_bodies(world, camera, flight);
     }
 
     fn planet(&mut self, camera: &Camera, center: Vec3, radius: f32, star: bool, time: f32) {

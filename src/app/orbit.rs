@@ -268,7 +268,6 @@ impl App {
         self.flight.sky_rotation = Quat::from_mat3(&surface.basis);
         let environment = map.environment;
         self.flight.weather = environment.weather;
-        self.theme = environment.theme;
         let previous = std::mem::replace(&mut self.world, destination);
         self.flight.orbital_scenery = Some(previous.clone());
         self.network.remember(previous.clone());
@@ -320,7 +319,6 @@ impl App {
             self.world.kind,
             self.world.seed,
         );
-        self.theme = 0;
         let previous = std::mem::replace(&mut self.world, destination);
         self.network.remember(previous);
         self.network

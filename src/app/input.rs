@@ -161,8 +161,8 @@ impl App {
             }
             Page::Settings => {
                 match code {
-                    UP => self.selection = (self.selection + 6) % 7,
-                    DOWN => self.selection = (self.selection + 1) % 7,
+                    UP => self.selection = (self.selection + 7) % 8,
+                    DOWN => self.selection = (self.selection + 1) % 8,
                     LEFT => self.adjust_setting(-1),
                     RIGHT | ENTER => self.adjust_setting(1),
                     SETTINGS => self.close_settings(),
@@ -285,7 +285,10 @@ impl App {
         }
         match code {
             WEATHER => self.flight.weather.cycle(self.world.kind, 1),
-            TIME => self.theme = (self.theme + 1) % 3,
+            TIME => {
+                self.theme = (self.theme + 1) % 3;
+                self.flight.day_time = 0.0;
+            }
             PORTAL => {
                 self.network
                     .summon(&self.world, self.flight.position, self.flight.axes()[1]);
@@ -414,8 +417,8 @@ impl App {
         } else if self.page == Page::Paused && (45..141).contains(&y) {
             self.selection = ((y - 45) / 16).min(5);
             self.activate();
-        } else if self.page == Page::Settings && (43..141).contains(&y) {
-            self.selection = ((y - 43) / 14).min(6);
+        } else if self.page == Page::Settings && (43..147).contains(&y) {
+            self.selection = ((y - 43) / 13).min(7);
             self.adjust_setting(if x < 160 { -1 } else { 1 });
         } else if self.page == Page::Playing && self.hud_button_contains(x, y) {
             self.flight.hud = !self.flight.hud;

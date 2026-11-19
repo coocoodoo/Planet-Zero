@@ -52,9 +52,18 @@ impl Renderer {
         }
     }
     pub(super) fn triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32) {
+        let normal = (points[1] - points[0])
+            .cross(points[2] - points[0])
+            .normalize_or_zero();
+        let color = mix(
+            self.light.color(rgb(17, 23, 35)),
+            self.light.color(color),
+            self.light.diffuse(normal),
+        );
         self.surface(camera, points, color, false, None);
     }
     pub(super) fn rock_triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32) {
+        let color = self.light.color(color);
         self.surface(camera, points, color, true, None);
     }
     pub(super) fn surface(

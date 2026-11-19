@@ -1,27 +1,22 @@
 use super::*;
 
 impl Renderer {
-    pub(super) fn world(&mut self, world: &World, flight: &Flight, camera: &Camera, theme: usize) {
+    pub(super) fn world(&mut self, world: &World, flight: &Flight, camera: &Camera) {
         let started = std::time::Instant::now();
-        self.pitched_terrain(
-            world,
-            flight.faceted,
-            camera,
-            crate::world::network::Environment {
-                weather: flight.weather,
-                theme,
-            },
-        );
+        self.pitched_terrain(world, flight.faceted, camera, flight.weather);
         self.detail[0] = started.elapsed().as_secs_f64() * 1000.0;
     }
-    pub(super) fn sky(&mut self, camera: &Camera, flight: &Flight, theme: usize, _height: usize) {
-        let (low, high) = match theme {
-            1 => (rgb(255, 198, 132), rgb(84, 68, 150)),
-            2 => (rgb(36, 56, 110), rgb(7, 10, 34)),
-            _ => (rgb(198, 232, 250), rgb(62, 142, 222)),
-        };
+    pub(super) fn sky(&mut self, world: &World, camera: &Camera, flight: &Flight) {
         let weather = flight.weather;
-        let (low, high) = weather.sky(low, high, theme);
+        let skies = [
+            (rgb(198, 232, 250), rgb(62, 142, 222)),
+            (rgb(255, 198, 132), rgb(84, 68, 150)),
+            (rgb(36, 56, 110), rgb(7, 10, 34)),
+        ];
+        let skies: [_; 3] = std::array::from_fn(|i| weather.sky(skies[i].0, skies[i].1, i));
+        let low = self.light.blend(skies.map(|s| s.0));
+        let high = self.light.blend(skies.map(|s| s.1));
+        let night = self.light.night();
         let flash = weather.flash(flight.time);
         for y in 0..self.h {
             let (_, ray) = camera.ray(vec2(camera.center.x, y as f32));
@@ -38,7 +33,7 @@ impl Renderer {
                     && self.pixels[at] == 0
                     && self.depth[at] == f32::INFINITY
                 {
-                    self.pixels[at] = if theme == 2
+                    self.pixels[at] = if night > 0.0
                         && weather.weight(Weather::Clear) > 0.95
                         && gradient > 0.2
                         && hash(
@@ -48,9 +43,9 @@ impl Renderer {
                         ) == 255
                         && (x + self.x_origin).is_multiple_of(3)
                     {
-                        rgb(182, 202, 232)
+                        mix(color, rgb(182, 202, 232), night)
                     } else {
-                        if weather.weight(Weather::Rainbow) > 0.0 && theme != 2 {
+                        if weather.weight(Weather::Rainbow) > 0.0 && night < 1.0 {
                             let (_, ray) = camera.ray(vec2(x as f32, y as f32));
                             let direction = ray.normalize();
                             let axis = vec3(0.3, -0.95, -0.08).normalize();
@@ -67,7 +62,8 @@ impl Renderer {
                                     rgb(185, 132, 221),
                                 ];
                                 let fade = (direction.z * 8.0).min(1.0)
-                                    * if theme == 0 { 0.52 } else { 0.32 }
+                                    * (1.0 - night)
+                                    * 0.52
                                     * weather.weight(Weather::Rainbow);
                                 mix(color, rainbow[band as usize], fade)
                             } else {
@@ -79,6 +75,12 @@ impl Renderer {
                     };
                 }
             }
+        }
+        if world.kind == crate::world::MapKind::Icebergs && night > 0.0 {
+            self.aurora(camera, flight, night);
+        }
+        if self.light.direction.z > -0.02 {
+            self.sun(camera, flight);
         }
     }
 }

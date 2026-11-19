@@ -43,7 +43,6 @@ impl App {
         self.flight.demo_target = None;
         let environment = self.network.environment(route.target);
         self.flight.weather = environment.weather;
-        self.theme = environment.theme;
         self.mission.relocate(
             route.aperture,
             exit,

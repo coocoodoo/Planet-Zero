@@ -572,9 +572,37 @@ fn cloud_setting_survives_world_changes_and_menu_navigation() {
     app.selection = 0;
     app.key(crate::keys::UP, 1);
     app.key(crate::keys::UP, 0);
-    assert_eq!(app.selection, 6);
+    assert_eq!(app.selection, 7);
     app.key(crate::keys::ENTER, 1);
     assert_eq!(app.page, Page::Menu);
     let settings: super::settings::Settings = toml::from_str("dynamic_clouds = false").unwrap();
     assert!(!settings.dynamic_clouds);
+}
+
+#[test]
+fn daylight_pauses_freezes_and_keeps_phase_across_maps() {
+    let mut app = App::new(World::generate(crate::world::MapKind::Islands, 7));
+    app.start();
+    app.auto = false;
+    app.flight.day_time = 100.0;
+    app.flight.dynamic_lighting = true;
+    app.step(0.1, None);
+    assert!(app.flight.day_time > 100.0);
+    let phase = app.flight.day_time;
+    app.page = Page::Paused;
+    app.step(0.1, None);
+    assert_eq!(app.flight.day_time, phase);
+    app.flight.dynamic_lighting = false;
+    app.page = Page::Playing;
+    app.step(0.1, None);
+    assert_eq!(app.flight.day_time, phase);
+    app.flight.change_world(&app.world);
+    assert_eq!(app.flight.day_time, phase);
+    assert!(!app.flight.dynamic_lighting);
+    app.key(crate::keys::TIME, 1);
+    app.key(crate::keys::TIME, 0);
+    assert_eq!(app.theme, 1);
+    assert_eq!(app.flight.day_time, 0.0);
+    let settings: super::settings::Settings = toml::from_str("dynamic_lighting = false").unwrap();
+    assert!(!settings.dynamic_lighting);
 }

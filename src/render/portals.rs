@@ -235,21 +235,19 @@ impl Renderer {
             }
             let mut remote_flight = flight.clone();
             remote_flight.position = entry.transform(exit, flight.position);
-            let remote_theme = if let Some(network) = network.filter(|n| n.active) {
+            if let Some(network) = network.filter(|n| n.active) {
                 let environment =
                     network.environment(crate::world::network::MapKey::of(destination));
                 remote_flight.weather = environment.weather;
-                environment.theme
-            } else {
-                theme
-            };
-            remote.draw_parallel(destination, &remote_flight, &view, remote_theme, rh, false);
+            }
+            let remote_theme = theme;
+            remote.draw_parallel(destination, &remote_flight, &view, remote_theme, false);
             if let Some(mission) = mission.filter(|_| std::ptr::eq(world, destination)) {
                 remote.mission(mission, flight, &view);
             }
-            remote.draw_parallel(destination, &remote_flight, &view, remote_theme, rh, true);
+            remote.draw_parallel(destination, &remote_flight, &view, remote_theme, true);
             if !destination.kind.vacuum() {
-                remote.precipitation(destination, &remote_flight, &view, remote_theme);
+                remote.precipitation(destination, &remote_flight, &view);
             }
             let base = self.pixels.clone();
             let rim = portal_color(destination.kind, remote_theme);

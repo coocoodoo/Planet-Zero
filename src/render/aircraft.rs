@@ -1,7 +1,7 @@
 use super::*;
 
 impl Renderer {
-    pub(super) fn trails(&mut self, flight: &Flight, camera: &Camera, theme: usize) {
+    pub(super) fn trails(&mut self, flight: &Flight, camera: &Camera) {
         for i in (1..flight.trails.len()).rev() {
             for side in 0..2 {
                 if let (Some((a, da, _)), Some((b, db, _))) = (
@@ -14,11 +14,12 @@ impl Renderer {
                         continue;
                     }
                     let color = mix(
-                        flight.weather.shade(grade(
-                            mix(rgb(255, 255, 255), rgb(120, 180, 218), age),
-                            theme,
-                        )),
-                        flight.weather.haze(theme),
+                        flight.weather.shade(self.light.color(mix(
+                            rgb(255, 255, 255),
+                            rgb(120, 180, 218),
+                            age,
+                        ))),
+                        self.light.haze(flight.weather),
                         if flight.space {
                             0.0
                         } else {
@@ -82,12 +83,24 @@ impl Renderer {
                     c - u * 0.5 + v * 0.5,
                 ]
                 .map(|p| flight.local(p));
-                self.triangle(camera, [corners[0], corners[1], corners[2]], color);
-                self.triangle(camera, [corners[0], corners[2], corners[3]], color);
+                self.surface(
+                    camera,
+                    [corners[0], corners[1], corners[2]],
+                    color,
+                    false,
+                    None,
+                );
+                self.surface(
+                    camera,
+                    [corners[0], corners[2], corners[3]],
+                    color,
+                    false,
+                    None,
+                );
             }
         }
     }
-    fn paper_plane(&mut self, flight: &Flight, camera: &Camera, theme: usize) {
+    fn paper_plane(&mut self, flight: &Flight, camera: &Camera) {
         let points = [
             vec3(0.0, 32.0, 0.0),
             vec3(-25.0, -19.0, 0.5),
@@ -105,20 +118,26 @@ impl Renderer {
             ([1, 3, 2], rgb(141, 153, 161)),
             ([3, 5, 4], rgb(203, 212, 211)),
         ] {
-            self.triangle(camera, face.map(|i| points[i]), grade(color, theme));
+            self.surface(
+                camera,
+                face.map(|i| points[i]),
+                self.light.color(color),
+                false,
+                None,
+            );
         }
         for (a, b) in [(0, 1), (0, 2), (0, 4), (0, 5), (2, 3), (3, 4)] {
             self.world_line(
                 camera,
                 points[a],
                 points[b],
-                grade(rgb(104, 123, 138), theme),
+                self.light.color(rgb(104, 123, 138)),
             );
         }
     }
-    pub(super) fn jet(&mut self, flight: &Flight, camera: &Camera, theme: usize) {
+    pub(super) fn jet(&mut self, flight: &Flight, camera: &Camera) {
         if flight.vehicle == crate::content::vehicles::Vehicle::Paper {
-            self.paper_plane(flight, camera, theme);
+            self.paper_plane(flight, camera);
             return;
         }
         let [right, forward, up] = flight.axes();
@@ -137,9 +156,10 @@ impl Renderer {
         });
         let mut palette = [0_u32; 96];
         for &(i, r, g, b) in JET {
-            palette[i] = flight
-                .weather
-                .shade(mix(rgb(r, g, b), grade(rgb(r, g, b), theme), 0.4));
+            palette[i] =
+                flight
+                    .weather
+                    .shade(mix(rgb(r, g, b), self.light.color(rgb(r, g, b)), 0.4));
         }
         if flight.vehicle != crate::content::vehicles::Vehicle::Falcon {
             let [r, g, b] = flight.vehicle.tint();
@@ -154,7 +174,7 @@ impl Renderer {
             flight.weather.fog(jet_depth, flight.position.z)
         };
         for color in &mut palette {
-            *color = mix(*color, flight.weather.haze(theme), fog);
+            *color = mix(*color, self.light.haze(flight.weather), fog);
         }
         self.mask.fill(0);
         let center_scale = camera.project(flight.position).map_or(1.0, |p| p.2);

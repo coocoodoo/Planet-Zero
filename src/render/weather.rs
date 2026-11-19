@@ -1,13 +1,7 @@
 use super::*;
 
 impl Renderer {
-    pub(super) fn precipitation(
-        &mut self,
-        world: &World,
-        flight: &Flight,
-        camera: &Camera,
-        theme: usize,
-    ) {
+    pub(super) fn precipitation(&mut self, world: &World, flight: &Flight, camera: &Camera) {
         let weather = flight.weather;
         let (kind, count, fall, wind) = weather.precipitation();
         let cloud_top = world.cloud_height(flight.position.x, flight.position.y) + 4.0;
@@ -34,7 +28,7 @@ impl Renderer {
         }
         let size = high - low;
         let time = flight.time;
-        let haze = weather.haze(theme);
+        let haze = self.light.haze(weather);
         let (fog_start, fog_end) = weather.visibility(flight.position.z);
         for i in 0..count {
             let seed = i as u32 * 7919 + 31;
@@ -77,7 +71,7 @@ impl Renderer {
                     _ => rgb(149, 187, 216),
                 };
                 let color = mix(
-                    grade(base, theme),
+                    self.light.color(base),
                     haze,
                     ((depth - fog_start) / (fog_end - fog_start))
                         .clamp(0.0, 1.0)
@@ -155,7 +149,7 @@ mod tests {
             flight.time = frame as f32 / 30.0;
             flight.weather.step(1.0 / 30.0, world.kind);
             let camera = Camera::new(&flight, 320, 170);
-            renderer.precipitation(&world, &flight, &camera, 0);
+            renderer.precipitation(&world, &flight, &camera);
         }
         let colored = |x: std::ops::Range<usize>, y: std::ops::Range<usize>| {
             x.flat_map(|x| y.clone().map(move |y| x * 170 + y))
@@ -170,7 +164,7 @@ mod tests {
         flight.follow = flight.position;
         renderer.pixels.fill(0);
         let camera = Camera::new(&flight, 320, 170);
-        renderer.precipitation(&world, &flight, &camera, 0);
+        renderer.precipitation(&world, &flight, &camera);
         assert!(renderer.pixels.iter().all(|&pixel| pixel == 0));
     }
 }

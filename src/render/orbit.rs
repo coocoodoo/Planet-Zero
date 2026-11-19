@@ -148,8 +148,11 @@ impl Renderer {
         view.up = rotation * camera.up;
         view.forward = rotation * camera.forward;
         let previous = self.warp.replace(warp);
-        self.pitched_terrain(&map.world, flight.faceted, &view, map.environment);
+        let previous_light = self.light;
+        self.light = self.light.in_frame(rotation);
+        self.pitched_terrain(&map.world, flight.faceted, &view, map.environment.weather);
         self.warp = previous;
+        self.light = previous_light;
     }
     fn distant_body(&mut self, camera: &Camera, center: Vec3, body: Body, rotation: glam::Mat3) {
         let radius = body.radius();
@@ -193,7 +196,7 @@ impl Renderer {
                 self.pixels[at] = mix(
                     rgb(17, 23, 35),
                     base,
-                    normal.dot(vec3(0.3, 0.2, 0.9)).abs().clamp(0.45, 1.0),
+                    normal.dot(self.light.sun).max(0.0) * 0.92 + 0.08,
                 );
                 self.depth[at] = depth;
             }

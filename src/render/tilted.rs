@@ -6,13 +6,12 @@ impl Renderer {
         world: &World,
         faceted: bool,
         camera: &Camera,
-        environment: crate::world::network::Environment,
+        weather: crate::content::weather::WeatherState,
     ) {
-        let theme = environment.theme;
         let weather = if world.kind.vacuum() {
             crate::content::weather::WeatherState::new(Weather::Clear, world.kind, world.seed)
         } else {
-            environment.weather
+            weather
         };
         let (mut fog_start, far) = if world.kind.vacuum() {
             (2200.0, 2600.0)
@@ -28,12 +27,12 @@ impl Renderer {
         });
         fog_start += bend * 10000.0;
         let fog_end = far + bend * 10000.0;
-        let colors = TOP.map(|c| weather.shade(grade(rgb(c[0], c[1], c[2]), theme)));
+        let colors = TOP.map(|c| weather.shade(self.light.color(rgb(c[0], c[1], c[2]))));
         self.terrain_cache.colors(colors);
         let haze = if world.kind.vacuum() {
             rgb(8, 10, 18)
         } else {
-            weather.haze(theme)
+            self.light.haze(weather)
         };
         let mut extent = [self.w as i32, 0, self.h as i32, 0];
         for (x, &(y0, y1)) in self.visible.iter().enumerate() {
@@ -297,14 +296,7 @@ impl Renderer {
         let normal = (points[1] - points[0])
             .cross(points[2] - points[0])
             .normalize_or_zero();
-        let light = self.warp.map_or(vec3(0.3, 0.2, 0.9), |warp| {
-            vec3(0.3, 0.2, 0.9).lerp(warp.basis.transpose() * vec3(0.3, 0.2, 0.9), warp.bend)
-        });
-        let shade = if self.warp.is_some() {
-            normal.dot(light).abs().clamp(0.45, 1.0)
-        } else {
-            (normal.x * 0.3 + normal.y * 0.2 + normal.z.abs() * 0.9).clamp(0.45, 1.0)
-        };
+        let shade = self.light.diffuse(normal);
         let inverse_area = 1.0 / area as f32;
         let columns = super::primitives::TriangleColumns::new([a, b, c]);
         let weighted = std::array::from_fn::<_, 3, _>(|i| vertices[i] * inverse[i]);
@@ -328,7 +320,7 @@ impl Renderer {
                     2.0 * step as f32,
                 )
                 .normalize();
-                (normal.x * 0.3 + normal.y * 0.2 + normal.z * 0.9).clamp(0.45, 1.0)
+                self.light.diffuse(normal)
             })
         };
         let sign = area.signum();
