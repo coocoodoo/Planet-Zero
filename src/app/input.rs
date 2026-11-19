@@ -161,8 +161,8 @@ impl App {
             }
             Page::Settings => {
                 match code {
-                    UP => self.selection = (self.selection + 5) % 6,
-                    DOWN => self.selection = (self.selection + 1) % 6,
+                    UP => self.selection = (self.selection + 6) % 7,
+                    DOWN => self.selection = (self.selection + 1) % 7,
                     LEFT => self.adjust_setting(-1),
                     RIGHT | ENTER => self.adjust_setting(1),
                     SETTINGS => self.close_settings(),
@@ -414,8 +414,8 @@ impl App {
         } else if self.page == Page::Paused && (45..141).contains(&y) {
             self.selection = ((y - 45) / 16).min(5);
             self.activate();
-        } else if self.page == Page::Settings && (45..141).contains(&y) {
-            self.selection = ((y - 45) / 16).min(5);
+        } else if self.page == Page::Settings && (43..141).contains(&y) {
+            self.selection = ((y - 43) / 14).min(6);
             self.adjust_setting(if x < 160 { -1 } else { 1 });
         } else if self.page == Page::Playing && self.hud_button_contains(x, y) {
             self.flight.hud = !self.flight.hud;

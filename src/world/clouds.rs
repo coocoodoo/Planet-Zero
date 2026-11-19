@@ -13,6 +13,7 @@ pub struct Cloud {
 pub struct CloudShape {
     pub extent: Vec2,
     pub thin: bool,
+    pub layer: bool,
     pub faces: [Vec<CloudFace>; 3],
 }
 
@@ -32,13 +33,17 @@ impl Cloud {
 
 impl CloudShape {
     pub fn new(width: usize, density: &[f32], thin: bool) -> Self {
+        Self::from_density(width, density, Cloud::CELL, thin, false)
+    }
+
+    fn from_density(width: usize, density: &[f32], cell: f32, thin: bool, layer: bool) -> Self {
         let height = density.len() / width;
-        let extent = vec2((width - 1) as f32, (height - 1) as f32) * Cloud::CELL * 0.5;
+        let extent = vec2((width - 1) as f32, (height - 1) as f32) * cell * 0.5;
         let sample = |x: usize, y: usize| {
-            (vec2(x as f32, y as f32) * Cloud::CELL - extent).extend(density[y * width + x])
+            (vec2(x as f32, y as f32) * cell - extent).extend(density[y * width + x])
         };
         let mut outline = Vec::new();
-        for y in 0..height - 1 {
+        for y in 0..if layer { 0 } else { height - 1 } {
             for x in 0..width - 1 {
                 let vertices = [
                     sample(x, y),
@@ -67,6 +72,9 @@ impl CloudShape {
             .iter()
             .enumerate()
             .map(|(i, &d)| {
+                if layer {
+                    return 1000.0;
+                }
                 if d <= 0.0 {
                     return 0.0;
                 }
@@ -124,8 +132,29 @@ impl CloudShape {
         Self {
             extent,
             thin,
+            layer,
             faces,
         }
+    }
+
+    pub fn vertical_bounds(&self, point: Vec2) -> Option<(f32, f32)> {
+        if point.abs().cmpgt(self.extent).any() {
+            return None;
+        }
+        for face in self.faces[1].iter().filter(|f| f.normal.z > 0.0) {
+            let [a, b, c] = face.points;
+            let (ab, ac, ap) = ((b - a).truncate(), (c - a).truncate(), point - a.truncate());
+            let area = ab.perp_dot(ac);
+            let u = ap.perp_dot(ac) / area;
+            let v = ab.perp_dot(ap) / area;
+            if u >= 0.0 && v >= 0.0 && u + v <= 1.0 {
+                let weights = [1.0 - u - v, u, v];
+                let top: f32 = face.points.iter().zip(weights).map(|(p, w)| p.z * w).sum();
+                let thickness: f32 = face.thickness.iter().zip(weights).map(|(t, w)| t * w).sum();
+                return Some((top - thickness, top));
+            }
+        }
+        None
     }
 
     fn add_face(faces: &mut Vec<CloudFace>, vertices: [Vec4; 3], thickness: f32, refine: u8) {
@@ -213,8 +242,8 @@ impl World {
                 for x in 0..width {
                     let point = low + vec2(x as f32, y as f32) * Cloud::CELL;
                     let seed = cluster as u32 * 7919;
-                    let noise = cloud_noise(point / 12.0, seed) * 0.7
-                        + cloud_noise(point / 5.0, seed ^ 0x73a1) * 0.3;
+                    let noise = cloud_noise(point / 12.0, seed, 4096) * 0.7
+                        + cloud_noise(point / 5.0, seed ^ 0x73a1, 4096) * 0.3;
                     density[y * width + x] = puffs
                         .iter()
                         .map(|&(center, radius, thickness)| {
@@ -240,6 +269,46 @@ impl World {
                 rank: ((cluster - usize::from(thin)) & 15) as u8,
                 shape: Arc::new(CloudShape::new(width, &density, thin)),
             });
+        }
+        if clusters > 0 {
+            self.generate_cloud_layer();
+        }
+    }
+    fn generate_cloud_layer(&mut self) {
+        // 周期密度场在分块边界共享采样，空洞贯穿云层上下表面
+        let side = 65;
+        let mut density = vec![0.0; side * side];
+        for y in 0..side {
+            for x in 0..side {
+                let p = vec2(x as f32, y as f32);
+                let cover = cloud_noise(p / 8.0, self.seed ^ 0xa271, 8) * 0.65
+                    + cloud_noise(p / 4.0, self.seed ^ 0x7193, 16) * 0.25
+                    + cloud_noise(p / 2.0, self.seed ^ 0x321b, 32) * 0.1;
+                let t = ((cover - 0.43) / 0.22).clamp(0.0, 1.0);
+                let height = (30.0 + 24.0 * cloud_noise(p / 2.0, self.seed ^ 0x5289, 32))
+                    * (t * t * (3.0 - 2.0 * t)).sqrt();
+                density[y * side + x] = if cover > 0.43 {
+                    height * height
+                } else {
+                    (cover - 0.43) * 6000.0
+                };
+            }
+        }
+        for y in 0..8 {
+            for x in 0..8 {
+                let mut tile = Vec::with_capacity(81);
+                for dy in 0..=8 {
+                    for dx in 0..=8 {
+                        tile.push(density[(y * 8 + dy) * side + x * 8 + dx]);
+                    }
+                }
+                self.clouds.push(Cloud {
+                    center: vec2(x as f32 * 256.0 + 128.0, y as f32 * 256.0 + 128.0),
+                    scale: 1.0,
+                    rank: 0,
+                    shape: Arc::new(CloudShape::from_density(9, &tile, 32.0, false, true)),
+                });
+            }
         }
     }
     pub(super) fn prepare_cloud_heights(&mut self) {
@@ -282,11 +351,12 @@ impl World {
     }
 }
 
-fn cloud_noise(point: Vec2, seed: u32) -> f32 {
+fn cloud_noise(point: Vec2, seed: u32, period: i32) -> f32 {
     let cell = point.floor().as_ivec2();
     let fraction = point - point.floor();
     let t = fraction * fraction * (Vec2::splat(3.0) - fraction * 2.0);
     let value = |x: i32, y: i32| {
+        let (x, y) = (x.rem_euclid(period), y.rem_euclid(period));
         hash(seed ^ (x as u32).wrapping_mul(137) ^ (y as u32).wrapping_mul(881)) as f32 / 255.0
     };
     let (a, b, c, d) = (

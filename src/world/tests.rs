@@ -88,3 +88,45 @@ fn canyon_terrain_wraps_across_the_y_boundary() {
     }
     assert!(worst <= 40, "canyon y seam jumps by {worst}");
 }
+
+#[test]
+fn cloud_layer_has_thickness_holes_and_continuous_tile_edges() {
+    let world = World::generate(MapKind::Islands, 7);
+    let tiles: Vec<_> = world.clouds.iter().filter(|c| c.shape.layer).collect();
+    assert_eq!(tiles.len(), 64);
+    let (mut filled, mut holes) = (0, 0);
+    for tile in &tiles {
+        for y in -8..8 {
+            for x in -8..8 {
+                match tile
+                    .shape
+                    .vertical_bounds(glam::vec2(x as f32 * 16.0 + 4.0, y as f32 * 16.0 + 4.0))
+                {
+                    Some((bottom, top)) => {
+                        assert!(top >= bottom);
+                        filled += 1;
+                    }
+                    None => holes += 1,
+                }
+            }
+        }
+    }
+    assert!(filled > holes && holes > filled / 10);
+    for y in 0..8 {
+        for x in 0..8 {
+            let (left, right) = (tiles[y * 8 + x], tiles[y * 8 + (x + 1) % 8]);
+            for n in -8..8 {
+                let a = left
+                    .shape
+                    .vertical_bounds(glam::vec2(127.999, n as f32 * 16.0 + 4.0));
+                let b = right
+                    .shape
+                    .vertical_bounds(glam::vec2(-127.999, n as f32 * 16.0 + 4.0));
+                assert_eq!(a.is_some(), b.is_some());
+                if let (Some((ab, at)), Some((bb, bt))) = (a, b) {
+                    assert!((at - bt).abs() < 0.02 && (ab - bb).abs() < 0.02);
+                }
+            }
+        }
+    }
+}

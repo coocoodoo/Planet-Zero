@@ -33,7 +33,12 @@ impl Renderer {
         }
         self.cloud_pixels
             .resize(self.pixels.len(), CloudPixel::default());
-        let coverage = flight.weather.coverage();
+        let layer_strength = flight.weather.weight(Weather::Cloudy)
+            + flight.weather.weight(Weather::Storm)
+            + flight.weather.weight(Weather::Rain) * 0.7
+            + flight.weather.weight(Weather::Snow) * 0.6;
+        let coverage = flight.weather.coverage() - layer_strength * 5.0;
+        let mut immersion = 0.0_f32;
         let far = flight.weather.visibility(camera.position.z).1.min(1000.0);
         let drift = vec2(flight.time * 7.0, flight.time * 3.0);
         let haze = flight.weather.haze(theme);
@@ -58,11 +63,19 @@ impl Renderer {
         let (eye, ray) = camera.ray(camera.center);
         let mut visible = Vec::new();
         for cloud in &world.clouds {
-            let strength = (coverage - cloud.rank as f32).clamp(0.0, 1.0) * opacity;
+            let strength = if cloud.shape.layer {
+                layer_strength * opacity
+            } else {
+                (coverage - cloud.rank as f32).clamp(0.0, 1.0) * opacity
+            };
             if strength < 0.01 {
                 continue;
             }
-            let scale = strength.sqrt() * cloud.scale;
+            let scale = if cloud.shape.layer {
+                cloud.scale
+            } else {
+                strength.sqrt() * cloud.scale
+            };
             let extent = cloud.extent();
             let mut xy = cloud.center + drift;
             xy += ((camera.position.truncate() - xy) / crate::world::CLOUD_SIZE as f32).round()
@@ -71,9 +84,23 @@ impl Renderer {
                 continue;
             }
             let thickness = if cloud.shape.thin { 0.12 } else { 1.0 };
-            let center = xy
-                .extend(world.cloud_height(xy.x, xy.y) - if cloud.shape.thin { 9.0 } else { 0.0 });
-            let half = (cloud.shape.extent + Vec2::splat(2.0)).extend(18.0 * thickness) * scale;
+            let center = xy.extend(if cloud.shape.layer {
+                230.0
+            } else {
+                world.cloud_height(xy.x, xy.y) - if cloud.shape.thin { 9.0 } else { 0.0 }
+            });
+            if cloud.shape.layer && flight.dynamic_clouds {
+                let local = eye - center;
+                if let Some((bottom, top)) = cloud.shape.vertical_bounds(local.truncate()) {
+                    let edge = (local.z - bottom).min(top - local.z);
+                    immersion = immersion.max((edge / 6.0).clamp(0.0, 1.0) * strength);
+                }
+            }
+            let half = (cloud.shape.extent + Vec2::splat(2.0)).extend(if cloud.shape.layer {
+                50.0
+            } else {
+                18.0 * thickness
+            }) * scale;
             let delta = center - camera.position;
             if planes
                 .iter()
@@ -89,7 +116,11 @@ impl Renderer {
             }
             let projected_cell =
                 camera.scale * Cloud::CELL * scale / (1.0 + camera.q * depth).max(0.12);
-            let level = if projected_cell > 4.0 {
+            let level = if !flight.dynamic_clouds {
+                0
+            } else if cloud.shape.layer {
+                1
+            } else if projected_cell > 4.0 {
                 2
             } else if projected_cell > 1.5 {
                 1
@@ -110,21 +141,51 @@ impl Renderer {
                 } else {
                     -ray
                 };
-                if face.normal.dot(toward) <= 0.0 {
+                if if flight.dynamic_clouds {
+                    face.normal.dot(toward) <= 0.0
+                } else {
+                    face.normal.z <= 0.0
+                } {
                     continue;
                 }
                 self.surface(
                     camera,
-                    face.points.map(|p| center + p * scale),
+                    face.points.map(|p| {
+                        center
+                            + if flight.dynamic_clouds {
+                                p
+                            } else {
+                                p.with_z(0.0)
+                            } * scale
+                    }),
                     palette[face.shade],
                     false,
-                    Some(face.thickness.map(|t| t * scale)),
+                    Some(face.thickness.map(|t| {
+                        t * scale
+                            * if cloud.shape.layer {
+                                layer_strength * opacity
+                            } else {
+                                1.0
+                            }
+                    })),
                 );
             }
             for at in self.cloud_touched.drain(..) {
                 let sample = &mut self.cloud_pixels[at];
                 self.pixels[at] = mix(self.pixels[at], sample.color, sample.opacity);
                 sample.depth = f32::INFINITY;
+            }
+        }
+        if immersion > 0.0 {
+            let color = mix(dark, light, 0.45);
+            for (x, &(y0, y1)) in self.visible.iter().enumerate() {
+                for y in y0..y1 {
+                    let at = x * self.h + y as usize;
+                    let distance =
+                        self.depth[at] + if camera.q > 0.0 { 1.0 / camera.q } else { 0.0 };
+                    let fog = (distance / 90.0).clamp(0.0, 0.94) * immersion;
+                    self.pixels[at] = mix(self.pixels[at], color, fog);
+                }
             }
         }
     }

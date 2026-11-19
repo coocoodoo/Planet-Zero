@@ -261,20 +261,30 @@ pub fn draw(app: &mut App) {
         let rows = [
             format!("FACETED TERRAIN   {}", toggle(f.faceted)),
             format!("PORTAL LABELS     {}", toggle(app.portal_labels)),
+            format!("DYNAMIC CLOUDS    {}", toggle(f.dynamic_clouds)),
             format!("FLIGHT HUD        {}", toggle(f.hud)),
             format!("SOUND   {}", app.audio_settings.name()),
             format!("VOLUME           {:3}%", app.audio_settings.volume * 10),
             "BACK".to_owned(),
         ];
         for (i, line) in rows.iter().enumerate() {
-            let y = 48 + i as i32 * 16;
+            let y = 45 + i as i32 * 14;
             if i == app.selection {
                 c.rect(32, y - 2, 256, 13, [36, 73, 86]);
                 c.text(34, y, ">", GOLD);
             }
             c.text(47, y, line, if i == app.selection { GOLD } else { WHITE });
         }
-        c.text(34, 146, "ESC RETURN", MUTED);
+        c.text(
+            34,
+            146,
+            if app.selection == 2 {
+                "OFF: SIMPLE CLOUDS"
+            } else {
+                "ESC RETURN"
+            },
+            MUTED,
+        );
         return;
     }
     if app.page == Page::Paused {

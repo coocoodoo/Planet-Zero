@@ -70,6 +70,7 @@ pub struct Flight {
     pub demo: bool,
     pub hud: bool,
     pub faceted: bool,
+    pub dynamic_clouds: bool,
     pub vehicle: crate::content::vehicles::Vehicle,
     pub weather: crate::content::weather::WeatherState,
     pub demo_time: f32,
@@ -140,6 +141,7 @@ impl Flight {
             demo: false,
             hud: true,
             faceted: true,
+            dynamic_clouds: true,
             vehicle: crate::content::vehicles::Vehicle::Falcon,
             weather: crate::content::weather::WeatherState::new(
                 crate::content::weather::Weather::Clear,
@@ -200,6 +202,7 @@ impl Flight {
         let weather = self.weather;
         let hud = self.hud;
         let faceted = self.faceted;
+        let dynamic_clouds = self.dynamic_clouds;
         let vehicle = self.vehicle;
         let (view, weights, demo, wing_count) =
             (self.view, self.weights, self.demo, self.wing_count);
@@ -212,6 +215,7 @@ impl Flight {
             crate::content::weather::WeatherState::new(weather.target, world.kind, world.seed);
         self.hud = hud;
         self.faceted = faceted;
+        self.dynamic_clouds = dynamic_clouds;
         self.vehicle = vehicle;
     }
 

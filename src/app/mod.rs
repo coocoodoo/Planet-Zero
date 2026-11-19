@@ -223,6 +223,7 @@ impl App {
             });
         let settings = settings::Settings::load(settings_path.as_deref());
         flight.faceted = settings.faceted;
+        flight.dynamic_clouds = settings.dynamic_clouds;
         Self {
             orbit: orbit::Orbit::default(),
             navigation: navigation::Navigation::default(),

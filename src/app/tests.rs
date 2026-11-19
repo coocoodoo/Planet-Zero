@@ -556,3 +556,25 @@ fn overhead_navigation_keeps_altitude_control() {
     }
     assert!(app.flight.position.z > 600.0);
 }
+
+#[test]
+fn cloud_setting_survives_world_changes_and_menu_navigation() {
+    let mut app = App::new(World::generate(crate::world::MapKind::Islands, 7));
+    app.settings_path = None;
+    app.open_settings();
+    app.selection = 2;
+    app.flight.dynamic_clouds = true;
+    app.key(crate::keys::ENTER, 1);
+    app.key(crate::keys::ENTER, 0);
+    assert!(!app.flight.dynamic_clouds);
+    app.flight.change_world(&app.world);
+    assert!(!app.flight.dynamic_clouds);
+    app.selection = 0;
+    app.key(crate::keys::UP, 1);
+    app.key(crate::keys::UP, 0);
+    assert_eq!(app.selection, 6);
+    app.key(crate::keys::ENTER, 1);
+    assert_eq!(app.page, Page::Menu);
+    let settings: super::settings::Settings = toml::from_str("dynamic_clouds = false").unwrap();
+    assert!(!settings.dynamic_clouds);
+}
