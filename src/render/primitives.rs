@@ -190,10 +190,11 @@ impl Renderer {
                             let weights = vec3(u * inverse[0], v * inverse[1], w * inverse[2]);
                             let thickness =
                                 weights.dot(Vec3::from_array(thickness)) / weights.element_sum();
+                            let density = (thickness / 10.0).clamp(0.0, 1.0);
                             *sample = super::clouds::CloudPixel {
                                 depth,
                                 color,
-                                opacity: (thickness / 12.0).clamp(0.0, 1.0),
+                                opacity: density * (2.0 - density),
                             };
                         }
                         continue;
