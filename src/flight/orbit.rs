@@ -12,14 +12,10 @@ pub struct CameraAdjustment {
 }
 impl Flight {
     pub fn velocity(&self) -> Vec3 {
-        if self.space_attitude.is_some() {
+        if self.space {
             return self.axes()[1] * self.speed + self.frame_drift;
         }
-        vec3(
-            self.yaw.sin() * self.pitch.cos() * self.speed,
-            -self.yaw.cos() * self.pitch.cos() * self.speed,
-            self.vertical_speed,
-        ) + self.frame_drift
+        (self.axes()[1] * self.speed).with_z(self.vertical_speed) + self.frame_drift
     }
     pub fn transform_frame(&mut self, rotation: Mat3, offset: Vec3, space: bool) {
         let camera = Camera::new(self, 320, 170);
@@ -68,6 +64,7 @@ impl Flight {
         });
     }
     pub(crate) fn transform_pose(&mut self, rotation: Mat3, offset: Vec3, space: bool) {
+        let free_attitude = self.space || self.space_attitude.is_some();
         let [right, forward, _] = self.axes().map(|v| rotation * v);
         let velocity = rotation * self.velocity();
         self.space = space;
@@ -80,7 +77,7 @@ impl Flight {
         let base_right = vec3(self.yaw.cos(), self.yaw.sin(), 0.0);
         let base_up = forward.cross(base_right);
         self.bank = angle((-right.dot(base_up)).atan2(right.dot(base_right)) - self.spin);
-        self.space_attitude = if self.space {
+        self.space_attitude = if self.space || free_attitude {
             Some(
                 Quat::from_mat3(&Mat3::from_cols(right, -forward, forward.cross(right)))
                     .normalize()

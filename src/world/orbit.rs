@@ -26,6 +26,10 @@ impl Body {
     pub fn orbit_altitude(self) -> f32 {
         self.radius() * 4.0
     }
+    pub fn attitude_freedom(self, altitude: f32) -> f32 {
+        let high = self.surface_altitude();
+        ((altitude - high * 0.5) / (high * 0.5)).clamp(0.0, 1.0)
+    }
     pub fn curvature(self, altitude: f32) -> f32 {
         smooth(
             (altitude - self.surface_altitude())

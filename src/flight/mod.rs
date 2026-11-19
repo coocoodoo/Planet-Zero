@@ -99,6 +99,8 @@ pub struct Flight {
     roll_time: f32,
     roll_direction: f32,
     pitch_rate: f32,
+    imu_pitch: Option<f32>,
+    imu_bank: Option<f32>,
     vertical_speed: f32,
     view_altitude: f32,
     frame_drift: Vec3,
@@ -167,6 +169,8 @@ impl Flight {
             roll_time: -1.0,
             roll_direction: 1.0,
             pitch_rate: 0.0,
+            imu_pitch: None,
+            imu_bank: None,
             vertical_speed: 0.0,
             view_altitude: position.z,
             frame_drift: Vec3::ZERO,
@@ -375,6 +379,14 @@ impl Flight {
             None
         };
         let controls = scripted.as_ref().unwrap_or(controls);
+        // 高空体感输入使用相邻采样的角度差，参考方向随飞机姿态保留
+        let pitch_delta = controls
+            .pitch_target
+            .zip(self.imu_pitch)
+            .map_or(0.0, |(a, b)| a - b);
+        let bank_delta = controls.bank.zip(self.imu_bank).map_or(0.0, |(a, b)| a - b);
+        self.imu_pitch = controls.pitch_target;
+        self.imu_bank = controls.bank;
         if controls.heading_only {
             self.loop_remaining = 0.0;
             self.pitch_rate = 0.0;
@@ -404,14 +416,19 @@ impl Flight {
         self.boost += (boost_goal - self.boost) * ease(4.0, dt);
         self.orbital_thrust += (f32::from(controls.orbital) - self.orbital_thrust) * ease(1.5, dt);
         if self.space && !self.demo {
+            self.steer_attitude(dt, controls, 1.0, pitch_delta, bank_delta);
             self.step_space(dt, controls);
             self.advance_roll(dt);
             self.update_visuals(dt, world);
             return;
         }
-        self.space_attitude = None;
         let high_altitude = if self.orbit_flight {
             crate::world::orbit::smooth((self.position.z - 500.0) / 700.0)
+        } else {
+            0.0
+        };
+        let attitude_freedom = if self.orbit_flight {
+            crate::world::orbit::Body::of(world.kind).attitude_freedom(self.position.z)
         } else {
             0.0
         };
@@ -421,7 +438,7 @@ impl Flight {
             self.vehicle.speed() * (1.0 + self.boost * 0.8 + self.orbital_thrust * 3.0);
         let target_speed = base_speed * throttle;
         if self.orbit_flight {
-            // 悬停（油门归零）时快速制动，避免长时间滑行
+            // 悬停时油门归零，快速制动
             let rate = if throttle > 0.0 { 3.0 } else { 10.0 };
             self.speed += (target_speed - self.speed) * ease(rate, dt);
         } else {
@@ -432,27 +449,30 @@ impl Flight {
         } else {
             0.62 * (self.time * 0.31 + 1.3).sin() + 0.38 * (self.time * 0.73 + 0.4).sin()
         };
-        self.rate += (turn.clamp(-1.0, 1.0) * self.vehicle.turn() - self.rate) * ease(2.6, dt);
-        self.yaw += self.rate * dt;
-        self.bank += (controls
-            .bank
-            .unwrap_or(self.rate / self.vehicle.turn() * 52.0_f32.to_radians())
-            - self.bank)
-            * ease(5.0, dt);
         let manual_attitude = controls.manual && controls.aerobatic && !controls.heading_only;
-        if manual_attitude {
+        let free_attitude = manual_attitude && attitude_freedom > 0.0;
+        if free_attitude {
+            self.steer_attitude(dt, controls, attitude_freedom, pitch_delta, bank_delta);
+        } else {
+            self.settle_surface_attitude();
+            self.rate += (turn.clamp(-1.0, 1.0) * self.vehicle.turn() - self.rate) * ease(2.6, dt);
+            self.yaw += self.rate * dt;
+            self.bank += (controls
+                .bank
+                .unwrap_or(self.rate / self.vehicle.turn() * 52.0_f32.to_radians())
+                - self.bank)
+                * ease(5.0, dt);
+        }
+        if manual_attitude && !free_attitude {
             let input = controls.climb.clamp(-1.0, 1.0);
             if self.hover && self.loop_remaining <= 0.0 {
-                // 悬停时俯仰按角速度自由调整，松开保持当前角度、不回正（与太空一致）
+                // 悬停时俯仰按角速度调整，松键后保持角度
                 let target_rate = input * 1.15;
                 self.pitch_rate += (target_rate - self.pitch_rate) * ease(5.0, dt);
                 let limit = std::f32::consts::FRAC_PI_2 - 0.02;
                 self.pitch = (self.pitch + self.pitch_rate * dt).clamp(-limit, limit);
             } else {
-                let pitch_limit = NORMAL_PITCH
-                    + high_altitude.max(self.orbital_thrust)
-                        * (std::f32::consts::FRAC_PI_2 - NORMAL_PITCH);
-                let pitch_error = angle(input * pitch_limit - self.pitch);
+                let pitch_error = angle(input * NORMAL_PITCH - self.pitch);
                 let target_rate = if self.loop_remaining > 0.0 {
                     self.loop_direction * LOOP_RATE
                 } else {
@@ -472,7 +492,7 @@ impl Flight {
                 }
                 self.pitch = angle(self.pitch + rotation);
             }
-        } else {
+        } else if !manual_attitude {
             self.loop_remaining = 0.0;
         }
         let forward = self.axes()[1];

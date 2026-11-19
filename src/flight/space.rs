@@ -27,7 +27,14 @@ impl Flight {
         let base_up = forward.cross(base_right);
         self.bank = (-right.dot(base_up)).atan2(right.dot(base_right));
     }
-    pub(super) fn step_space(&mut self, dt: f32, controls: &Controls) {
+    pub(super) fn steer_attitude(
+        &mut self,
+        dt: f32,
+        controls: &Controls,
+        freedom: f32,
+        pitch_delta: f32,
+        bank_delta: f32,
+    ) {
         let mut q = self.attitude();
         if let Some(direction) = controls.direction {
             let target = direction.normalize_or_zero();
@@ -43,30 +50,59 @@ impl Flight {
             self.rate +=
                 (controls.turn.clamp(-1.0, 1.0) * self.vehicle.turn() - self.rate) * ease(5.0, dt);
             let loop_active = self.loop_remaining > 0.0;
+            let limit = NORMAL_PITCH + freedom * (std::f32::consts::FRAC_PI_2 - NORMAL_PITCH);
+            let input = controls.climb.clamp(-1.0, 1.0);
+            let leveling = angle(input * limit - self.pitch) * 2.0 * (1.0 - freedom);
             let goal = if controls.heading_only {
                 0.0
             } else if loop_active {
                 self.loop_direction * LOOP_RATE
-            } else if let Some(target) = controls.pitch_target {
-                (target - self.pitch) * 2.0
+            } else if controls.pitch_target.is_some() {
+                leveling
             } else {
-                controls.climb.clamp(-1.0, 1.0) * 1.15
+                leveling + input * 1.15 * freedom
             };
-            self.pitch_rate += (goal - self.pitch_rate) * ease(5.0, dt);
+            if freedom == 1.0 && goal == 0.0 {
+                self.pitch_rate = 0.0;
+            } else {
+                self.pitch_rate += (goal - self.pitch_rate) * ease(5.0, dt);
+            }
             let mut pitch = self.pitch_rate * dt;
             if loop_active {
                 pitch = self.loop_direction * pitch.abs().min(self.loop_remaining);
                 self.loop_remaining = (self.loop_remaining - pitch.abs()).max(0.0);
+            } else if !controls.heading_only {
+                pitch += pitch_delta * freedom;
             }
-            q = q * Quat::from_rotation_z(self.rate * dt) * Quat::from_rotation_x(-pitch);
-            // 太空跟随 IMU 的机翼滚转，让左右倾斜与大气内一致
-            if let Some(target) = controls.bank {
-                let delta = angle(target - self.bank) * ease(6.0, dt);
-                q *= Quat::from_rotation_y(delta);
+            if self.space {
+                q = q * Quat::from_rotation_z(self.rate * dt) * Quat::from_rotation_x(-pitch);
+            } else {
+                // 地表俯仰沿当地水平轴调整，到达垂直方向后保持
+                q = Quat::from_rotation_z(self.rate * dt) * q;
+                let yaw = self.yaw + self.rate * dt;
+                let right = vec3(yaw.cos(), yaw.sin(), 0.0);
+                if !loop_active {
+                    let allowed = limit.max(self.pitch.abs() - dt * 0.8);
+                    pitch = (self.pitch + pitch).clamp(-allowed, allowed) - self.pitch;
+                }
+                q = Quat::from_axis_angle(right, -pitch) * q;
+            }
+            q *= Quat::from_rotation_y(bank_delta * freedom);
+            if freedom < 1.0 && !loop_active && !controls.heading_only {
+                self.space_attitude = Some(q.normalize());
+                self.sync_space_angles();
+                let bank = controls
+                    .bank
+                    .unwrap_or(self.rate / self.vehicle.turn() * 52.0_f32.to_radians());
+                q *= Quat::from_rotation_y(
+                    angle(bank - self.bank) * ease(5.0 * (1.0 - freedom), dt),
+                );
             }
         }
         self.space_attitude = Some(q.normalize());
         self.sync_space_angles();
+    }
+    pub(super) fn step_space(&mut self, dt: f32, controls: &Controls) {
         let base = self.vehicle.speed() * (1.0 + self.boost * 0.8 + self.orbital_thrust * 3.0);
         // 悬停模式油门为 0，速度归零并保持位置
         let throttle = controls.throttle.unwrap_or(1.0).clamp(0.0, 1.0);
@@ -191,6 +227,15 @@ mod bank_tests {
         f.space_attitude = Some(Quat::IDENTITY);
         f.position.z = 3000.0;
         f.follow = f.position;
+        f.step(
+            1.0 / 60.0,
+            &Controls {
+                manual: true,
+                bank: Some(0.0),
+                ..Default::default()
+            },
+            &world,
+        );
         let controls = Controls {
             manual: true,
             aerobatic: true,

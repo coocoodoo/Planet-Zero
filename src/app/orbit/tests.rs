@@ -45,15 +45,97 @@ fn steady_imu_pitch_settles_after_ascent_without_keyboard_input() {
         }
     }
     assert_eq!(game.world.kind, MapKind::Space);
+    let ascent_forward = game.flight.axes()[1];
     for _ in 0..300 {
         game.step(1.0 / 30.0);
+        assert!(ascent_forward.distance(game.flight.axes()[1]) < 0.01);
     }
     let forward = game.flight.axes()[1];
     for _ in 0..300 {
         game.step(1.0 / 30.0);
         assert!(forward.distance(game.flight.axes()[1]) < 0.01);
     }
-    assert!(game.flight.pitch > 1.4);
+}
+
+#[cfg(feature = "cardputer")]
+#[test]
+fn held_device_pitch_crosses_space_poles_and_holds_on_release() {
+    for imu_enabled in [false, true] {
+        for code in [33, 45] {
+            let mut game = crate::cardputer::Game::with_world(World::generate(MapKind::Space, 7));
+            game.app = app(MapKind::Space);
+            game.flight.position = vec3(0.0, 0.0, 20000.0);
+            game.flight.space_attitude = Some(Quat::IDENTITY);
+            game.imu_enabled = imu_enabled;
+            game.motion = crate::cardputer::imu::Motion {
+                available: true,
+                ready: true,
+                ..Default::default()
+            };
+            game.key(code, 1);
+            let mut crossed_up = false;
+            let mut crossed_down = false;
+            for frame in 0..200 {
+                if frame % 4 == 0 {
+                    game.key(code, 2);
+                }
+                game.step(1.0 / 30.0);
+                let forward = game.flight.axes()[1];
+                assert!(forward.x.abs() < 0.001);
+                crossed_up |= forward.z > 0.99;
+                crossed_down |= forward.z < -0.99;
+            }
+            assert!(crossed_up && crossed_down);
+            game.key(code, 0);
+            let attitude = game.flight.attitude();
+            for _ in 0..180 {
+                game.step(1.0 / 30.0);
+                assert!(attitude.dot(game.flight.attitude()).abs() > 0.99999);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "cardputer")]
+#[test]
+fn moon_entry_preserves_chase_direction_with_or_without_imu() {
+    for imu_enabled in [false, true] {
+        for normal in [Vec3::X, Vec3::Z, vec3(1.0, 1.0, 0.3).normalize()] {
+            let mut game = crate::cardputer::Game::with_world(World::generate(MapKind::Space, 7));
+            game.app = app(MapKind::Space);
+            game.imu_enabled = imu_enabled;
+            game.motion = crate::cardputer::imu::Motion {
+                available: true,
+                ready: true,
+                ..Default::default()
+            };
+            game.network
+                .remember(World::generate(MapKind::Moon, MapKind::Moon.seed()).into());
+            let forward = -normal;
+            let right = if normal.z.abs() > 0.99 {
+                Vec3::X
+            } else {
+                forward.cross(Vec3::Z).normalize()
+            };
+            game.flight.space_attitude = Some(Quat::from_mat3(&glam::Mat3::from_cols(
+                right,
+                -forward,
+                forward.cross(right),
+            )));
+            game.flight.position = Body::Moon.center()
+                + normal * (Body::Moon.radius() + Body::Moon.orbit_altitude() - 1.0);
+            game.flight.follow = game.flight.position;
+            let before = crate::flight::Camera::new(&game.flight, 320, 170);
+            for _ in 0..150 {
+                game.step(1.0 / 30.0);
+                assert_eq!(game.world.kind, MapKind::Moon);
+                let camera = crate::flight::Camera::new(&game.flight, 320, 170);
+                let basis = game.flight.surface.unwrap().basis;
+                assert!((basis * camera.forward).distance(before.forward) < 0.001);
+                assert!((basis * camera.up).distance(before.up) < 0.001);
+            }
+        }
+    }
 }
 
 #[test]
@@ -173,13 +255,17 @@ fn transition_holds_altitude_accepts_turns_reverses_and_pauses() {
         turn: 0.3,
         ..Default::default()
     };
-    let yaw = app.flight.yaw;
+    let mut forward = app.flight.axes()[1];
+    let mut turning = 0.0;
     for _ in 0..900 {
         app.step(1.0 / 60.0, Some(Controls { ..controls }));
+        let next = app.flight.axes()[1];
+        turning += forward.angle_between(next);
+        forward = next;
     }
     assert!(app.orbit.transition.is_some());
     assert!((app.flight.position.z - 1800.0).abs() < 0.01);
-    assert!((app.flight.yaw - yaw).abs() > 1.0);
+    assert!(turning > 1.0);
     app.help_return = Page::Playing;
     for page in [Page::Paused, Page::Chart, Page::Help] {
         app.page = page;

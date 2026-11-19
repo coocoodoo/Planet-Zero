@@ -449,6 +449,53 @@ fn held_pitch_never_starts_a_loop() {
 }
 
 #[test]
+fn pitch_range_expands_linearly_and_high_altitude_holds_on_release() {
+    for kind in [crate::world::MapKind::Moon, crate::world::MapKind::Islands] {
+        let world = World::generate(kind, 7);
+        let high = crate::world::orbit::Body::of(kind).surface_altitude();
+        for fraction in [0.0, 0.5, 1.0] {
+            let altitude = high * (0.5 + 0.5 * fraction);
+            let limit = NORMAL_PITCH + fraction * (std::f32::consts::FRAC_PI_2 - NORMAL_PITCH);
+            for direction in [-1.0, 1.0] {
+                let mut f = Flight::new(&world);
+                f.orbit_flight = true;
+                for _ in 0..180 {
+                    f.position.z = altitude;
+                    f.step(
+                        1.0 / 30.0,
+                        &Controls {
+                            climb: direction,
+                            manual: true,
+                            aerobatic: true,
+                            ..Default::default()
+                        },
+                        &world,
+                    );
+                    assert!(f.pitch.abs() <= limit + 0.002);
+                }
+                assert!((f.pitch.abs() - limit).abs() < 0.005);
+                if fraction == 1.0 {
+                    let attitude = f.attitude();
+                    for _ in 0..90 {
+                        f.position.z = altitude;
+                        f.step(
+                            1.0 / 30.0,
+                            &Controls {
+                                manual: true,
+                                aerobatic: true,
+                                ..Default::default()
+                            },
+                            &world,
+                        );
+                        assert!(attitude.dot(f.attitude()).abs() > 0.99999);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn chase_waits_for_the_camera_and_warps_without_an_exit_push() {
     use crate::world::portal::Portal;
     let world = World::generate(crate::world::MapKind::Space, 1999);
