@@ -127,7 +127,7 @@ impl Renderer {
     pub fn new() -> Self {
         let mut renderer = Self::single();
         if cfg!(target_os = "linux") {
-            renderer.workers = (0..3).map(|_| Self::single()).collect();
+            renderer.workers = (0..4).map(|_| Self::single()).collect();
         }
         renderer
     }
@@ -484,7 +484,7 @@ mod parallel_tests {
         flight.weights = [0.0, 1.0, 0.0];
         flight.wing_count = 0;
         let mut renderer = Renderer::single();
-        renderer.workers = (0..3).map(|_| Renderer::single()).collect();
+        renderer.workers = (0..4).map(|_| Renderer::single()).collect();
         renderer.render(&world, &flight, 320, 170, 0);
         let at = renderer.depth.iter().position(|d| d.is_finite()).unwrap();
         let color = renderer.pixels[at];

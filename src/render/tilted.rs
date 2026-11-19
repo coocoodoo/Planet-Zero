@@ -308,7 +308,7 @@ impl Renderer {
         let inverse_area = 1.0 / area as f32;
         let columns = super::primitives::TriangleColumns::new([a, b, c]);
         let weighted = std::array::from_fn::<_, 3, _>(|i| vertices[i] * inverse[i]);
-        let vertex_shade = if self.warp.is_some() {
+        let vertex_shade = if self.warp.is_some() || (faceted && altitude_fade == 0.0) {
             [shade; 3]
         } else {
             vertices.map(|p| {
@@ -316,8 +316,12 @@ impl Renderer {
                 let x = p.x as i32;
                 let y = p.y as i32;
                 // 采样跨度随视距增大，远处坡面明暗收敛为更粗的斑块
-                let coarse = ((p.distance(camera.position)) / 48.0).clamp(8.0, 96.0);
-                let step = (8.0 + (coarse - 8.0) * altitude_fade) as i32;
+                let step = if altitude_fade > 0.0 {
+                    let coarse = (p.distance(camera.position) / 48.0).clamp(8.0, 96.0);
+                    (8.0 + (coarse - 8.0) * altitude_fade) as i32
+                } else {
+                    8
+                };
                 let normal = vec3(
                     h(x - step, y) - h(x + step, y),
                     h(x, y - step) - h(x, y + step),
@@ -376,9 +380,6 @@ impl Renderer {
                 if self.depth[at] == f32::NEG_INFINITY {
                     continue;
                 }
-                let u = u_edge as f32 * inverse_area;
-                let v = v_edge as f32 * inverse_area;
-                let w = w_edge as f32 * inverse_area;
                 let reciprocal = 1.0 / denominator;
                 let pos = numerator * reciprocal;
                 let depth = if camera.q > 0.00001 {
@@ -390,19 +391,36 @@ impl Renderer {
                     continue;
                 }
                 // 视距越远按越大跨度做双线性采样，细碎纹样平均成较缓的明暗
-                let view_distance = (pos - camera.position).length();
+                let view_distance = if altitude_fade > 0.0 {
+                    (pos - camera.position).length()
+                } else {
+                    0.0
+                };
+                let lod = if altitude_fade > 0.0 {
+                    (view_distance.max(1.0) / 180.0).log2() * altitude_fade
+                } else {
+                    0.0
+                };
                 let coarse = (view_distance / 100.0).clamp(0.5, 16.0);
                 let sample_step = (coarse * altitude_fade).max(0.15);
-                let smooth_shade = (vertex_shade[0] * inverse[0] * u
-                    + vertex_shade[1] * inverse[1] * v
-                    + vertex_shade[2] * inverse[2] * w)
-                    * reciprocal;
-                // 远处淡出面片明暗，收敛 LOD 边界的硬接缝
-                let smooth = ((view_distance - 500.0) / 900.0).clamp(0.0, 1.0) * altitude_fade;
-                let shade = if faceted {
-                    shade * (1.0 - smooth) + smooth_shade * smooth
+                let shade = if faceted && altitude_fade == 0.0 {
+                    shade
                 } else {
-                    smooth_shade
+                    let u = u_edge as f32 * inverse_area;
+                    let v = v_edge as f32 * inverse_area;
+                    let w = w_edge as f32 * inverse_area;
+                    let smooth_shade = (vertex_shade[0] * inverse[0] * u
+                        + vertex_shade[1] * inverse[1] * v
+                        + vertex_shade[2] * inverse[2] * w)
+                        * reciprocal;
+                    // 远处淡出面片明暗，收敛 LOD 边界的硬接缝
+                    if faceted {
+                        let smooth =
+                            ((view_distance - 500.0) / 900.0).clamp(0.0, 1.0) * altitude_fade;
+                        shade * (1.0 - smooth) + smooth_shade * smooth
+                    } else {
+                        smooth_shade
+                    }
                 };
                 let cell = sample_step;
                 let gx = (pos.x / cell).floor();
@@ -423,10 +441,7 @@ impl Renderer {
                         || (world.kind == crate::world::MapKind::Canyon
                             && matches!(material, 17..=20))
                     {
-                        0.65 + super::geology::stone_texel_lod(
-                            sample,
-                            (view_distance.max(1.0) / 180.0).log2() * altitude_fade,
-                        ) * 0.035
+                        0.65 + super::geology::stone_texel_lod(sample, lod) * 0.035
                     } else {
                         1.0
                     };

@@ -250,11 +250,19 @@ fn stone_level(p: Vec3, level: usize) -> f32 {
 
 /// 按视距在相邻层级间插值采样，越远纹样越平缓
 pub(super) fn stone_texel_lod(p: Vec3, lod: f32) -> f32 {
+    if lod <= 0.0 {
+        return stone_texel(p) as f32;
+    }
     let top = stone_mips().len() as f32 - 1.0;
     let lod = lod.clamp(0.0, top);
     let lower = lod.floor() as usize;
     let blend = lod - lower as f32;
-    stone_level(p, lower) * (1.0 - blend) + stone_level(p, lower + 1) * blend
+    let value = stone_level(p, lower);
+    if blend == 0.0 {
+        value
+    } else {
+        value * (1.0 - blend) + stone_level(p, lower + 1) * blend
+    }
 }
 
 #[cfg(test)]
