@@ -202,7 +202,8 @@ impl World {
                 low = low.min(point - Vec2::splat(radius + Cloud::CELL));
                 high = high.max(point + Vec2::splat(radius + Cloud::CELL));
                 let prominence = hash((cluster * 7919 + puff * 53) as u32) as f32 / 255.0;
-                let thickness = (radius * (0.42 + prominence * 0.5)).clamp(3.0, 15.0);
+                let thickness = (radius * (0.36 + prominence * 0.12)).clamp(3.0, 9.0);
+                let thickness = (thickness / 1.5).round() * 1.5;
                 puffs.push((point, radius, thickness));
             }
             let width = ((high.x - low.x) / Cloud::CELL).ceil() as usize + 1;
@@ -218,7 +219,15 @@ impl World {
                         .iter()
                         .map(|&(center, radius, thickness)| {
                             let distance = point.distance_squared(center) / (radius * radius);
-                            (1.0 - distance + (noise - 0.5) * 0.65) * thickness.powi(2)
+                            let profile = 1.0 - distance + (noise - 0.5) * 0.65;
+                            // 云瓣中心形成宽平台，边缘平滑过渡到轮廓
+                            let profile = if profile > 0.0 {
+                                let t = (profile / 0.6).min(1.0);
+                                t * t * (3.0 - 2.0 * t)
+                            } else {
+                                profile
+                            };
+                            profile * thickness.powi(2)
                         })
                         .fold(f32::NEG_INFINITY, f32::max);
                 }
