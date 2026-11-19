@@ -428,7 +428,7 @@ pub fn draw(app: &mut App) {
     c.icon(5, 4, 'O', WHITE);
     let (hour, minute) = device_clock();
     c.osd(16, 4, &clock_text(hour, minute), WHITE);
-    c.weather(5, 20, f.weather, app.world.kind.vacuum());
+    c.weather(5, 20, f.weather.target, app.world.kind.vacuum());
     let status = if app.loader.pending.is_some() {
         'O'
     } else if f.demo {

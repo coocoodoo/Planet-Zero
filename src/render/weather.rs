@@ -9,10 +9,10 @@ impl Renderer {
         theme: usize,
     ) {
         let weather = flight.weather;
-        let (count, fall, wind) = weather.particles();
+        let (kind, count, fall, wind) = weather.precipitation();
         let cloud_top = world.cloud_height(flight.position.x, flight.position.y) + 4.0;
         let density = ((cloud_top + 12.0 - flight.position.z) / 40.0).clamp(0.0, 1.0);
-        let count = (count as f32 * density) as usize;
+        let count = (count * density) as usize;
         if count == 0 {
             return;
         }
@@ -34,20 +34,22 @@ impl Renderer {
         }
         let size = high - low;
         let time = flight.time;
+        let haze = weather.haze(theme);
+        let (fog_start, fog_end) = weather.visibility(flight.position.z);
         for i in 0..count {
             let seed = i as u32 * 7919 + 31;
             let rx = hash(seed) as f32 / 255.0;
             let ry = hash(seed + 171) as f32 / 255.0;
             let rz = hash(seed + 947) as f32 / 255.0;
-            let flutter = if weather == Weather::Snow {
+            let flutter = if kind == Weather::Snow {
                 (time * 1.7 + rx * 20.0).sin() * 4.0
             } else {
                 0.0
             };
             let position = vec3(
-                (rx * size.x + time * wind + flutter - low.x).rem_euclid(size.x) + low.x,
-                (ry * size.y + time * wind * 0.3 - low.y).rem_euclid(size.y) + low.y,
-                (rz * 180.0 - time * fall - flight.position.z).rem_euclid(180.0)
+                (rx * size.x + weather.wind_distance + flutter - low.x).rem_euclid(size.x) + low.x,
+                (ry * size.y + weather.wind_distance * 0.3 - low.y).rem_euclid(size.y) + low.y,
+                (rz * 180.0 - weather.fall_distance - flight.position.z).rem_euclid(180.0)
                     + flight.position.z
                     - 80.0,
             );
@@ -63,7 +65,7 @@ impl Renderer {
                 {
                     continue;
                 }
-                let base = match weather {
+                let base = match kind {
                     Weather::Snow => rgb(239, 247, 250),
                     Weather::Sandstorm => {
                         if i % 3 == 0 {
@@ -76,10 +78,13 @@ impl Renderer {
                 };
                 let color = mix(
                     grade(base, theme),
-                    weather.haze(theme),
-                    weather.fog(depth, flight.position.z) * 0.5,
+                    haze,
+                    ((depth - fog_start) / (fog_end - fog_start))
+                        .clamp(0.0, 1.0)
+                        .sqrt()
+                        * 0.5,
                 );
-                if weather == Weather::Snow {
+                if kind == Weather::Snow {
                     self.point(a, depth, color, 0, 0);
                     if scale > 1.4 && i % 9 == 0 {
                         self.point(a + vec2(1.0, 0.0), depth, color, 0, 0);
@@ -134,7 +139,8 @@ mod tests {
     fn rain_covers_overhead_edges_and_ends_above_clouds() {
         let world = World::generate(crate::world::MapKind::Islands, 7);
         let mut flight = Flight::new(&world);
-        flight.weather = Weather::Rain;
+        flight.weather =
+            crate::content::weather::WeatherState::new(Weather::Rain, world.kind, world.seed);
         flight.position.z = 60.0;
         flight.follow = flight.position;
         flight.camera_yaw = 0.0;
@@ -147,6 +153,7 @@ mod tests {
         renderer.mask = vec![0; 320 * 170];
         for frame in 0..30 {
             flight.time = frame as f32 / 30.0;
+            flight.weather.step(1.0 / 30.0, world.kind);
             let camera = Camera::new(&flight, 320, 170);
             renderer.precipitation(&world, &flight, &camera, 0);
         }

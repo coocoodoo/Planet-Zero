@@ -10,7 +10,7 @@ impl Renderer {
     ) {
         let theme = environment.theme;
         let weather = if world.kind.vacuum() {
-            Weather::Clear
+            crate::content::weather::WeatherState::new(Weather::Clear, world.kind, world.seed)
         } else {
             environment.weather
         };

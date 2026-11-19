@@ -21,22 +21,7 @@ impl Renderer {
             _ => (rgb(198, 232, 250), rgb(62, 142, 222)),
         };
         let weather = flight.weather;
-        let (low, high) = if matches!(weather, Weather::Clear | Weather::Rainbow) {
-            (low, high)
-        } else {
-            let cover = match weather {
-                Weather::Fog => 0.92,
-                Weather::Sandstorm => 0.85,
-                Weather::Snow => 0.68,
-                Weather::Rain => 0.55,
-                Weather::Cloudy => 0.3,
-                _ => 0.4,
-            };
-            (
-                weather.haze(theme),
-                mix(weather.shade(high), weather.haze(theme), cover),
-            )
-        };
+        let (low, high) = weather.sky(low, high, theme);
         let flash = weather.flash(flight.time);
         for y in 0..self.h {
             let (_, ray) = camera.ray(vec2(camera.center.x, y as f32));
@@ -54,7 +39,7 @@ impl Renderer {
                     && self.depth[at] == f32::INFINITY
                 {
                     self.pixels[at] = if theme == 2
-                        && weather == Weather::Clear
+                        && weather.weight(Weather::Clear) > 0.95
                         && gradient > 0.2
                         && hash(
                             ((x + self.x_origin) as u32)
@@ -65,7 +50,7 @@ impl Renderer {
                     {
                         rgb(182, 202, 232)
                     } else {
-                        if weather == Weather::Rainbow && theme != 2 {
+                        if weather.weight(Weather::Rainbow) > 0.0 && theme != 2 {
                             let (_, ray) = camera.ray(vec2(x as f32, y as f32));
                             let direction = ray.normalize();
                             let axis = vec3(0.3, -0.95, -0.08).normalize();
@@ -82,7 +67,8 @@ impl Renderer {
                                     rgb(185, 132, 221),
                                 ];
                                 let fade = (direction.z * 8.0).min(1.0)
-                                    * if theme == 0 { 0.52 } else { 0.32 };
+                                    * if theme == 0 { 0.52 } else { 0.32 }
+                                    * weather.weight(Weather::Rainbow);
                                 mix(color, rainbow[band as usize], fade)
                             } else {
                                 color

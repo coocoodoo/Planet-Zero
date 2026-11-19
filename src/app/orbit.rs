@@ -315,7 +315,11 @@ impl App {
         self.flight.surface = None;
         self.flight.orbital_scenery = None;
         self.flight.sky_rotation = Quat::IDENTITY;
-        self.flight.weather = crate::content::weather::Weather::Clear;
+        self.flight.weather = crate::content::weather::WeatherState::new(
+            crate::content::weather::Weather::Clear,
+            self.world.kind,
+            self.world.seed,
+        );
         self.theme = 0;
         let previous = std::mem::replace(&mut self.world, destination);
         self.network.remember(previous);

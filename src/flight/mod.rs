@@ -71,7 +71,7 @@ pub struct Flight {
     pub hud: bool,
     pub faceted: bool,
     pub vehicle: crate::content::vehicles::Vehicle,
-    pub weather: crate::content::weather::Weather,
+    pub weather: crate::content::weather::WeatherState,
     pub demo_time: f32,
     pub demo_target: Option<crate::world::portal::Portal>,
     pub fixed_weight: f32,
@@ -141,7 +141,11 @@ impl Flight {
             hud: true,
             faceted: true,
             vehicle: crate::content::vehicles::Vehicle::Falcon,
-            weather: crate::content::weather::Weather::Clear,
+            weather: crate::content::weather::WeatherState::new(
+                crate::content::weather::Weather::Clear,
+                world.kind,
+                world.seed,
+            ),
             demo_time: 0.0,
             demo_target: None,
             fixed_weight: 0.0,
@@ -204,7 +208,8 @@ impl Flight {
         self.weights = weights;
         self.demo = demo;
         self.wing_count = wing_count;
-        self.weather = weather;
+        self.weather =
+            crate::content::weather::WeatherState::new(weather.target, world.kind, world.seed);
         self.hud = hud;
         self.faceted = faceted;
         self.vehicle = vehicle;
@@ -409,9 +414,7 @@ impl Flight {
             }
         }
         self.warp_flash = (self.warp_flash - dt).max(0.0);
-        if world.kind.vacuum() {
-            self.weather = crate::content::weather::Weather::Clear;
-        }
+        self.weather.step(dt, world.kind);
         let boost_goal = f32::from(controls.boost);
         self.boost += (boost_goal - self.boost) * ease(4.0, dt);
         self.orbital_thrust += (f32::from(controls.orbital) - self.orbital_thrust) * ease(1.5, dt);

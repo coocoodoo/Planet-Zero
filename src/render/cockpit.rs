@@ -29,6 +29,7 @@ struct Layer {
 struct BaseKey {
     shifts: [(i32, i32); 4],
     palette: usize,
+    weather: [u8; 8],
 }
 pub struct Cockpit {
     layers: [Layer; 4],
@@ -150,7 +151,9 @@ impl Cockpit {
         ];
         let key = BaseKey {
             shifts,
-            palette: flight.weather as usize * 6 + theme * 2,
+            palette: theme * 2,
+            weather: crate::content::weather::Weather::ALL
+                .map(|w| (flight.weather.weight(w) * 64.0).round() as u8),
         };
         self.native.resize(320 * 170, 0);
         if self.base_key.as_ref() != Some(&key) {
@@ -162,6 +165,16 @@ impl Cockpit {
             self.owner.fill(0);
             for (layer, &(dx, dy)) in shifts.iter().enumerate() {
                 let source = &self.layers[layer];
+                let base: [u32; 256] = std::array::from_fn(|i| {
+                    flight
+                        .weather
+                        .color(|w| source.colors[w as usize * 6 + key.palette][i])
+                });
+                let lit: [u32; 256] = std::array::from_fn(|i| {
+                    flight
+                        .weather
+                        .color(|w| source.colors[w as usize * 6 + key.palette + 1][i])
+                });
                 for y in 0..170_i32 {
                     let sy = y - dy + 11;
                     if !(0..192).contains(&sy) {
@@ -174,8 +187,8 @@ impl Cockpit {
                             let sx = x - dx + 11;
                             let index = source.pixels[sy as usize * 342 + sx as usize] as usize;
                             let at = y as usize * 320 + x as usize;
-                            self.base[at] = source.colors[key.palette][index];
-                            self.lit[at] = source.colors[key.palette + 1][index];
+                            self.base[at] = base[index];
+                            self.lit[at] = lit[index];
                             self.owner[at] = layer as u8 + 1;
                         }
                     }
@@ -185,15 +198,27 @@ impl Cockpit {
             self.revision += 1;
         }
         self.native.copy_from_slice(&self.base);
-        if flight.weather == crate::content::weather::Weather::Clear && theme < 2 {
+        if flight
+            .weather
+            .weight(crate::content::weather::Weather::Clear)
+            > 0.0
+            && theme < 2
+        {
             let sunlight = ((flight.yaw + 0.7).sin() * 75.0 + 160.0) as i32;
             for y in 0..170_i32 {
                 let center = sunlight - (y - 95) / 2;
                 let start = (center - 39).clamp(0, 320) as usize;
                 let end = (center + 40).clamp(0, 320) as usize;
                 let row = y as usize * 320;
-                self.native[row + start..row + end]
-                    .copy_from_slice(&self.lit[row + start..row + end]);
+                for at in row + start..row + end {
+                    self.native[at] = mix(
+                        self.base[at],
+                        self.lit[at],
+                        flight
+                            .weather
+                            .weight(crate::content::weather::Weather::Clear),
+                    );
+                }
             }
         }
         for layer in [1, 2] {

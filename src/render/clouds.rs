@@ -16,12 +16,7 @@ impl Renderer {
         if opacity < 0.001 {
             return;
         }
-        let coverage = match flight.weather {
-            Weather::Cloudy | Weather::Storm => 14,
-            Weather::Rain | Weather::Snow => 11,
-            Weather::Rainbow => 9,
-            _ => 7,
-        };
+        let coverage = flight.weather.coverage();
         let far = flight.weather.visibility(camera.position.z).1.min(1000.0);
         let low = world.cloud_levels.iter().copied().min().unwrap_or(110) as f32 - 8.0;
         let high = world.cloud_levels.iter().copied().max().unwrap_or(210) as f32 + 16.0;
@@ -38,14 +33,14 @@ impl Renderer {
             rgb(175, 198, 220),
         ]
         .map(|c| flight.weather.shade(grade(c, theme)));
+        let haze = flight.weather.haze(theme);
         let drift = vec2(flight.time * 7.0, flight.time * 3.0);
         const CELL: f32 = 4.0;
         for x in (0..self.w).step_by(2) {
             for y in (self.visible[x].0..self.visible[x].1).step_by(2) {
                 let at = x * self.h + y as usize;
-                if opacity < 1.0
-                    && hash((x + self.x_origin) as u32 * 7919 + y as u32) as f32 / 255.0 > opacity
-                {
+                let dither = hash((x + self.x_origin) as u32 * 7919 + y as u32) as f32 / 255.0;
+                if dither > opacity {
                     continue;
                 }
                 let (origin, ray) = camera.ray(vec2(x as f32 + 0.5, y as f32 + 0.5));
@@ -88,7 +83,7 @@ impl Renderer {
                 let mut side = 0;
                 while entry < exit {
                     let end = next.x.min(next.y).min(exit);
-                    if world.cloud_tiles[index(cell.x >> 3, cell.y >> 3, 64)] >= coverage {
+                    if world.cloud_tiles[index(cell.x >> 3, cell.y >> 3, 64)] as f32 >= coverage {
                         let steps = glam::ivec2(
                             if step.x > 0 {
                                 8 - (cell.x & 7)
@@ -120,12 +115,13 @@ impl Renderer {
                     let center = (cell.as_vec2() + Vec2::splat(0.5)) * CELL + drift;
                     let value = world.clouds
                         [index(cell.x * 4 + 2, cell.y * 4 + 2, crate::world::CLOUD_SIZE)];
-                    let thickness = if value >> 4 < coverage {
+                    let thickness = if ((value >> 4) as f32) < coverage {
                         (value & 15) as f32
                     } else {
                         0.0
                     };
-                    if thickness > 0.0 {
+                    let presence = (coverage - (value >> 4) as f32).clamp(0.0, 1.0);
+                    if thickness > 0.0 && dither <= presence {
                         let base = (world.cloud_height(center.x, center.y) / 2.0).floor() * 2.0;
                         let bottom = base - 2.0 - (thickness / 3.0).floor() * 2.0;
                         let top = base + thickness * 2.0;
@@ -145,7 +141,7 @@ impl Renderer {
                         if hit < last {
                             let depth = initial + hit;
                             let fog = ((depth - far * 0.7) / (far * 0.3)).clamp(0.0, 1.0);
-                            let color = mix(colors[face], flight.weather.haze(theme), fog);
+                            let color = mix(colors[face], haze, fog);
                             for xx in x..(x + 2).min(self.w) {
                                 for yy in y..(y + 2).min(self.h as i32) {
                                     let at = xx * self.h + yy as usize;

@@ -20,7 +20,7 @@ pub fn draw(app: &mut App) {
     c.icon(307, 3, 'u', WHITE);
     if m.mode == Mode::Free {
         c.shade(2, 1, 112, 12);
-        c.weather(5, 3, f.weather, app.world.kind.vacuum());
+        c.weather(5, 3, f.weather.target, app.world.kind.vacuum());
         c.text(17, 3, app.world.kind.name(), MUTED);
         c.shade(124, 1, 174, 12);
         let status = if f.hover {
@@ -48,7 +48,7 @@ pub fn draw(app: &mut App) {
         }
     } else {
         c.shade(2, 1, 278, 12);
-        c.weather(5, 3, f.weather, app.world.kind.vacuum());
+        c.weather(5, 3, f.weather.target, app.world.kind.vacuum());
         c.text(
             17,
             3,

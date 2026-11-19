@@ -340,11 +340,11 @@ impl App {
     }
     fn load_operation(&mut self) {
         let op = campaign::operation(self.level);
-        self.flight.weather = op.weather;
         let seed = op
             .map
             .seed()
             .wrapping_add(((self.level - 1) / 6).wrapping_mul(7919));
+        self.flight.weather = crate::content::weather::WeatherState::new(op.weather, op.map, seed);
         if self.world.kind != op.map || self.world.seed != seed {
             self.loader.start(op.map, seed);
         }

@@ -30,7 +30,7 @@ pub struct Route {
 }
 #[derive(Clone, Copy)]
 pub struct Environment {
-    pub weather: crate::content::weather::Weather,
+    pub weather: crate::content::weather::WeatherState,
     pub theme: usize,
 }
 pub struct Network {
@@ -250,24 +250,15 @@ impl Network {
     pub fn environment(&self, key: MapKey) -> Environment {
         let value = super::hash(key.seed ^ self.environment_seed ^ key.kind as u32) as u32;
         let mut random = Random(key.seed ^ self.environment_seed ^ value.wrapping_mul(7919));
-        let weather = (random.next() * 100.0) as usize;
+        let weather = random.next();
         let time = (random.next() * 100.0) as usize;
         use crate::content::weather::Weather;
         Environment {
-            weather: if key.kind.vacuum() {
-                Weather::Clear
-            } else {
-                match weather {
-                    0..48 => Weather::Clear,
-                    48..78 => Weather::Cloudy,
-                    78..86 => Weather::Rainbow,
-                    86..91 => Weather::Rain,
-                    91..94 => Weather::Snow,
-                    94..96 => Weather::Storm,
-                    96..99 => Weather::Fog,
-                    _ => Weather::Sandstorm,
-                }
-            },
+            weather: crate::content::weather::WeatherState::new(
+                Weather::choose(key.kind, weather),
+                key.kind,
+                key.seed ^ self.environment_seed,
+            ),
             theme: match time {
                 0..85 => 0,
                 85..95 => 1,

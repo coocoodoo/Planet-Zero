@@ -88,7 +88,11 @@ fn capture(app: &mut App, path: &std::path::Path) {
         let profile = flight_club::content::levels::operation(level);
         app.world = World::generate(profile.map, profile.map.seed()).into();
         app.mode = Mode::Combat;
-        app.flight.weather = profile.weather;
+        app.flight.weather = flight_club::content::weather::WeatherState::new(
+            profile.weather,
+            app.world.kind,
+            app.world.seed,
+        );
         app.start();
         app.flight.view = 1;
         app.flight.weights = [0.0, 1.0, 0.0];

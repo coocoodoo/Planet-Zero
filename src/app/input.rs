@@ -284,7 +284,7 @@ impl App {
             self.orbit = orbit::Orbit::default();
         }
         match code {
-            WEATHER => self.flight.weather = self.flight.weather.next(),
+            WEATHER => self.flight.weather.cycle(self.world.kind, 1),
             TIME => self.theme = (self.theme + 1) % 3,
             PORTAL => {
                 self.network
@@ -379,10 +379,9 @@ impl App {
                 self.loader.start(kind, kind.seed());
             }
             3 => {
-                self.flight.weather = crate::content::weather::Weather::ALL[next(
-                    self.flight.weather as usize,
-                    crate::content::weather::Weather::ALL.len(),
-                )]
+                self.flight
+                    .weather
+                    .cycle(self.loader.pending.unwrap_or(self.world.kind), direction);
             }
             4 => self.difficulty = Difficulty::ALL[next(self.difficulty as usize, 3)],
             5 => {

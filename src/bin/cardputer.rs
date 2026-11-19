@@ -211,7 +211,11 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
         }
 
         game.flight.set_demo(options.demo);
-        game.flight.weather = options.weather;
+        game.flight.weather = flight_club::content::weather::WeatherState::new(
+            options.weather,
+            game.world.kind,
+            game.world.seed,
+        );
         game.flight.view = view;
         game.flight.weights = [0.0; 3];
         game.flight.weights[view] = 1.0;
@@ -541,7 +545,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         game.start();
         game.flight.set_demo(options.demo);
     }
-    game.flight.weather = options.weather;
+    game.flight.weather = flight_club::content::weather::WeatherState::new(
+        options.weather,
+        game.world.kind,
+        game.world.seed,
+    );
     game.flight.view = if options.demo { 1 } else { options.view };
     game.flight.weights = [0.0; 3];
     let view = game.flight.view;
