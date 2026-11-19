@@ -35,6 +35,7 @@ toml = { version = "0.9", default-features = false, features = ["parse", "serde"
 libc = "0.2"
 memmap2 = { version = "0.9", optional = true }
 font8x8 = "0.3"
+rayon-core = "1.13"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 cpal = { version = "0.15.3", optional = true }

@@ -11,6 +11,7 @@ Flight Club 原创代码、文档、脚本与 skill 使用根目录的 MIT 许�
 | toml 0.9 | MIT 或 Apache-2.0，[上游](https://github.com/toml-rs/toml) | 关卡与地图配置解析 |
 | libc 0.2 | MIT 或 Apache-2.0，[上游](https://github.com/rust-lang/libc) | 设备帧缓冲与 evdev 系统调用 |
 | memmap2 0.9 | MIT 或 Apache-2.0，[上游](https://github.com/RazrFalcon/memmap2-rs) | 设备资源内存映射 |
+| rayon-core 1.13 | MIT 或 Apache-2.0，[上游](https://github.com/rayon-rs/rayon) | 复用渲染工作线程 |
 | font8x8 0.3 | MIT 或 Public Domain，[上游](https://github.com/dhepper/font8x8) | 8×8 点阵字体 |
 | cpal 0.15 | MIT 或 Apache-2.0，[上游](https://github.com/RustAudio/cpal) | macOS 与 Windows 音频输出 |
 

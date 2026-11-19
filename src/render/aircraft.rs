@@ -173,8 +173,9 @@ impl Renderer {
         } else {
             flight.weather.fog(jet_depth, flight.position.z)
         };
+        let haze = self.light.haze(flight.weather);
         for color in &mut palette {
-            *color = mix(*color, self.light.haze(flight.weather), fog);
+            *color = mix(*color, haze, fog);
         }
         self.mask.fill(0);
         let center_scale = camera.project(flight.position).map_or(1.0, |p| p.2);

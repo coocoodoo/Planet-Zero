@@ -447,8 +447,16 @@ impl Renderer {
             let w = self.w;
             let h = self.h;
             let visible = &self.visible;
-            std::thread::scope(|scope| {
-                for (i, worker) in self.workers.iter_mut().enumerate() {
+            static POOL: std::sync::OnceLock<rayon_core::ThreadPool> = std::sync::OnceLock::new();
+            let pool = POOL.get_or_init(|| {
+                rayon_core::ThreadPoolBuilder::new()
+                    .num_threads(3)
+                    .thread_name(|i| format!("render-{i}"))
+                    .build()
+                    .expect("创建渲染线程失败")
+            });
+            pool.in_place_scope(|scope| {
+                for (i, worker) in self.workers.iter_mut().enumerate().rev() {
                     let start = i * strip;
                     let end = ((i + 1) * strip).min(w);
                     worker.light = self.light;
@@ -480,9 +488,12 @@ impl Renderer {
                         .extend(visible[start..end].iter().map(|v| v.1));
                     let mut view = *camera;
                     view.center.x -= start as f32;
-                    scope.spawn(move || {
-                        worker.layer(world, flight, &view, clouds);
-                    });
+                    let mut draw = move || worker.layer(world, flight, &view, clouds);
+                    if i == 0 {
+                        draw();
+                    } else {
+                        scope.spawn(move |_| draw());
+                    }
                 }
             });
             if clouds {

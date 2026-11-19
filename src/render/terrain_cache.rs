@@ -5,6 +5,7 @@ pub(super) struct TerrainCache {
     colors: Option<[u32; MATERIAL_COUNT]>,
     shades: Vec<u32>,
     lod: Vec<u8>,
+    dirty_rows: Vec<(usize, usize)>,
     side: i32,
     origin: (i32, i32),
     warp_origin: Vec2,
@@ -55,10 +56,21 @@ impl TerrainCache {
         self.shades[material * 257 + (light.clamp(0.0, 1.0) * 256.0) as usize]
     }
     pub fn topology(&mut self, leaves: &[(i32, i32, i32)], origin: (i32, i32), side: i32) {
-        self.side = side;
         self.origin = origin;
-        self.lod.resize((side * side) as usize, 0);
-        self.lod.fill(0);
+        if self.side != side {
+            self.lod.resize((side * side) as usize, 0);
+            self.lod.fill(0);
+            self.dirty_rows = vec![(side as usize, 0); side as usize];
+        } else {
+            for (row, (start, end)) in self.dirty_rows.iter_mut().enumerate() {
+                if *start < *end {
+                    let at = row * side as usize;
+                    self.lod[at + *start..at + *end].fill(0);
+                }
+                (*start, *end) = (side as usize, 0);
+            }
+        }
+        self.side = side;
         for &(x, y, size) in leaves {
             let x = x / 8 - origin.0;
             let y = y / 8 - origin.1;
@@ -67,6 +79,9 @@ impl TerrainCache {
             for row in y..y + span {
                 let at = (row * side + x) as usize;
                 self.lod[at..at + span as usize].fill(level);
+                let dirty = &mut self.dirty_rows[row as usize];
+                dirty.0 = dirty.0.min(x as usize);
+                dirty.1 = dirty.1.max((x + span) as usize);
             }
         }
     }
