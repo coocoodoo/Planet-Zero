@@ -1,6 +1,23 @@
 use super::*;
 use crate::world::Cloud;
 
+#[derive(Clone, Copy)]
+pub(super) struct CloudPixel {
+    pub depth: f32,
+    pub color: u32,
+    pub opacity: f32,
+}
+
+impl Default for CloudPixel {
+    fn default() -> Self {
+        Self {
+            depth: f32::INFINITY,
+            color: 0,
+            opacity: 0.0,
+        }
+    }
+}
+
 impl Renderer {
     pub(super) fn draw_clouds(
         &mut self,
@@ -14,6 +31,8 @@ impl Renderer {
         if world.clouds.is_empty() || opacity < 0.001 {
             return;
         }
+        self.cloud_pixels
+            .resize(self.pixels.len(), CloudPixel::default());
         let coverage = flight.weather.coverage();
         let far = flight.weather.visibility(camera.position.z).1.min(1000.0);
         let drift = vec2(flight.time * 7.0, flight.time * 3.0);
@@ -37,6 +56,7 @@ impl Renderer {
         ]
         .map(|(axis, offset)| (axis + camera.forward * offset * camera.q, offset));
         let (eye, ray) = camera.ray(camera.center);
+        let mut visible = Vec::new();
         for cloud in &world.clouds {
             let strength = (coverage - cloud.rank as f32).clamp(0.0, 1.0) * opacity;
             if strength < 0.01 {
@@ -76,12 +96,11 @@ impl Renderer {
             } else {
                 0
             };
+            visible.push((cloud, center, scale, level, depth));
+        }
+        visible.sort_unstable_by(|a, b| b.4.total_cmp(&a.4));
+        for (cloud, center, scale, level, depth) in visible {
             let fog = ((depth - far * 0.7) / (far * 0.3)).clamp(0.0, 1.0);
-            let fog = if cloud.shape.thin {
-                0.35 + fog * 0.65
-            } else {
-                fog
-            };
             let palette: [u32; 16] =
                 std::array::from_fn(|i| mix(mix(dark, light, i as f32 / 15.0), haze, fog));
             let local_eye = (eye - center) / scale;
@@ -94,11 +113,18 @@ impl Renderer {
                 if face.normal.dot(toward) <= 0.0 {
                     continue;
                 }
-                self.triangle(
+                self.surface(
                     camera,
                     face.points.map(|p| center + p * scale),
                     palette[face.shade],
+                    false,
+                    Some(face.thickness.map(|t| t * scale)),
                 );
+            }
+            for at in self.cloud_touched.drain(..) {
+                let sample = &mut self.cloud_pixels[at];
+                self.pixels[at] = mix(self.pixels[at], sample.color, sample.opacity);
+                sample.depth = f32::INFINITY;
             }
         }
     }
@@ -108,7 +134,7 @@ impl Renderer {
 mod tests {
     use super::*;
     #[test]
-    fn level_view_hits_sloped_cloud_sides() {
+    fn cloud_sides_transmit_background_and_respect_foreground_depth() {
         let mut world = World::generate(crate::world::MapKind::Islands, 7);
         let mut density = vec![-9.0; 9 * 9];
         for y in 2..7 {
@@ -141,7 +167,17 @@ mod tests {
         renderer.depth = vec![f32::INFINITY; 320 * 170];
         renderer.draw_clouds(&world, &flight, &camera, 0);
         let at = camera.center.x as usize * 170 + camera.center.y as usize;
-        assert_ne!(renderer.pixels[at], 0);
-        assert!((0.0..200.0).contains(&renderer.depth[at]));
+        let on_black = renderer.pixels[at];
+        assert_ne!(on_black, 0);
+        assert_eq!(renderer.depth[at], f32::INFINITY);
+        let background = rgb(40, 80, 160);
+        renderer.pixels.fill(background);
+        renderer.draw_clouds(&world, &flight, &camera, 0);
+        assert_ne!(renderer.pixels[at], on_black);
+        assert_ne!(renderer.pixels[at], background);
+        renderer.pixels.fill(background);
+        renderer.depth.fill(0.0);
+        renderer.draw_clouds(&world, &flight, &camera, 0);
+        assert!(renderer.pixels.iter().all(|&pixel| pixel == background));
     }
 }

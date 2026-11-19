@@ -243,12 +243,13 @@ impl Renderer {
             } else {
                 theme
             };
-            remote.background(destination, &remote_flight, &view, remote_theme, rh);
-            if !destination.kind.vacuum() {
-                remote.precipitation(destination, &remote_flight, &view, remote_theme);
-            }
+            remote.draw_parallel(destination, &remote_flight, &view, remote_theme, rh, false);
             if let Some(mission) = mission.filter(|_| std::ptr::eq(world, destination)) {
                 remote.mission(mission, flight, &view);
+            }
+            remote.draw_parallel(destination, &remote_flight, &view, remote_theme, rh, true);
+            if !destination.kind.vacuum() {
+                remote.precipitation(destination, &remote_flight, &view, remote_theme);
             }
             let base = self.pixels.clone();
             let rim = portal_color(destination.kind, remote_theme);

@@ -111,6 +111,8 @@ pub struct Renderer {
     pixels: Vec<u32>,
     depth: Vec<f32>,
     mask: Vec<u8>,
+    cloud_pixels: Vec<clouds::CloudPixel>,
+    cloud_touched: Vec<usize>,
     column: Vec<i32>,
     pub rgba: Vec<u8>,
     output: Vec<u32>,
@@ -180,6 +182,8 @@ impl Renderer {
             pixels: vec![],
             depth: vec![],
             mask: vec![],
+            cloud_pixels: vec![],
+            cloud_touched: vec![],
             column: vec![],
             rgba: vec![],
             output: vec![],
@@ -314,7 +318,7 @@ impl Renderer {
         self.stages[0] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
         self.portal_mask(world, flight, &camera, network);
-        self.background(world, flight, &camera, theme, height);
+        self.draw_parallel(world, flight, &camera, theme, height, false);
         let portals_started = std::time::Instant::now();
         self.portals(world, flight, &camera, mission, theme, network);
         self.detail[3] = portals_started.elapsed().as_secs_f64() * 1000.0;
@@ -343,6 +347,7 @@ impl Renderer {
         if let Some(mission) = mission {
             self.mission(mission, flight, &camera);
         }
+        self.draw_parallel(world, flight, &camera, theme, height, true);
         if !world.kind.vacuum() {
             self.precipitation(world, flight, &camera, theme);
         }
@@ -367,14 +372,23 @@ impl Renderer {
             dest.copy_from_slice(&color.to_le_bytes());
         }
     }
-    fn scene(
+    fn layer(
         &mut self,
         world: &World,
         flight: &Flight,
         camera: &Camera,
         theme: usize,
         height: usize,
+        clouds: bool,
     ) {
+        if clouds {
+            let started = std::time::Instant::now();
+            self.warp = flight.surface.filter(|surface| surface.bend > 0.00001);
+            self.draw_clouds(world, flight, camera, theme);
+            self.warp = None;
+            self.detail[1] = started.elapsed().as_secs_f64() * 1000.0;
+            return;
+        }
         self.detail = [0.0; 4];
         self.triangles = 0;
         self.warp = flight.surface.filter(|surface| surface.bend > 0.00001);
@@ -394,9 +408,6 @@ impl Renderer {
             self.orbital_bodies(world, camera, flight);
         }
         let started = std::time::Instant::now();
-        self.draw_clouds(world, flight, camera, theme);
-        self.detail[1] = started.elapsed().as_secs_f64() * 1000.0;
-        let started = std::time::Instant::now();
         self.scenery(world, camera, flight.time, 1.0);
         self.warp = None;
         if let (Some(space), Some(surface)) = (&flight.orbital_scenery, flight.surface) {
@@ -411,16 +422,22 @@ impl Renderer {
         self.detail[2] = started.elapsed().as_secs_f64() * 1000.0;
     }
 
-    fn background(
+    fn draw_parallel(
         &mut self,
         world: &World,
         flight: &Flight,
         camera: &Camera,
         theme: usize,
         height: usize,
+        clouds: bool,
     ) {
+        if clouds
+            && (world.clouds.is_empty() || crate::world::orbit::thin_air(flight.position.z) >= 1.0)
+        {
+            return;
+        }
         if self.workers.is_empty() {
-            self.scene(world, flight, camera, theme, height);
+            self.layer(world, flight, camera, theme, height, clouds);
         } else {
             let strip = self.w.div_ceil(self.workers.len());
             let w = self.w;
@@ -435,7 +452,14 @@ impl Renderer {
                     worker.w = end - start;
                     worker.h = h;
                     worker.pixels.resize(worker.w * h, 0);
-                    worker.pixels.fill(0);
+                    if clouds {
+                        worker
+                            .pixels
+                            .copy_from_slice(&self.pixels[start * h..end * h]);
+                        worker.triangles = 0;
+                    } else {
+                        worker.pixels.fill(0);
+                    }
                     worker.mask.resize(worker.w * h, 0);
                     worker.mask.fill(0);
                     worker.near_depth = self.near_depth;
@@ -452,19 +476,26 @@ impl Renderer {
                     let mut view = *camera;
                     view.center.x -= start as f32;
                     scope.spawn(move || {
-                        worker.scene(world, flight, &view, theme, height);
+                        worker.layer(world, flight, &view, theme, height, clouds);
                     });
                 }
             });
-            self.detail = std::array::from_fn(|i| {
-                self.workers.iter().map(|w| w.detail[i]).fold(0.0, f64::max)
-            });
-            self.triangles = self.workers.iter().map(|w| w.triangles).sum();
+            if clouds {
+                self.detail[1] = self.workers.iter().map(|w| w.detail[1]).fold(0.0, f64::max);
+                self.triangles += self.workers.iter().map(|w| w.triangles).sum::<u32>();
+            } else {
+                self.detail = std::array::from_fn(|i| {
+                    self.workers.iter().map(|w| w.detail[i]).fold(0.0, f64::max)
+                });
+                self.triangles = self.workers.iter().map(|w| w.triangles).sum();
+            }
             for (i, worker) in self.workers.iter().enumerate() {
                 let start = i * strip * h;
                 let end = start + worker.pixels.len();
                 self.pixels[start..end].copy_from_slice(&worker.pixels);
-                self.depth[start..end].copy_from_slice(&worker.depth);
+                if !clouds {
+                    self.depth[start..end].copy_from_slice(&worker.depth);
+                }
             }
         }
     }

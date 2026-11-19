@@ -1,5 +1,5 @@
 use super::*;
-use glam::{Vec2, Vec3, vec2, vec3};
+use glam::{Vec2, Vec3, Vec4, vec2, vec3};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -19,6 +19,7 @@ pub struct CloudShape {
 pub struct CloudFace {
     pub points: [Vec3; 3],
     pub normal: Vec3,
+    pub thickness: [f32; 3],
     pub shade: usize,
 }
 
@@ -33,12 +34,58 @@ impl CloudShape {
     pub fn new(width: usize, density: &[f32], thin: bool) -> Self {
         let height = density.len() / width;
         let extent = vec2((width - 1) as f32, (height - 1) as f32) * Cloud::CELL * 0.5;
+        let sample = |x: usize, y: usize| {
+            (vec2(x as f32, y as f32) * Cloud::CELL - extent).extend(density[y * width + x])
+        };
+        let mut outline = Vec::new();
+        for y in 0..height - 1 {
+            for x in 0..width - 1 {
+                let vertices = [
+                    sample(x, y),
+                    sample(x + 1, y),
+                    sample(x + 1, y + 1),
+                    sample(x, y + 1),
+                ];
+                for face in [[0, 1, 2], [0, 2, 3]] {
+                    let mut crossings = [Vec2::ZERO; 2];
+                    let mut count = 0;
+                    for edge in 0..3 {
+                        let (a, b) = (vertices[face[edge]], vertices[face[(edge + 1) % 3]]);
+                        if (a.z > 0.0) != (b.z > 0.0) {
+                            crossings[count] = a.lerp(b, a.z / (a.z - b.z)).truncate();
+                            count += 1;
+                        }
+                    }
+                    if count == 2 && crossings[0] != crossings[1] {
+                        outline.push(crossings);
+                    }
+                }
+            }
+        }
+        // 到轮廓的距离决定局部厚度，狭长分叉和边缘自然变薄
+        let widths: Vec<f32> = density
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| {
+                if d <= 0.0 {
+                    return 0.0;
+                }
+                let p = sample(i % width, i / width).truncate();
+                outline
+                    .iter()
+                    .map(|&[a, b]| {
+                        let edge = b - a;
+                        let t = ((p - a).dot(edge) / edge.length_squared()).clamp(0.0, 1.0);
+                        p.distance_squared(a + edge * t)
+                    })
+                    .fold(f32::INFINITY, f32::min)
+                    .sqrt()
+            })
+            .collect();
         let faces = std::array::from_fn(|level| {
             let step = if level == 0 { 2 } else { 1 };
             let mut faces = Vec::new();
-            let point = |x: usize, y: usize| {
-                (vec2(x as f32, y as f32) * Cloud::CELL - extent).extend(density[y * width + x])
-            };
+            let point = |x: usize, y: usize| sample(x, y).extend(widths[y * width + x]);
             for y in (0..height - 1).step_by(step) {
                 for x in (0..width - 1).step_by(step) {
                     let x1 = (x + step).min(width - 1);
@@ -46,7 +93,7 @@ impl CloudShape {
                     let vertices = [point(x, y), point(x1, y), point(x1, y1), point(x, y1)];
                     for face in [[0, 1, 2], [0, 2, 3]] {
                         let input = face.map(|i| vertices[i]);
-                        let mut contour = [Vec3::ZERO; 4];
+                        let mut contour = [Vec4::ZERO; 4];
                         let mut count = 0;
                         for edge in 0..3 {
                             let (a, b) = (input[edge], input[(edge + 1) % 3]);
@@ -55,7 +102,8 @@ impl CloudShape {
                                 count += 1;
                             }
                             if (a.z > 0.0) != (b.z > 0.0) {
-                                contour[count] = a.lerp(b, a.z / (a.z - b.z)).with_z(0.0);
+                                contour[count] =
+                                    a.lerp(b, a.z / (a.z - b.z)).with_z(0.0).with_w(0.0);
                                 count += 1;
                             }
                         }
@@ -80,7 +128,7 @@ impl CloudShape {
         }
     }
 
-    fn add_face(faces: &mut Vec<CloudFace>, vertices: [Vec3; 3], thickness: f32, refine: u8) {
+    fn add_face(faces: &mut Vec<CloudFace>, vertices: [Vec4; 3], thickness: f32, refine: u8) {
         if refine > 0 && vertices.iter().any(|p| p.z == 0.0) {
             let [a, b, c] = vertices;
             let (ab, bc, ca) = ((a + b) * 0.5, (b + c) * 0.5, (c + a) * 0.5);
@@ -89,18 +137,22 @@ impl CloudShape {
             }
             return;
         }
+        let heights = vertices.map(|p| {
+            let top = p.z.max(0.0).sqrt().min(p.w * 0.95) * thickness;
+            let bottom = -((p.z / 12.25).clamp(0.0, 1.0) * 2.5).min(p.w * 0.3) * thickness;
+            (top, bottom)
+        });
         for top in [true, false] {
-            let mut points = vertices.map(|p| {
-                // 云底内部平坦，边缘向轮廓收口，顶部随密度隆起
-                let height = if top {
-                    p.z.max(0.0).sqrt()
-                } else {
-                    -(p.z / 12.25).clamp(0.0, 1.0) * 2.5
-                };
-                p.with_z(height * thickness)
+            // 云底内部平坦，边缘向轮廓收口，顶部随密度隆起
+            let mut points = std::array::from_fn(|i| {
+                vertices[i]
+                    .truncate()
+                    .with_z(if top { heights[i].0 } else { heights[i].1 })
             });
+            let mut thicknesses = heights.map(|(top, bottom)| top - bottom);
             if !top {
                 points.swap(0, 2);
+                thicknesses.swap(0, 2);
             }
             let normal = (points[1] - points[0])
                 .cross(points[2] - points[0])
@@ -109,6 +161,7 @@ impl CloudShape {
             faces.push(CloudFace {
                 points,
                 normal,
+                thickness: thicknesses,
                 shade: (shade * 15.0) as usize,
             });
         }

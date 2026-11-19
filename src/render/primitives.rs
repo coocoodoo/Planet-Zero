@@ -52,12 +52,19 @@ impl Renderer {
         }
     }
     pub(super) fn triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32) {
-        self.surface(camera, points, color, false);
+        self.surface(camera, points, color, false, None);
     }
     pub(super) fn rock_triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32) {
-        self.surface(camera, points, color, true);
+        self.surface(camera, points, color, true, None);
     }
-    fn surface(&mut self, camera: &Camera, points: [Vec3; 3], color: u32, stone: bool) {
+    pub(super) fn surface(
+        &mut self,
+        camera: &Camera,
+        points: [Vec3; 3],
+        color: u32,
+        stone: bool,
+        thickness: Option<[f32; 3]>,
+    ) {
         let points = points.map(|point| self.warp.map_or(point, |warp| warp.point(point)));
         let forward = camera.forward;
         let near_depth = if camera.q > 0.00001 {
@@ -68,10 +75,12 @@ impl Renderer {
         .max(self.near_depth);
         let near = camera.position + forward * near_depth;
         if points.iter().all(|p| (*p - near).dot(forward) >= 0.0) {
-            self.raster_triangle(camera, points, color, stone);
+            self.raster_triangle(camera, points, color, stone, thickness);
             return;
         }
         let mut polygon = [Vec3::ZERO; 4];
+        let mut amounts = [0.0; 4];
+        let attributes = thickness.unwrap_or([0.0; 3]);
         let mut count = 0;
         for i in 0..3 {
             let a = points[i];
@@ -80,10 +89,13 @@ impl Renderer {
             let db = (b - near).dot(forward);
             if da >= 0.0 {
                 polygon[count] = a;
+                amounts[count] = attributes[i];
                 count += 1;
             }
             if (da >= 0.0) != (db >= 0.0) {
-                polygon[count] = a.lerp(b, da / (da - db));
+                let t = da / (da - db);
+                polygon[count] = a.lerp(b, t);
+                amounts[count] = attributes[i] + (attributes[(i + 1) % 3] - attributes[i]) * t;
                 count += 1;
             }
         }
@@ -93,10 +105,18 @@ impl Renderer {
                 [polygon[0], polygon[i], polygon[i + 1]],
                 color,
                 stone,
+                thickness.map(|_| [amounts[0], amounts[i], amounts[i + 1]]),
             );
         }
     }
-    fn raster_triangle(&mut self, camera: &Camera, points: [Vec3; 3], color: u32, stone: bool) {
+    fn raster_triangle(
+        &mut self,
+        camera: &Camera,
+        points: [Vec3; 3],
+        color: u32,
+        stone: bool,
+        thickness: Option<[f32; 3]>,
+    ) {
         self.triangles = self.triangles.wrapping_add(1);
         let [Some((a, da, _)), Some((b, db, _)), Some((c, dc, _))] =
             points.map(|p| camera.project(p))
@@ -159,6 +179,23 @@ impl Renderer {
                     };
                     let at = x as usize * self.h + y as usize;
                     if depth > self.depth[at] + 1.0 {
+                        continue;
+                    }
+                    if let Some(thickness) = thickness {
+                        let sample = &mut self.cloud_pixels[at];
+                        if depth < sample.depth {
+                            if sample.depth == f32::INFINITY {
+                                self.cloud_touched.push(at);
+                            }
+                            let weights = vec3(u * inverse[0], v * inverse[1], w * inverse[2]);
+                            let thickness =
+                                weights.dot(Vec3::from_array(thickness)) / weights.element_sum();
+                            *sample = super::clouds::CloudPixel {
+                                depth,
+                                color,
+                                opacity: (thickness / 12.0).clamp(0.0, 1.0),
+                            };
+                        }
                         continue;
                     }
                     let shaded = if stone {
