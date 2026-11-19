@@ -57,6 +57,7 @@ impl World {
             cloud_slopes: vec![],
             airspace: Default::default(),
             clouds: vec![],
+            cloud_tiles: vec![],
             spawn: (layout.spawn[0], layout.spawn[1]),
             kind,
             seed,

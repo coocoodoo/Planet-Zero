@@ -32,6 +32,19 @@ impl World {
                 }
             }
         }
+        self.prepare_cloud_tiles();
+    }
+    pub(crate) fn prepare_cloud_tiles(&mut self) {
+        self.cloud_tiles = vec![16; 64 * 64];
+        for y in (2..CLOUD_SIZE).step_by(4) {
+            for x in (2..CLOUD_SIZE).step_by(4) {
+                let cell = self.clouds[y * CLOUD_SIZE + x];
+                if cell & 15 > 0 {
+                    let at = (y / 32) * 64 + x / 32;
+                    self.cloud_tiles[at] = self.cloud_tiles[at].min(cell >> 4);
+                }
+            }
+        }
     }
     pub(super) fn prepare_cloud_heights(&mut self) {
         if self.kind.vacuum() {

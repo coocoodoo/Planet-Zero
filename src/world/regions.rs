@@ -48,6 +48,7 @@ impl World {
             heights: vec![0; SIZE * SIZE],
             materials: vec![0; SIZE * SIZE],
             clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
+            cloud_tiles: vec![],
             obstacles: vec![],
             ceiling: 0,
             cloud_levels: vec![],

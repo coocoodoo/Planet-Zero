@@ -88,9 +88,43 @@ impl Renderer {
                 let mut side = 0;
                 while entry < exit {
                     let end = next.x.min(next.y).min(exit);
+                    if world.cloud_tiles[index(cell.x >> 3, cell.y >> 3, 64)] >= coverage {
+                        let steps = glam::ivec2(
+                            if step.x > 0 {
+                                8 - (cell.x & 7)
+                            } else {
+                                (cell.x & 7) + 1
+                            },
+                            if step.y > 0 {
+                                8 - (cell.y & 7)
+                            } else {
+                                (cell.y & 7) + 1
+                            },
+                        );
+                        let crossing = next + (steps.as_vec2() - Vec2::ONE) * advance;
+                        entry = crossing.x.min(crossing.y);
+                        for axis in 0..2 {
+                            let count = if crossing[axis] <= entry {
+                                steps[axis]
+                            } else {
+                                (((entry - next[axis]) / advance[axis]).floor() as i32 + 1).max(0)
+                            };
+                            cell[axis] += step[axis] * count;
+                            if count > 0 {
+                                next[axis] += advance[axis] * count as f32;
+                            }
+                        }
+                        side = usize::from(crossing.y < crossing.x);
+                        continue;
+                    }
                     let center = (cell.as_vec2() + Vec2::splat(0.5)) * CELL + drift;
-                    let thickness =
-                        world.cloud_cover(center.x, center.y, flight.time, coverage) as f32;
+                    let value = world.clouds
+                        [index(cell.x * 4 + 2, cell.y * 4 + 2, crate::world::CLOUD_SIZE)];
+                    let thickness = if value >> 4 < coverage {
+                        (value & 15) as f32
+                    } else {
+                        0.0
+                    };
                     if thickness > 0.0 {
                         let base = (world.cloud_height(center.x, center.y) / 2.0).floor() * 2.0;
                         let bottom = base - 2.0 - (thickness / 3.0).floor() * 2.0;
@@ -159,6 +193,7 @@ mod tests {
                 world.clouds[y * crate::world::CLOUD_SIZE + x] = 6;
             }
         }
+        world.prepare_cloud_tiles();
         let mut flight = Flight::new(&world);
         flight.position = vec3(100.0, 200.0, 116.0);
         flight.follow = flight.position;
