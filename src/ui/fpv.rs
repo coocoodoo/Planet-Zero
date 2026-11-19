@@ -99,7 +99,8 @@ fn hardware(c: &mut Canvas<'_>, t: crate::app::telemetry::Telemetry, full: bool)
         Some(_) => WHITE,
         None => MUTED,
     };
-    c.rect(229, 2, 13, 10, INK);
+    c.rect(229, 2, 14, 10, INK);
+    c.rect(242, 4, 3, 6, INK);
     c.rect(230, 3, 12, 8, battery_color);
     c.rect(231, 4, 10, 6, INK);
     c.rect(242, 5, 2, 4, battery_color);
