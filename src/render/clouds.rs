@@ -18,7 +18,7 @@ impl Renderer {
         let far = flight.weather.visibility(camera.position.z).1.min(1000.0);
         let drift = vec2(flight.time * 7.0, flight.time * 3.0);
         let haze = flight.weather.haze(theme);
-        let dark = flight.weather.shade(grade(rgb(182, 201, 219), theme));
+        let dark = flight.weather.shade(grade(rgb(145, 172, 198), theme));
         let light = flight.weather.shade(grade(rgb(246, 249, 250), theme));
         let planes = [
             (camera.right * camera.scale, camera.center.x),
@@ -36,13 +36,13 @@ impl Renderer {
             ),
         ]
         .map(|(axis, offset)| (axis + camera.forward * offset * camera.q, offset));
-        let (eye, eye_ray) = camera.ray(camera.center);
-        for (number, cloud) in world.clouds.iter().enumerate() {
+        let (eye, ray) = camera.ray(camera.center);
+        for cloud in &world.clouds {
             let strength = (coverage - cloud.rank as f32).clamp(0.0, 1.0) * opacity;
             if strength < 0.01 {
                 continue;
             }
-            let scale = strength.sqrt();
+            let scale = strength.sqrt() * cloud.scale;
             let extent = cloud.extent();
             let mut xy = cloud.center + drift;
             xy += ((camera.position.truncate() - xy) / crate::world::CLOUD_SIZE as f32).round()
@@ -50,8 +50,10 @@ impl Renderer {
             if xy.distance_squared(camera.position.truncate()) > (far + extent.length()).powi(2) {
                 continue;
             }
-            let center = xy.extend(world.cloud_height(xy.x, xy.y));
-            let half = (extent + Vec2::splat(2.0)).extend(12.0) * scale;
+            let thickness = if cloud.shape.thin { 0.12 } else { 1.0 };
+            let center = xy
+                .extend(world.cloud_height(xy.x, xy.y) - if cloud.shape.thin { 9.0 } else { 0.0 });
+            let half = (cloud.shape.extent + Vec2::splat(2.0)).extend(18.0 * thickness) * scale;
             let delta = center - camera.position;
             if planes
                 .iter()
@@ -65,62 +67,38 @@ impl Renderer {
             {
                 continue;
             }
-            let projected_cell = camera.scale * Cloud::CELL / (1.0 + camera.q * depth).max(0.12);
-            let step = if projected_cell < 1.5 { 2 } else { 1 };
-            let height = cloud.heights.len() / cloud.width;
-            let point = |x: usize, y: usize| {
-                let h = cloud.heights[y * cloud.width + x] as f32;
-                let seed = (number * 7919 + x * 137 + y * 881) as u32;
-                let jitter =
-                    vec2(hash(seed) as f32, hash(seed ^ 0x79ab) as f32) / 255.0 - Vec2::splat(0.5);
-                let xy = (vec2(x as f32, y as f32) * Cloud::CELL - extent + jitter * 3.0) * scale;
-                (
-                    center + xy.extend(h * scale),
-                    center + xy.extend(-h * 0.45 * scale),
-                )
+            let projected_cell =
+                camera.scale * Cloud::CELL * scale / (1.0 + camera.q * depth).max(0.12);
+            let level = if projected_cell > 4.0 {
+                2
+            } else if projected_cell > 1.5 {
+                1
+            } else {
+                0
             };
             let fog = ((depth - far * 0.7) / (far * 0.3)).clamp(0.0, 1.0);
+            let fog = if cloud.shape.thin {
+                0.35 + fog * 0.65
+            } else {
+                fog
+            };
             let palette: [u32; 16] =
                 std::array::from_fn(|i| mix(mix(dark, light, i as f32 / 15.0), haze, fog));
-            for y in (0..height - 1).step_by(step) {
-                for x in (0..cloud.width - 1).step_by(step) {
-                    let x1 = (x + step).min(cloud.width - 1);
-                    let y1 = (y + step).min(height - 1);
-                    let cells = [(x, y), (x1, y), (x1, y1), (x, y1)];
-                    if cells
-                        .iter()
-                        .all(|&(x, y)| cloud.heights[y * cloud.width + x] == 0)
-                    {
-                        continue;
-                    }
-                    let vertices = cells.map(|(x, y)| point(x, y));
-                    for top in [true, false] {
-                        let vertices = vertices.map(|p| if top { p.0 } else { p.1 });
-                        for face in [[0, 1, 2], [0, 2, 3]] {
-                            let points = if top {
-                                face.map(|i| vertices[i])
-                            } else {
-                                [vertices[face[2]], vertices[face[1]], vertices[face[0]]]
-                            };
-                            let normal = (points[1] - points[0]).cross(points[2] - points[0]);
-                            let toward = if camera.q > 0.00001 {
-                                eye - points[0]
-                            } else {
-                                -eye_ray
-                            };
-                            if normal.dot(toward) <= 0.0 {
-                                continue;
-                            }
-                            let shade = if top {
-                                (normal.normalize().dot(vec3(-0.55, -0.3, 0.78)) * 0.5 + 0.5)
-                                    .clamp(0.0, 1.0)
-                            } else {
-                                0.16
-                            };
-                            self.triangle(camera, points, palette[(shade * 15.0) as usize]);
-                        }
-                    }
+            let local_eye = (eye - center) / scale;
+            for face in &cloud.shape.faces[level] {
+                let toward = if camera.q > 0.00001 {
+                    local_eye - face.points[0]
+                } else {
+                    -ray
+                };
+                if face.normal.dot(toward) <= 0.0 {
+                    continue;
                 }
+                self.triangle(
+                    camera,
+                    face.points.map(|p| center + p * scale),
+                    palette[face.shade],
+                );
             }
         }
     }
@@ -132,17 +110,17 @@ mod tests {
     #[test]
     fn level_view_hits_sloped_cloud_sides() {
         let mut world = World::generate(crate::world::MapKind::Islands, 7);
-        let mut heights = vec![0; 9 * 9];
+        let mut density = vec![-9.0; 9 * 9];
         for y in 2..7 {
             for x in 2..7 {
-                heights[y * 9 + x] = 6;
+                density[y * 9 + x] = 36.0;
             }
         }
         world.clouds = vec![Cloud {
             center: vec2(100.0, 100.0),
-            width: 9,
-            heights,
+            scale: 1.0,
             rank: 0,
+            shape: std::sync::Arc::new(crate::world::CloudShape::new(9, &density, false)),
         }];
         world.cloud_levels.fill(110);
         world.cloud_slopes.fill([110.0, 0.0, 0.0, 0.0]);

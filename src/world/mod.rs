@@ -20,7 +20,7 @@ use std::thread::JoinHandle;
 
 pub const SIZE: usize = 4096;
 pub const CLOUD_SIZE: usize = 2048;
-pub use clouds::Cloud;
+pub use clouds::{Cloud, CloudShape};
 pub const MAX_HEIGHT: usize = 255;
 pub const MATERIAL_COUNT: usize = 35;
 const NOISE_SIZE: usize = 1024;
