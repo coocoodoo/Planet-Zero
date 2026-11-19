@@ -343,7 +343,7 @@ impl Renderer {
             self.mission(mission, flight, &camera);
         }
         if !world.kind.vacuum() {
-            self.precipitation(flight, &camera, theme);
+            self.precipitation(world, flight, &camera, theme);
         }
         for i in 0..width * height {
             self.output[i] = if has_panel && self.cockpit.pixels[i] != 0 {

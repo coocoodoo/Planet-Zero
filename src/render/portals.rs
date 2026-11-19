@@ -245,7 +245,7 @@ impl Renderer {
             };
             remote.background(destination, &remote_flight, &view, remote_theme, rh);
             if !destination.kind.vacuum() {
-                remote.precipitation(&remote_flight, &view, remote_theme);
+                remote.precipitation(destination, &remote_flight, &view, remote_theme);
             }
             if let Some(mission) = mission.filter(|_| std::ptr::eq(world, destination)) {
                 remote.mission(mission, flight, &view);
