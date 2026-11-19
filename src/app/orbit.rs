@@ -253,23 +253,14 @@ impl App {
         let anchor = map.uv(normal);
         let surface = SurfaceWarp::new(body, map.origin, anchor, 1.0);
         let rotation = surface.basis.transpose();
+        let offset = anchor.extend(0.0) - rotation * surface.space_origin();
         let camera_before = crate::flight::Camera::new(&self.flight, 320, 170);
         let roll_before = self.flight.screen_roll() * self.flight.weights[2];
-        self.flight.transform_frame(
-            rotation,
-            anchor.extend(0.0) - rotation * surface.space_origin(),
-            false,
-        );
-        let adjustment = self.flight.camera_adjustment;
+        self.flight.transform_pose(rotation, offset, false);
         self.flight.enter_region(&destination);
-        self.flight.camera_adjustment = adjustment;
         self.flight.surface = Some(surface);
-        self.flight.preserve_camera(
-            camera_before,
-            rotation,
-            anchor.extend(0.0) - rotation * surface.space_origin(),
-            roll_before,
-        );
+        self.flight
+            .preserve_camera(camera_before, rotation, offset, roll_before);
         self.flight.sky_rotation = Quat::from_mat3(&surface.basis);
         let environment = map.environment;
         self.flight.weather = environment.weather;

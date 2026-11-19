@@ -67,7 +67,7 @@ impl Flight {
             q: camera.q,
         });
     }
-    fn transform_pose(&mut self, rotation: Mat3, offset: Vec3, space: bool) {
+    pub(crate) fn transform_pose(&mut self, rotation: Mat3, offset: Vec3, space: bool) {
         let [right, forward, _] = self.axes().map(|v| rotation * v);
         let velocity = rotation * self.velocity();
         self.space = space;
@@ -111,6 +111,27 @@ impl Flight {
 mod tests {
     use super::*;
     use glam::vec2;
+    #[test]
+    fn camera_adjustment_preserves_projection_at_every_resolution() {
+        let world = World::generate(crate::world::MapKind::Space, 7);
+        let mut flight = Flight::new(&world);
+        for view in 0..3 {
+            flight.weights = [0.0; 3];
+            flight.weights[view] = 1.0;
+            flight.transform_frame(Mat3::from_rotation_z(0.7), Vec3::ZERO, true);
+            for weight in [1.0, 0.5, 0.0] {
+                flight.camera_adjustment.as_mut().unwrap().weight = weight;
+                let native = Camera::new(&flight, 320, 170);
+                let point = native.position + native.forward * 200.0 + native.right * 20.0;
+                let expected = native.project(point).unwrap().0;
+                for scale in [2, 4, 8] {
+                    let camera = Camera::new(&flight, 320 * scale, 170 * scale);
+                    let actual = camera.project(point).unwrap().0 / scale as f32;
+                    assert!(actual.distance(expected) < 0.001);
+                }
+            }
+        }
+    }
     #[test]
     fn frame_rotation_preserves_screen_projection_and_formation() {
         let world = World::generate(crate::world::MapKind::Space, 7);
