@@ -68,7 +68,7 @@ fn lunar_sites_and_space_landmarks_are_present_without_atmosphere() {
             .count(),
         4
     );
-    assert!(moon.clouds.iter().all(|c| *c == 0));
+    assert!(moon.clouds.is_empty());
     assert!(moon.materials.iter().all(|m| *m >= 27));
     assert!(moon.height(578.0 * 4.0, 600.0 * 4.0) < moon.height(578.0 * 4.0 + 370.0, 600.0 * 4.0));
     let space = World::generate(MapKind::Space, 1999);

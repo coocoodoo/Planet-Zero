@@ -220,7 +220,7 @@ impl Renderer {
         faceted: bool,
         fog: (f32, f32, u32),
     ) {
-        if self.warp.is_some() {
+        {
             let normal = (points[1] - points[0]).cross(points[2] - points[0]);
             let (eye, ray) = camera.ray(camera.center);
             let towards = if camera.q > 0.00001 {
@@ -479,7 +479,7 @@ mod tests {
         let mut world = World::new(7);
         world.heights.fill(60);
         world.materials.fill(15);
-        world.clouds.fill(0);
+        world.clouds.clear();
         world.scenery.clear();
         world.portals.clear();
         world.ceiling = 60;

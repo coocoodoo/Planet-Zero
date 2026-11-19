@@ -1,5 +1,5 @@
 use super::*;
-use crate::world::{CLOUD_SIZE, SIZE};
+use crate::world::SIZE;
 
 fn terrain() -> World {
     World {
@@ -10,8 +10,7 @@ fn terrain() -> World {
         airspace: Default::default(),
         heights: vec![0; SIZE * SIZE],
         materials: vec![0; SIZE * SIZE],
-        clouds: vec![0; CLOUD_SIZE * CLOUD_SIZE],
-        cloud_tiles: vec![16; 64 * 64],
+        clouds: vec![],
         spawn: (256.0, 350.0),
         kind: crate::world::MapKind::Islands,
         seed: 7,

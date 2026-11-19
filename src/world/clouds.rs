@@ -1,49 +1,74 @@
 use super::*;
+use glam::{Vec2, vec2};
+
+#[derive(Clone)]
+pub struct Cloud {
+    pub center: Vec2,
+    pub width: usize,
+    pub heights: Vec<u8>,
+    pub rank: u8,
+}
+
+impl Cloud {
+    pub const CELL: f32 = 6.0;
+    pub fn extent(&self) -> Vec2 {
+        vec2(
+            (self.width - 1) as f32,
+            (self.heights.len() / self.width - 1) as f32,
+        ) * Self::CELL
+            * 0.5
+    }
+}
 
 impl World {
     pub(super) fn generate_clouds(&mut self, random: &mut Random, clusters: usize) {
         for cluster in 0..clusters {
-            let rank = (cluster & 15) as u8;
-            let cx = random.next() * CLOUD_SIZE as f32;
-            let cy = random.next() * CLOUD_SIZE as f32;
+            let center = vec2(random.next(), random.next()) * CLOUD_SIZE as f32;
             let scale = 0.6 + random.next() * random.next() * 1.25;
             let angle = 0.35 + (random.next() - 0.5) * 1.3;
             let length = (12.0 + random.next() * 24.0) * scale;
-            let puffs = 4 + (random.next() * 7.0) as i32;
-            for puff in 0..puffs {
-                let t = puff as f32 / (puffs - 1) as f32 * 2.0 - 1.0;
-                let px = cx + angle.cos() * t * length + (random.next() - 0.5) * 9.0 * scale;
-                let py = cy + angle.sin() * t * length + (random.next() - 0.5) * 9.0 * scale;
-                let r = (6.0 + random.next() * 8.0) * scale * (1.0 - 0.45 * t.abs());
-                let thickness = (r * 0.6).round().clamp(2.0, 8.0);
-                let extent = r.ceil() as i32;
-                for dy in -extent..=extent {
-                    for dx in -extent..=extent {
-                        let distance = (dx * dx + dy * dy) as f32 / (r * r);
-                        if distance > 1.0 {
-                            continue;
-                        }
-                        let height = ((1.0 - distance).sqrt() * thickness).round().max(1.0) as u8;
-                        let at = index(px.round() as i32 + dx, py.round() as i32 + dy, CLOUD_SIZE);
-                        if height > self.clouds[at] & 15 {
-                            self.clouds[at] = (rank << 4) | height;
-                        }
-                    }
+            let count = 4 + (random.next() * 7.0) as usize;
+            let mut puffs = Vec::with_capacity(count);
+            let mut low = Vec2::splat(f32::INFINITY);
+            let mut high = Vec2::splat(f32::NEG_INFINITY);
+            for puff in 0..count {
+                let t = puff as f32 / (count - 1) as f32 * 2.0 - 1.0;
+                let point = vec2(angle.cos(), angle.sin()) * t * length
+                    + vec2(random.next() - 0.5, random.next() - 0.5) * 9.0 * scale;
+                let radius = (6.0 + random.next() * 8.0) * scale * (1.0 - 0.45 * t.abs());
+                low = low.min(point - Vec2::splat(radius + Cloud::CELL));
+                high = high.max(point + Vec2::splat(radius + Cloud::CELL));
+                puffs.push((point, radius));
+            }
+            let width = ((high.x - low.x) / Cloud::CELL).ceil() as usize + 1;
+            let height = ((high.y - low.y) / Cloud::CELL).ceil() as usize + 1;
+            let mut heights = vec![0; width * height];
+            for y in 1..height - 1 {
+                for x in 1..width - 1 {
+                    let point = low + vec2(x as f32, y as f32) * Cloud::CELL;
+                    let noise = hash((cluster * 7919 + x * 137 + y * 881) as u32) as f32 / 255.0;
+                    let thickness = puffs
+                        .iter()
+                        .map(|&(center, radius)| {
+                            let distance = point.distance(center) / radius;
+                            let profile =
+                                (1.0 - distance * distance + (noise - 0.5) * 0.24).max(0.0);
+                            (profile.sqrt() * (radius * 0.5).clamp(2.0, 10.0)
+                                + (noise - 0.5) * profile * 1.4)
+                                .max(0.0)
+                        })
+                        .fold(0.0, f32::max);
+                    heights[y * width + x] = thickness.round() as u8;
                 }
             }
-        }
-        self.prepare_cloud_tiles();
-    }
-    pub(crate) fn prepare_cloud_tiles(&mut self) {
-        self.cloud_tiles = vec![16; 64 * 64];
-        for y in (2..CLOUD_SIZE).step_by(4) {
-            for x in (2..CLOUD_SIZE).step_by(4) {
-                let cell = self.clouds[y * CLOUD_SIZE + x];
-                if cell & 15 > 0 {
-                    let at = (y / 32) * 64 + x / 32;
-                    self.cloud_tiles[at] = self.cloud_tiles[at].min(cell >> 4);
-                }
-            }
+            self.clouds.push(Cloud {
+                center: center
+                    + low
+                    + vec2((width - 1) as f32, (height - 1) as f32) * Cloud::CELL * 0.5,
+                width,
+                heights,
+                rank: (cluster & 15) as u8,
+            });
         }
     }
     pub(super) fn prepare_cloud_heights(&mut self) {
