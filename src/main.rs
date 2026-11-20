@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 mod desktop;
 use flight_club::app::{App, HEIGHT, Page, WIDTH};
 use flight_club::gameplay::Mode;
