@@ -16,20 +16,6 @@ pub(crate) struct Chart {
     cached: Option<(MapKey, usize, Vec2)>,
 }
 
-pub(crate) fn offset(position: Vec2, center: Vec2) -> Vec2 {
-    let period = SIZE as f32;
-    (position - center + Vec2::splat(period * 0.5)).rem_euclid(Vec2::splat(period))
-        - Vec2::splat(period * 0.5)
-}
-
-pub(crate) fn map_offset(kind: MapKind, position: Vec2, center: Vec2) -> Vec2 {
-    if kind == MapKind::Space {
-        position - center
-    } else {
-        offset(position, center)
-    }
-}
-
 impl Chart {
     pub fn prepare(&mut self, world: &World, position: Vec3) {
         self.space = world.kind == MapKind::Space;
@@ -100,11 +86,7 @@ impl Chart {
     pub fn pan(&mut self, world: &World, position: Vec3, movement: Vec2) {
         self.prepare(world, position);
         let position = self.center + movement * self.span;
-        self.focus = Some(if self.space {
-            position
-        } else {
-            position.rem_euclid(Vec2::splat(SIZE as f32))
-        });
+        self.focus = Some(position);
     }
     pub fn zoom_by(&mut self, direction: i32, world: &World, position: Vec3) {
         self.prepare(world, position);
@@ -113,12 +95,7 @@ impl Chart {
     }
     pub fn point(&self, position: Vec3) -> Vec2 {
         Vec2::splat(CHART_SIZE as f32 * 0.5)
-            + (if self.space {
-                position.truncate() - self.center
-            } else {
-                offset(position.truncate(), self.center)
-            }) * CHART_SIZE as f32
-                / self.span
+            + (position.truncate() - self.center) * CHART_SIZE as f32 / self.span
     }
 }
 
@@ -136,6 +113,9 @@ impl App {
             {
                 self.chart.focus = None;
                 self.chart.zoom = 0;
+            }
+            if self.chart.focus.is_none() && self.world.kind != MapKind::Space {
+                self.chart.focus = Some(self.flight.position.truncate());
             }
             self.chart.selected = 0;
             self.page = Page::Chart;

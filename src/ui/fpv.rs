@@ -1,5 +1,5 @@
 use super::*;
-use crate::app::chart::{CHART_SIZE, offset};
+use crate::app::chart::CHART_SIZE;
 use crate::flight::Flight;
 use crate::gameplay::{Mission, PickupKind, Weapon};
 use crate::world::SIZE;
@@ -165,7 +165,7 @@ fn hardware(c: &mut Canvas<'_>, t: crate::app::telemetry::Telemetry, full: bool)
 }
 
 fn map_point(position: Vec3, player: Vec3) -> Vec2 {
-    MAP_CENTER + offset(position.truncate(), player.truncate()) * MAP_SCALE
+    MAP_CENTER + (position - player).truncate() * MAP_SCALE
 }
 fn map_marker(c: &mut Canvas<'_>, p: Vec2, color: [u8; 3], portal: bool) {
     if p.x < 8.0 || p.x > 50.0 || p.y < 119.0 || p.y > 153.0 {

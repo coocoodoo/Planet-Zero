@@ -1,5 +1,5 @@
 use super::*;
-use crate::app::chart::{CHART_SIZE, map_offset};
+use crate::app::chart::CHART_SIZE;
 use crate::world::{SIZE, network::MapKey, orbit::Body};
 use glam::{Vec2, vec2};
 
@@ -58,12 +58,9 @@ pub fn draw(app: &mut App) {
         .target
         .filter(|t| t.map == MapKey::of(&app.world));
     let focused = routes.iter().min_by(|a, b| {
-        map_offset(app.world.kind, a.aperture.center.truncate(), chart.center)
+        (a.aperture.center.truncate() - chart.center)
             .length_squared()
-            .total_cmp(
-                &map_offset(app.world.kind, b.aperture.center.truncate(), chart.center)
-                    .length_squared(),
-            )
+            .total_cmp(&(b.aperture.center.truncate() - chart.center).length_squared())
     });
     let mut c = Canvas {
         pixels: &mut app.screen,
@@ -101,7 +98,7 @@ pub fn draw(app: &mut App) {
             let label = if chart.space {
                 format!("{:.0}K", coordinate / 1000.0)
             } else {
-                format!("{:04}", coordinate.rem_euclid(SIZE as f32) as u32)
+                format!("{coordinate:.0}")
             };
             if axis == 0 && at <= 112 {
                 c.osd(25 + at, 17, &label, MUTED);
@@ -138,7 +135,7 @@ pub fn draw(app: &mut App) {
         route_line(
             &mut c,
             player,
-            player + t.offset(app.world.kind, f.position) * CHART_SIZE as f32 / chart.span,
+            player + t.offset(f.position) * CHART_SIZE as f32 / chart.span,
             GOLD,
         );
         let p = chart.point(t.position);
@@ -281,7 +278,12 @@ pub fn draw(app: &mut App) {
         &format!("GRID {}{}", (b'A' + (x / 512) as u8) as char, y / 512 + 1),
         GOLD,
     );
-    c.osd(171, 30, &format!("X{x:04} Y{y:04}"), WHITE);
+    c.osd(
+        171,
+        30,
+        &format!("X{:.0} Y{:.0}", chart.center.x, chart.center.y),
+        WHITE,
+    );
     c.osd(171, 42, &format!("SPAN {:.0} U", chart.span), MUTED);
     c.osd(
         171,
@@ -294,7 +296,7 @@ pub fn draw(app: &mut App) {
         CYAN,
     );
     if let Some(t) = target {
-        let delta = t.offset(app.world.kind, f.position);
+        let delta = t.offset(f.position);
         c.osd(171, 69, &format!("RANGE {:.0} U", delta.length()), WHITE);
     } else if let Some(route) = focused {
         c.osd(171, 69, route.target.kind.name(), WHITE);

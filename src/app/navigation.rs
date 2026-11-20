@@ -1,5 +1,4 @@
 use super::*;
-use crate::app::chart::map_offset;
 use crate::world::network::MapKey;
 use crate::world::{MapKind, orbit::Body};
 use glam::Vec3;
@@ -12,12 +11,8 @@ pub struct Waypoint {
     pub body: Option<Body>,
 }
 impl Waypoint {
-    pub(crate) fn offset(self, kind: MapKind, position: Vec3) -> glam::Vec2 {
-        if self.portal.is_some() {
-            (self.position - position).truncate()
-        } else {
-            map_offset(kind, self.position.truncate(), position.truncate())
-        }
+    pub(crate) fn offset(self, position: Vec3) -> glam::Vec2 {
+        (self.position - position).truncate()
     }
 }
 #[derive(Default)]
@@ -30,10 +25,10 @@ impl App {
     pub(super) fn mark_chart(&mut self) {
         self.chart.prepare(&self.world, self.flight.position);
         let center = self.chart.center;
-        let portal = self.network.routes(&self.world).into_iter().find(|r| {
-            map_offset(self.world.kind, r.aperture.center.truncate(), center).length()
-                < self.chart.span * 0.035
-        });
+        let portal =
+            self.network.routes(&self.world).into_iter().find(|r| {
+                (r.aperture.center.truncate() - center).length() < self.chart.span * 0.035
+            });
         let body = if self.world.kind == MapKind::Space {
             Body::ALL.into_iter().find(|body| {
                 (body.center().truncate() - center).length()
@@ -149,7 +144,7 @@ impl App {
                 ..Default::default()
             });
         }
-        let delta = target.offset(self.world.kind, self.flight.position);
+        let delta = target.offset(self.flight.position);
         let dz = target.position.z - self.flight.position.z;
         if target.portal.is_none() && delta.length() < 24.0 && dz.abs() < 20.0 {
             self.navigation.active = false;
@@ -182,20 +177,48 @@ mod tests {
         app
     }
     #[test]
-    fn distant_surface_portals_use_their_actual_position_for_navigation() {
+    fn portal_navigation_and_markers_share_continuous_world_coordinates() {
         let mut app = App::new(World::generate(MapKind::Moon, MapKind::Moon.seed()));
         app.start();
         app.auto = false;
+        app.record_path = None;
+        app.network.ensure(&app.world);
+        let route = app.network.routes(&app.world)[0];
+        let portal = route.aperture.center;
+        app.flight.position = portal + Vec3::Y * 3000.0;
+        app.flight.follow = app.flight.position;
         app.flight.yaw = 0.0;
+        app.chart.focus = Some(portal.truncate());
+        app.mark_chart();
+        let target = app.navigation.target.unwrap();
+        assert_eq!(target.portal, Some(route.id));
+        assert!((target.offset(app.flight.position) + glam::Vec2::Y * 3000.0).length() < 0.01);
+        let aircraft = app.chart.point(app.flight.position);
+        let marker = app.chart.point(portal);
+        assert!(marker.y < aircraft.y);
+        assert!(
+            (aircraft.y
+                - marker.y
+                - 3000.0 * super::super::chart::CHART_SIZE as f32 / app.chart.span)
+                .abs()
+                < 0.01
+        );
         app.navigation.active = true;
-        app.navigation.target = Some(Waypoint {
-            map: MapKey::of(&app.world),
-            position: app.flight.position - Vec3::Y * 3000.0,
-            portal: Some(1),
-            body: None,
-        });
         let controls = app.navigation_controls().unwrap();
         assert!(controls.turn.abs() < 0.001);
+        let before = app.flight.position.distance(portal);
+        for _ in 0..120 {
+            app.step(1.0 / 30.0, None);
+        }
+        assert!(app.flight.position.distance(portal) < before - 200.0);
+        app.chart.focus = Some(portal.truncate() + glam::Vec2::splat(crate::world::SIZE as f32));
+        app.mark_chart();
+        assert!(app.navigation.target.unwrap().portal.is_none());
+        app.chart.focus = Some(glam::vec2(-100.0, 4200.0));
+        app.chart
+            .pan(&app.world, app.flight.position, glam::vec2(-0.1, 0.1));
+        app.chart.prepare(&app.world, app.flight.position);
+        assert!(app.chart.center.x < -100.0 && app.chart.center.y > 4200.0);
     }
 
     #[test]

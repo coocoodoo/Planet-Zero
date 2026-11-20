@@ -1,5 +1,4 @@
 use super::*;
-use crate::app::chart::map_offset;
 use crate::world::network::MapKey;
 use glam::vec2;
 
@@ -11,11 +10,7 @@ pub(super) fn draw(app: &mut App) {
     else {
         return;
     };
-    let delta = map_offset(
-        app.world.kind,
-        target.position.truncate(),
-        app.flight.position.truncate(),
-    );
+    let delta = target.offset(app.flight.position);
     let bearing = angle(delta.x.atan2(-delta.y) - app.flight.yaw);
     let height = target.position.z - app.flight.position.z;
     let color = if app.navigation.arrived {

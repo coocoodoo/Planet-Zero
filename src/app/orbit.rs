@@ -140,15 +140,18 @@ impl App {
                 let pole = std::f32::consts::FRAC_PI_2 * crate::world::orbit::UV_SCALE;
                 // 越过极点后经度移半圈，纬度和切向坐标反向
                 if latitude.abs() > pole {
-                    self.flight.transform_frame(
-                        glam::Mat3::from_rotation_z(std::f32::consts::PI),
-                        vec3(
-                            self.flight.position.x * 2.0 + pole * 2.0,
-                            surface.origin.y * 2.0 + latitude.signum() * pole * 2.0,
-                            0.0,
-                        ),
-                        false,
+                    let rotation = glam::Mat3::from_rotation_z(std::f32::consts::PI);
+                    let offset = vec3(
+                        self.flight.position.x * 2.0 + pole * 2.0,
+                        surface.origin.y * 2.0 + latitude.signum() * pole * 2.0,
+                        0.0,
                     );
+                    self.flight.transform_frame(rotation, offset, false);
+                    if let Some(target) = &mut self.navigation.target
+                        && target.portal.is_none()
+                    {
+                        target.position = rotation * target.position + offset;
+                    }
                 }
                 // 曲面锚点跟随飞机，局部高度沿地表法线测量
                 surface = SurfaceWarp::new(
