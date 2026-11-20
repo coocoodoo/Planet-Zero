@@ -15,6 +15,8 @@ pub struct CloudShape {
     pub thin: bool,
     pub layer: bool,
     pub faces: [Vec<CloudFace>; 3],
+    // 云顶 64×64 纹理，前三项为法线偏移，末项为凹处遮蔽，分量缩放 127 倍
+    pub relief: Vec<[i8; 4]>,
 }
 
 pub struct CloudFace {
@@ -140,6 +142,7 @@ impl CloudShape {
             thin,
             layer,
             faces,
+            relief: Vec::new(),
         }
     }
 
@@ -318,8 +321,10 @@ impl World {
                     + cloud_noise(p / 4.0, self.seed ^ 0x7193, 16) * 0.25
                     + cloud_noise(p / 2.0, self.seed ^ 0x321b, 32) * 0.1;
                 let t = ((cover - 0.43) / 0.22).clamp(0.0, 1.0);
-                let height = (30.0 + 24.0 * cloud_noise(p / 2.0, self.seed ^ 0x5289, 32))
-                    * (t * t * (3.0 - 2.0 * t)).sqrt();
+                let swell = cloud_noise(p / 4.0, self.seed ^ 0x5289, 16);
+                let billow = cloud_noise(p / 2.0 + vec2(0.37, 0.61), self.seed ^ 0x915b, 32);
+                let height =
+                    (24.0 + 12.0 * swell + 18.0 * billow) * (t * t * (3.0 - 2.0 * t)).sqrt();
                 density[y * side + x] = if cover > 0.43 {
                     height * height
                 } else {
@@ -327,6 +332,21 @@ impl World {
                 };
             }
         }
+        // 细节坡度与凹处遮蔽在地图生成时缓存，纹理随云层平移
+        let detail_side = 512;
+        let detail: Vec<f32> = (0..detail_side * detail_side)
+            .map(|at| {
+                let p =
+                    vec2((at % detail_side) as f32, (at / detail_side) as f32) + Vec2::splat(0.5);
+                let warp = vec2(
+                    cloud_noise(p / 32.0, self.seed ^ 0x31c5, 16),
+                    cloud_noise(p / 32.0, self.seed ^ 0xb791, 16),
+                );
+                let p = p + (warp - Vec2::splat(0.5)) * 3.0;
+                cloud_noise(p / 8.0, self.seed ^ 0x1b63, 64) * 6.0
+                    + cloud_noise(p / 4.0, self.seed ^ 0x92d7, 128) * 3.0
+            })
+            .collect();
         for y in 0..8 {
             for x in 0..8 {
                 let mut tile = Vec::with_capacity(81);
@@ -335,11 +355,26 @@ impl World {
                         tile.push(density[(y * 8 + dy) * side + x * 8 + dx]);
                     }
                 }
+                let mut shape = CloudShape::from_density(9, &tile, 32.0, false, true);
+                shape.relief = (0..64 * 64)
+                    .map(|at| {
+                        let (gx, gy) = ((x * 64 + at % 64) as i32, (y * 64 + at / 64) as i32);
+                        let h = |dx, dy| detail[index(gx + dx, gy + dy, detail_side)];
+                        let normal =
+                            Vec3::new((h(-1, 0) - h(1, 0)) / 8.0, (h(0, -1) - h(0, 1)) / 8.0, 1.0)
+                                .normalize();
+                        let valley = ((h(-4, 0) + h(4, 0) + h(0, -4) + h(0, 4)) * 0.25 - h(0, 0))
+                            .max(0.0)
+                            * 0.2;
+                        [normal.x, normal.y, normal.z - 1.0, valley.min(1.0)]
+                            .map(|v| (v * 127.0).round() as i8)
+                    })
+                    .collect();
                 self.clouds.push(Cloud {
                     center: vec2(x as f32 * 256.0 + 128.0, y as f32 * 256.0 + 128.0),
                     scale: 1.0,
                     rank: 0,
-                    shape: Arc::new(CloudShape::from_density(9, &tile, 32.0, false, true)),
+                    shape: Arc::new(shape),
                 });
             }
         }

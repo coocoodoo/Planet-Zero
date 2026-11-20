@@ -1,10 +1,14 @@
 use super::*;
 use crate::world::Cloud;
+use glam::Vec4;
 
 #[derive(Clone, Copy)]
 pub(super) struct CloudSurface<'a> {
-    pub attributes: [Vec2; 3],
+    // 厚度、顶点亮度和细节纹理坐标
+    pub attributes: [Vec4; 3],
     pub palette: &'a [u32; 8],
+    pub relief: &'a [[i8; 4]],
+    pub relief_light: Vec4,
 }
 
 #[derive(Clone, Copy)]
@@ -173,9 +177,16 @@ impl Renderer {
                                 } else {
                                     1.0
                                 };
-                            vec2(thickness, shade)
+                            let texture = (face.points[i].truncate() + cloud.shape.extent) / 4.0;
+                            Vec4::new(thickness, shade, texture.x, texture.y)
                         }),
                         palette: &palette,
+                        relief: if flight.dynamic_clouds && face.normal.z > 0.0 {
+                            &cloud.shape.relief
+                        } else {
+                            &[]
+                        },
+                        relief_light: (self.light.direction * 0.7).extend(-0.18) / 127.0,
                     }),
                 );
             }

@@ -95,8 +95,8 @@ impl Renderer {
             return;
         }
         let mut polygon = [Vec3::ZERO; 4];
-        let mut amounts = [Vec2::ZERO; 4];
-        let attributes = cloud.map_or([Vec2::ZERO; 3], |cloud| cloud.attributes);
+        let mut amounts = [glam::Vec4::ZERO; 4];
+        let attributes = cloud.map_or([glam::Vec4::ZERO; 3], |cloud| cloud.attributes);
         let mut count = 0;
         for i in 0..3 {
             let a = points[i];
@@ -212,10 +212,20 @@ impl Renderer {
                                 + cloud.attributes[2] * weights.z)
                                 / weights.element_sum();
                             let density = (attributes.x / 8.0).clamp(0.0, 1.0);
+                            let mut shade = attributes.y;
+                            if !cloud.relief.is_empty() {
+                                let tx = (attributes.z as usize).min(63);
+                                let ty = (attributes.w as usize).min(63);
+                                let relief = glam::Vec4::from_array(
+                                    cloud.relief[ty * 64 + tx].map(|v| v as f32),
+                                );
+                                shade +=
+                                    relief.dot(cloud.relief_light) * (attributes.x / 20.0).min(1.0);
+                            }
                             let dither = [0.0, 0.5, 0.75, 0.25]
                                 [((y as usize & 1) << 1) | ((x as usize + self.x_origin) & 1)];
                             let color = cloud.palette
-                                [(attributes.y * 7.0 + dither * 0.5).clamp(0.0, 7.0) as usize];
+                                [(shade * 7.0 + dither * 0.5).clamp(0.0, 7.0) as usize];
                             *sample = super::clouds::CloudPixel {
                                 depth,
                                 color,
