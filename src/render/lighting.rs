@@ -38,17 +38,23 @@ impl Lighting {
     }
 
     fn from_direction(sun: Vec3, direction: Vec3) -> Self {
-        let daylight = ((direction.z + 0.12) / 0.36).clamp(0.0, 1.0);
-        let day = ((direction.z - 0.03) / 0.42).clamp(0.0, 1.0);
+        // 低角度阳光先转暖，落日后的冷色天光继续照亮场景
+        let daylight = smooth((direction.z + 0.45) / 0.49);
+        let warmth =
+            (1.0 - smooth((direction.z + 0.04) / 0.26)) * smooth((direction.z + 0.28) / 0.20);
         Self {
             sun,
             direction,
-            weights: [daylight * day, daylight * (1.0 - day), 1.0 - daylight],
+            weights: [daylight * (1.0 - warmth), daylight * warmth, 1.0 - daylight],
         }
     }
 
     pub fn night(self) -> f32 {
         self.weights[2]
+    }
+
+    pub fn twilight(self) -> f32 {
+        self.weights[1]
     }
 
     pub fn blend(self, colors: [u32; 3]) -> u32 {
@@ -79,13 +85,41 @@ fn cycle_phase(time: f32) -> f32 {
     if time < 0.75 {
         time * (2.0 / 3.0)
     } else {
-        0.5 + (time - 0.75) * 2.0
+        let night = (time - 0.75) * 4.0;
+        0.5 + night / 6.0 + smooth(night) / 3.0
     }
+}
+
+fn smooth(value: f32) -> f32 {
+    let value = value.clamp(0.0, 1.0);
+    value * value * (3.0 - 2.0 * value)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sunset_warms_before_the_horizon_and_cools_through_blue_hour() {
+        let at = |z: f32| Lighting::from_direction(Vec3::Z, vec3(0.0, 0.0, z));
+        assert_eq!(at(0.3).weights[0], 1.0);
+        assert!(at(0.15).twilight() > 0.1);
+        assert_eq!(at(0.15).night(), 0.0);
+        assert_eq!(at(0.04).night(), 0.0);
+        assert!(at(0.0).twilight() > 0.9);
+        assert!(at(-0.08).twilight() > 0.6);
+        let blue = at(-0.28);
+        assert_eq!(blue.twilight(), 0.0);
+        assert!(blue.night() > 0.5 && blue.night() < 0.85);
+        let [r, _, b, _] = blue.color(rgb(230, 230, 230)).to_le_bytes();
+        assert!(b > r + 30);
+        assert_eq!(at(-0.45).night(), 1.0);
+        for time in [0.0_f32, 0.75] {
+            let before = (cycle_phase(time) - cycle_phase(time - 0.0001)).rem_euclid(1.0);
+            let after = (cycle_phase(time + 0.0001) - cycle_phase(time)).rem_euclid(1.0);
+            assert!((before - after).abs() < 0.000001);
+        }
+    }
 
     #[test]
     fn day_lasts_450_seconds_and_night_lasts_150_seconds() {

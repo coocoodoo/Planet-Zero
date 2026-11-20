@@ -18,9 +18,19 @@ impl Renderer {
         let high = self.light.blend(skies.map(|s| s.1));
         let night = self.light.night();
         let flash = weather.flash(flight.time);
+        let sun_azimuth = self.light.direction.with_z(0.0).normalize_or_zero();
+        let twilight = self.light.twilight()
+            * (1.0
+                - weather.weight(Weather::Fog) * 0.9
+                - weather.weight(Weather::Storm) * 0.85
+                - weather.weight(Weather::Rain) * 0.55
+                - weather.weight(Weather::Cloudy) * 0.28)
+            * 0.4;
         for y in 0..self.h {
             let (_, ray) = camera.ray(vec2(camera.center.x, y as f32));
-            let gradient = (ray.z / ray.length() * 1.4).clamp(0.0, 1.0);
+            let elevation = ray.z / ray.length();
+            let gradient = (elevation * 1.4).clamp(0.0, 1.0);
+            let glow = (1.0 - elevation.abs() / 0.26).max(0.0).powi(2) * twilight;
             let color = mix(
                 mix(low, high, (gradient * 12.0).floor() / 12.0),
                 rgb(225, 234, 255),
@@ -33,6 +43,14 @@ impl Renderer {
                     && self.pixels[at] == 0
                     && self.depth[at] == f32::INFINITY
                 {
+                    let color = if glow > 0.001 {
+                        let (_, ray) = camera.ray(vec2(x as f32, y as f32));
+                        let facing =
+                            (ray.dot(sun_azimuth).max(0.0).powi(2) / ray.length_squared()).powi(2);
+                        mix(color, rgb(255, 139, 76), glow * facing)
+                    } else {
+                        color
+                    };
                     self.pixels[at] = if night > 0.0
                         && weather.weight(Weather::Clear) > 0.95
                         && gradient > 0.2
@@ -79,8 +97,6 @@ impl Renderer {
         if world.kind == crate::world::MapKind::Icebergs && night > 0.0 {
             self.aurora(camera, flight, night);
         }
-        if self.light.direction.z > -0.02 {
-            self.sun(camera, flight);
-        }
+        self.sun(camera, flight);
     }
 }

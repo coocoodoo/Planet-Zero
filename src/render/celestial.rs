@@ -163,18 +163,12 @@ impl Renderer {
     }
 
     pub(super) fn sun(&mut self, camera: &Camera, flight: &Flight) {
-        if camera.q > 0.0001 {
-            self.planet(
-                camera,
-                camera.position + self.light.direction * 12000.0,
-                480.0,
-                true,
-                flight.time,
-            );
+        if camera.q <= 0.0001 {
+            return;
         }
-    }
-
-    fn planet(&mut self, camera: &Camera, center: Vec3, radius: f32, star: bool, time: f32) {
+        let (eye, _) = camera.ray(camera.center);
+        let center = eye + self.light.direction * 12000.0;
+        let radius = 480.0;
         let Some((p, depth, scale)) = camera.project(center) else {
             return;
         };
@@ -182,7 +176,7 @@ impl Renderer {
             return;
         }
         let r = (radius * scale).min(self.full_width as f32);
-        let extent = r * if star { 1.7 } else { 1.04 };
+        let extent = r * 1.7;
         let min = (p - Vec2::splat(extent)).max(Vec2::ZERO);
         let max = (p + Vec2::splat(extent)).min(vec2(self.w as f32 - 1.0, self.h as f32 - 1.0));
         for x in min.x as usize..=max.x as usize {
@@ -197,31 +191,17 @@ impl Renderer {
                 }
                 if d <= 1.0 {
                     let z = (1.0 - d).sqrt();
-                    let light = (uv.x * -0.6 - uv.y * 0.4 + z * 0.6).max(0.03);
                     let noise = (uv.x * 15.0 + (uv.y * 18.0).sin() * 2.0).sin()
                         + (uv.y * 12.0 - uv.x * 8.0).cos();
-                    let color = if star {
-                        mix(
-                            rgb(255, 116, 35),
-                            rgb(255, 246, 184),
-                            (z * 0.6 + noise * 0.07 + (time * 0.5).sin() * 0.02).clamp(0.0, 1.0),
-                        )
-                    } else {
-                        let base = if noise > 0.9 {
-                            rgb(93, 156, 144)
-                        } else if noise < -1.1 || uv.y.abs() > 0.88 {
-                            rgb(219, 236, 242)
-                        } else {
-                            rgb(28, 94, 180)
-                        };
-                        mix(rgb(5, 12, 29), base, light.min(1.0))
-                    };
+                    let color = mix(
+                        rgb(255, 116, 35),
+                        rgb(255, 246, 184),
+                        (z * 0.6 + noise * 0.07 + (flight.time * 0.5).sin() * 0.02).clamp(0.0, 1.0),
+                    );
                     self.pixels[at] = color;
-                } else if star {
+                } else {
                     let glow = ((1.7 - d.sqrt()) / 0.7).max(0.0).powi(3) * 0.4;
                     self.pixels[at] = mix(self.pixels[at], rgb(255, 145, 55), glow);
-                } else if d < 1.08 {
-                    self.pixels[at] = mix(self.pixels[at], rgb(76, 159, 237), 0.5);
                 }
             }
         }
@@ -632,5 +612,57 @@ impl Renderer {
                 rgb(96, 142, 191),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sun_sets_behind_the_rendered_silhouette_and_remains_visible_in_space() {
+        let world = World::generate(crate::world::MapKind::Islands, 7);
+        let flight = Flight::new(&world);
+        let mut camera = Camera::new(&flight, 320, 170);
+        camera.q = 1.0 / 64.0;
+        camera.scale = 3.0;
+        camera.slope = 0.0;
+        camera.center = vec2(160.0, 85.0);
+        camera.orient(0.0, 0.0);
+        let mut renderer = Renderer::single();
+        renderer.w = 320;
+        renderer.full_width = 320;
+        renderer.h = 170;
+        renderer.pixels = vec![rgb(0, 0, 0); 320 * 170];
+        renderer.depth = vec![f32::INFINITY; 320 * 170];
+        renderer.visible = vec![(0, 170); 320];
+        let mut disc_pixels = |z: f32, ground: bool| {
+            renderer.pixels.fill(rgb(0, 0, 0));
+            for (i, depth) in renderer.depth.iter_mut().enumerate() {
+                *depth = if ground && i % 170 >= 100 {
+                    2000.0
+                } else {
+                    f32::INFINITY
+                };
+            }
+            renderer.light.direction = vec3(0.0, -(1.0 - z * z).sqrt(), z);
+            renderer.sun(&camera, &flight);
+            renderer
+                .pixels
+                .iter()
+                .filter(|&&p| {
+                    let [r, g, _, _] = p.to_le_bytes();
+                    r > 200 && g > 100
+                })
+                .count()
+        };
+        let full = disc_pixels(0.0, true);
+        let half = disc_pixels(-0.08, true);
+        let crescent = disc_pixels(-0.10, true);
+        assert!(full > 100);
+        assert!(half > full / 3 && half < full * 2 / 3);
+        assert!(crescent > 0 && crescent < half);
+        assert_eq!(disc_pixels(-0.16, true), 0);
+        assert!(disc_pixels(-0.16, false) > 100);
     }
 }
