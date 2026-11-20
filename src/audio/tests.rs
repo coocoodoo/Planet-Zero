@@ -101,7 +101,9 @@ fn application_routes_results_pause_and_events_to_audio() {
     assert!(app.audio_frame().paused);
     app.key(crate::keys::SETTINGS, 1);
     app.key(crate::keys::SETTINGS, 0);
-    app.selection = 4;
+    app.key(crate::keys::ENTER, 1);
+    app.key(crate::keys::ENTER, 0);
+    app.selection = 3;
     app.key(crate::keys::LEFT, 1);
     app.key(crate::keys::LEFT, 0);
     assert_eq!(app.audio_settings.volume, 6);

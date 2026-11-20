@@ -254,46 +254,84 @@ pub fn draw(app: &mut App) {
         return;
     }
     if app.page == Page::Settings {
+        use crate::app::SettingsSection;
         c.shade(24, 16, 272, 141);
         c.rect(24, 16, 2, 141, CYAN);
-        c.text_scale(43, 23, "SETTINGS", WHITE, 2);
-        let toggle = |value| if value { "ON" } else { "OFF" };
-        let rows = if app.settings_advanced {
-            [
-                "CATEGORY  < ADVANCED >".to_owned(),
-                format!("FACETED TERRAIN   {}", toggle(f.faceted)),
-                format!("DYNAMIC CLOUDS    {}", toggle(f.dynamic_clouds)),
-                format!("DYNAMIC LIGHTING  {}", toggle(f.dynamic_lighting)),
-                format!("PORTAL PREVIEW    {}", toggle(f.portal_preview)),
-                "BACK".to_owned(),
-            ]
-        } else {
-            [
-                "CATEGORY  < GENERAL >".to_owned(),
-                format!("FLIGHT HUD        {}", toggle(f.hud)),
-                format!("PORTAL LABELS     {}", toggle(app.portal_labels)),
-                format!("SOUND   {}", app.audio_settings.name()),
-                format!("VOLUME           {:3}%", app.audio_settings.volume * 10),
-                "BACK".to_owned(),
-            ]
+        let title = match app.settings_section {
+            None => "SETTINGS",
+            Some(SettingsSection::General) => "GENERAL",
+            Some(SettingsSection::Advanced) => "ADVANCED",
         };
-        for (i, line) in rows.iter().enumerate() {
-            let y = 45 + i as i32 * 13;
+        if app.settings_section.is_some() {
+            c.text(34, 28, "<", CYAN);
+        }
+        c.text_scale(52, 23, title, WHITE, 2);
+        c.rect(34, 44, 252, 1, MUTED);
+        let toggle = |value| if value { "ON" } else { "OFF" }.to_owned();
+        let rows = match app.settings_section {
+            None => vec![
+                ("GENERAL", ">".to_owned()),
+                ("ADVANCED", ">".to_owned()),
+                ("BACK", String::new()),
+            ],
+            Some(SettingsSection::General) => vec![
+                ("FLIGHT HUD", toggle(f.hud)),
+                ("PORTAL LABELS", toggle(app.portal_labels)),
+                ("SOUND", app.audio_settings.name().to_owned()),
+                ("VOLUME", format!("{}%", app.audio_settings.volume * 10)),
+                ("BACK", String::new()),
+            ],
+            Some(SettingsSection::Advanced) => vec![
+                ("FACETED TERRAIN", toggle(f.faceted)),
+                ("DYNAMIC CLOUDS", toggle(f.dynamic_clouds)),
+                ("DYNAMIC LIGHTING", toggle(f.dynamic_lighting)),
+                ("PORTAL PREVIEW", toggle(f.portal_preview)),
+                ("BACK", String::new()),
+            ],
+        };
+        let row_height = if app.settings_section.is_some() {
+            15
+        } else {
+            28
+        };
+        for (i, (label, value)) in rows.iter().enumerate() {
+            let y = 52 + i as i32 * row_height;
             if i == app.selection {
-                c.rect(32, y - 2, 256, 13, [36, 73, 86]);
+                c.rect(32, y - 3, 256, row_height - 1, [36, 73, 86]);
                 c.text(34, y, ">", GOLD);
             }
-            c.text(47, y, line, if i == app.selection { GOLD } else { WHITE });
+            let color = if i == app.selection { GOLD } else { WHITE };
+            c.text(47, y, label, color);
+            if app.settings_section == Some(SettingsSection::General) && matches!(i, 2 | 3) {
+                c.text(192, y, "<", color);
+                c.text(232 - value.len() as i32 * 4, y, value, color);
+                c.text(272, y, ">", color);
+            } else {
+                c.text(280 - value.len() as i32 * 8, y, value, color);
+            }
+            if app.settings_section.is_none() && i < 2 {
+                c.text(
+                    47,
+                    y + 11,
+                    ["HUD, LABELS AND AUDIO", "VISUALS AND PERFORMANCE"][i],
+                    MUTED,
+                );
+            }
         }
-        let hint = match (app.settings_advanced, app.selection) {
-            (_, 0) => "LEFT / RIGHT CHANGE CATEGORY",
-            (true, 2) => "OFF: SIMPLE CLOUDS / FASTER",
-            (true, 3) => "OFF: FREEZE SUN POSITION",
-            (true, 4) => "OFF: ENERGY FIELD / FASTER",
-            _ => "LEFT / RIGHT ADJUST",
+        let hint = if app.selection == rows.len() - 1 {
+            "ENTER BACK"
+        } else {
+            match (app.settings_section, app.selection) {
+                (None, _) => "ENTER OPEN",
+                (Some(SettingsSection::Advanced), 1) => "OFF: SIMPLE CLOUDS / FASTER",
+                (Some(SettingsSection::Advanced), 2) => "OFF: FREEZE SUN POSITION",
+                (Some(SettingsSection::Advanced), 3) => "OFF: ENERGY FIELD / FASTER",
+                (Some(SettingsSection::General), 2 | 3) => "LEFT / RIGHT ADJUST",
+                _ => "ENTER TOGGLE",
+            }
         };
         c.text(34, 132, hint, CYAN);
-        c.text(34, 149, "ESC RETURN", MUTED);
+        c.text(34, 149, "ESC BACK", MUTED);
         return;
     }
     if app.page == Page::Paused {

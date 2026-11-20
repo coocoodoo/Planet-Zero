@@ -8,6 +8,7 @@ pub mod perf;
 pub use perf::PerfStats;
 mod records;
 mod settings;
+pub(crate) use settings::SettingsSection;
 pub mod telemetry;
 #[cfg(test)]
 mod tests;
@@ -52,7 +53,7 @@ pub struct App {
     pub portal_labels: bool,
     settings_path: Option<PathBuf>,
     settings_return: (Page, usize),
-    pub settings_advanced: bool,
+    pub(crate) settings_section: Option<SettingsSection>,
     pub audio_settings: crate::audio::Settings,
     pub sounds: crate::audio::Events,
     pub level: u32,
@@ -142,7 +143,7 @@ impl App {
             portal_labels: settings.portal_labels,
             settings_path,
             settings_return: (Page::Menu, 0),
-            settings_advanced: false,
+            settings_section: None,
             director: director::Director::default(),
             audio_settings: crate::audio::Settings::default(),
             sounds: crate::audio::Events::default(),

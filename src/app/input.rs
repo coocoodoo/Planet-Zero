@@ -167,11 +167,14 @@ impl App {
                 return;
             }
             Page::Settings => {
+                let rows = self.settings_rows();
                 match code {
-                    UP => self.selection = (self.selection + 5) % 6,
-                    DOWN => self.selection = (self.selection + 1) % 6,
+                    UP => self.selection = (self.selection + rows - 1) % rows,
+                    DOWN => self.selection = (self.selection + 1) % rows,
                     LEFT => self.adjust_setting(-1),
-                    RIGHT | ENTER => self.adjust_setting(1),
+                    RIGHT if self.settings_section.is_none() => self.activate_setting(),
+                    RIGHT => self.adjust_setting(1),
+                    ENTER => self.activate_setting(),
                     SETTINGS => self.close_settings(),
                     _ => {}
                 }
@@ -341,7 +344,7 @@ impl App {
                 self.selection = 0;
             }
             Page::Paused => self.page = Page::Playing,
-            Page::Settings => self.close_settings(),
+            Page::Settings => self.settings_back(),
             Page::Help => self.page = self.help_return,
             Page::Results | Page::Loading => self.home(),
         }
@@ -369,7 +372,7 @@ impl App {
                 5 => self.quit = true,
                 _ => {}
             },
-            Page::Settings => self.adjust_setting(1),
+            Page::Settings => self.activate_setting(),
             Page::Results => self.result_action(),
             _ => {}
         }
@@ -424,9 +427,25 @@ impl App {
         } else if self.page == Page::Paused && (45..141).contains(&y) {
             self.selection = ((y - 45) / 16).min(5);
             self.activate();
-        } else if self.page == Page::Settings && (43..121).contains(&y) {
-            self.selection = ((y - 43) / 13).min(5);
-            self.adjust_setting(if x < 160 { -1 } else { 1 });
+        } else if self.page == Page::Settings && (24..296).contains(&x) {
+            let row_height = if self.settings_section.is_some() {
+                15
+            } else {
+                28
+            };
+            if self.settings_section.is_some() && (20..42).contains(&y) {
+                self.settings_back();
+            } else if (49..49 + self.settings_rows() * row_height).contains(&y) {
+                self.selection = (y - 49) / row_height;
+                if self.settings_section == Some(SettingsSection::General)
+                    && matches!(self.selection, 2 | 3)
+                    && (184..208).contains(&x)
+                {
+                    self.adjust_setting(-1);
+                } else {
+                    self.activate_setting();
+                }
+            }
         } else if self.page == Page::Playing && self.hud_button_contains(x, y) {
             self.flight.hud = !self.flight.hud;
         } else if self.page == Page::Results && (134..153).contains(&y) {
