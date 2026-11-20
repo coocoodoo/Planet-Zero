@@ -61,6 +61,7 @@ impl Renderer {
         flight: &Flight,
         camera: &Camera,
         network: Option<&crate::world::network::Network>,
+        radius_scale: f32,
     ) {
         if flight.orbit_quiet {
             return;
@@ -70,7 +71,7 @@ impl Renderer {
                 continue;
             };
             let Aperture { center, depth, .. } = window;
-            let radius = window.radius * 0.81;
+            let radius = window.radius * radius_scale;
             let x0 = ((center.x - radius).ceil() as i32).max(0);
             let x1 = ((center.x + radius).floor() as i32).min(self.w as i32 - 1);
             for x in x0..=x1 {
@@ -535,7 +536,7 @@ mod tests {
         renderer.depth.fill(f32::INFINITY);
         let depths = renderer.depth.clone();
         let camera = Camera::new(&flight, 320, 170);
-        renderer.portal_mask(&world, &flight, &camera, None);
+        renderer.portal_mask(&world, &flight, &camera, None, 0.81);
         assert_eq!(depths, renderer.depth);
         let far = renderer.rgba.clone();
         let portals = std::mem::take(&mut world.portals);
@@ -650,6 +651,81 @@ mod tests {
 mod window_tests {
     use super::*;
     use crate::world::celestial::{Scenery, Structure};
+    #[test]
+    fn source_clouds_stay_behind_the_portal_during_transit() {
+        use crate::world::{Cloud, CloudShape};
+        let mut world = World::generate(crate::world::MapKind::Islands, 7);
+        world.clouds.clear();
+        world.scenery.clear();
+        world.cloud_slopes.fill([240.0, 0.0, 0.0, 0.0]);
+        let entry = Portal {
+            center: vec3(0.0, 0.0, 250.0),
+            yaw: std::f32::consts::PI,
+            radius: 50.0,
+        };
+        world.portals = vec![
+            entry,
+            Portal {
+                center: vec3(1500.0, 1500.0, 300.0),
+                yaw: 0.7,
+                ..entry
+            },
+        ];
+        let mut density = vec![-9.0; 9 * 9];
+        for y in 1..8 {
+            for x in 1..8 {
+                density[y * 9 + x] = 36.0;
+            }
+        }
+        let cloud = Cloud {
+            center: vec2(0.0, -130.0),
+            scale: 3.0,
+            rank: 0,
+            shape: std::sync::Arc::new(CloudShape::new(9, &density, false)),
+        };
+        for entering in [false, true] {
+            let mut flight = Flight::new(&world);
+            flight.position = entry.center + Vec3::Y * 30.0;
+            flight.follow = flight.position;
+            flight.yaw = 0.0;
+            flight.camera_yaw = 0.0;
+            flight.weights = [0.0, 1.0, 0.0];
+            flight.wing_count = 0;
+            if entering {
+                flight.approach_portal(entry, flight.position + Vec3::Y * 10.0);
+                assert!(flight.portal_transit.is_some());
+            }
+            let mut renderer = Renderer::single();
+            world.clouds.clear();
+            renderer.render(&world, &flight, 320, 170, 0);
+            let before = renderer.pixels.clone();
+            let camera = Camera::new(&flight, 320, 170);
+            let aperture = renderer.aperture(entry, &flight, &camera).unwrap();
+            world.clouds.push(cloud.clone());
+            renderer.draw_clouds(&world, &flight, &camera);
+            let inside_changes = |pixels: &[u32]| {
+                pixels
+                    .iter()
+                    .enumerate()
+                    .filter(|&(at, pixel)| {
+                        let point = vec2((at / 170) as f32, (at % 170) as f32);
+                        point.distance(aperture.center) < aperture.radius * 0.75
+                            && *pixel != before[at]
+                    })
+                    .count()
+            };
+            assert_eq!(inside_changes(&renderer.pixels), 0, "entering {entering}");
+            renderer.pixels.copy_from_slice(&before);
+            world.clouds[0].center.y = 50.0;
+            world.clouds[0].scale = 1.0;
+            renderer.draw_clouds(&world, &flight, &camera);
+            assert!(
+                inside_changes(&renderer.pixels) > 20,
+                "foreground entering {entering}"
+            );
+        }
+    }
+
     #[test]
     fn window_clips_scenery_in_front_of_the_exit() {
         let mut world = World::generate(crate::world::MapKind::Space, 1999);

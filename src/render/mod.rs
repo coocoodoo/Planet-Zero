@@ -335,7 +335,7 @@ impl Renderer {
         }
         self.stages[0] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
-        self.portal_mask(world, flight, &camera, network);
+        self.portal_mask(world, flight, &camera, network, 0.81);
         self.draw_parallel(world, flight, &camera, theme, false);
         let portals_started = std::time::Instant::now();
         self.portals(world, flight, &camera, mission, theme, network);
@@ -364,6 +364,10 @@ impl Renderer {
         }
         if let Some(mission) = mission {
             self.mission(mission, flight, &camera);
+        }
+        // 当前世界的云和降水以传送门表面作为遮挡边界
+        if flight.portal_transit.is_some() && !world.kind.vacuum() {
+            self.portal_mask(world, flight, &camera, network, 1.06);
         }
         self.draw_parallel(world, flight, &camera, theme, true);
         if !world.kind.vacuum() {
