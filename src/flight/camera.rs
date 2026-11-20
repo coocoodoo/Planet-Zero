@@ -95,15 +95,15 @@ impl Camera {
         let mut camera = Self::tracked(flight, width, height);
         if flight.camera_look.length_squared() > 0.0000001 {
             let eye = camera.ray(camera.center).0;
+            let perspective = 1.0 - flight.weights[0] * (1.0 - flight.fixed_weight);
+            let pivot = camera.position.lerp(eye, perspective * perspective);
             let look = flight.camera_look.clamp_length_max(30.0_f32.to_radians());
             let rotation = glam::Quat::from_axis_angle(camera.up, look.x)
                 * glam::Quat::from_axis_angle(camera.right, -look.y);
+            camera.position = pivot + rotation * (camera.position - pivot);
             camera.right = rotation * camera.right;
             camera.up = rotation * camera.up;
             camera.forward = rotation * camera.forward;
-            if camera.q > 0.00001 {
-                camera.position = eye + (camera.forward - camera.up * camera.slope) / camera.q;
-            }
             camera.yaw = (-camera.forward.x).atan2(-camera.forward.y);
             camera.pitch = camera.forward.z.clamp(-1.0, 1.0).asin();
         }
@@ -217,6 +217,30 @@ impl Camera {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn free_look_stays_centered_through_the_overhead_transition() {
+        let world = World::generate(crate::world::MapKind::Islands, 7);
+        let mut flight = Flight::new(&world);
+        flight.position = vec3(1800.0, 1800.0, 300.0);
+        flight.follow = flight.position;
+        flight.yaw = 0.0;
+        flight.camera_yaw = 0.0;
+        flight.camera_look = vec2(0.06, 0.03);
+        let mut previous = None;
+        for frame in 0..=1000 {
+            let top = frame as f32 / 1000.0;
+            flight.weights = [top, 1.0 - top, 0.0];
+            let camera = Camera::new(&flight, 320, 170);
+            let position = camera.project(flight.position).unwrap().0;
+            assert!(camera.position.distance(flight.follow) < 10.0);
+            assert!(position.distance(camera.center) < 20.0);
+            if let Some(previous) = previous {
+                assert!(position.distance(previous) < 1.0);
+            }
+            previous = Some(position);
+        }
+    }
+
     #[test]
     fn look_preserves_the_eye_and_bounds_the_view_in_every_camera_mode() {
         let world = World::generate(crate::world::MapKind::Moon, 7);
