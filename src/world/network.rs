@@ -352,8 +352,6 @@ impl Network {
         self.ensure(world);
         self.poll();
         let mut routes = self.routes(world);
-        self.cache
-            .retain(|world| routes.iter().any(|r| r.target == MapKey::of(world)));
         routes.retain(|route| {
             if route.aperture.center.distance_squared(camera.position) > PRELOAD_DISTANCE.powi(2) {
                 return false;

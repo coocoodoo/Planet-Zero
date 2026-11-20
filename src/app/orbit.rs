@@ -74,12 +74,12 @@ impl App {
         };
         self.orbit.boost = controls.orbital;
     }
-    pub(super) fn prepare_orbit(&mut self) -> bool {
+    pub(super) fn prepare_orbit(&mut self) {
         if !self.orbit_enabled() {
-            return false;
+            return;
         }
         if self.orbit.transition.is_some() {
-            return true;
+            return;
         }
         if self.world.kind == MapKind::Space {
             if self.orbit.earth.is_none() {
@@ -114,15 +114,11 @@ impl App {
             self.flight.orbit_quiet = Body::ALL
                 .into_iter()
                 .any(|body| body.altitude(self.flight.position) < body.orbit_altitude() + 500.0);
-            true
         } else if self.flight.position.z >= ARM_ALTITUDE - 100.0 {
             self.network.request(MapKey {
                 kind: MapKind::Space,
                 seed: MapKind::Space.seed(),
             });
-            true
-        } else {
-            false
         }
     }
     pub(super) fn step_orbit(&mut self, dt: f32) -> bool {

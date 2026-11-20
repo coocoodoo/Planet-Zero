@@ -394,7 +394,8 @@ impl App {
     pub fn prepare_scene(&mut self) {
         if (self.page == Page::Playing || self.flight.demo) && self.loader.pending.is_none() {
             self.network.active = true;
-            if self.prepare_orbit() {
+            self.prepare_orbit();
+            if self.flight.orbit_quiet {
                 self.network.ensure(&self.world);
                 return;
             }

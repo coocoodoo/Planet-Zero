@@ -719,3 +719,40 @@ fn settings_categories_route_controls_and_persist_portal_preview() {
     assert_eq!(app.selection, 3);
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn first_portal_preview_loads_alongside_orbital_resources() {
+    use crate::world::{
+        MapKind,
+        network::{MapKey, Network},
+    };
+    let mut app = App::new(World::generate(MapKind::Moon, MapKind::Moon.seed()));
+    app.network = Network::new(7109);
+    app.start();
+    app.auto = false;
+    app.flight.set_demo(false);
+    app.network.ensure(&app.world);
+    let route = app.network.routes(&app.world)[0];
+    app.flight.position = route.aperture.center + route.aperture.normal() * 200.0;
+    app.flight.follow = app.flight.position;
+    app.flight.yaw = route.aperture.yaw + std::f32::consts::PI;
+    app.flight.weights = [0.0, 1.0, 0.0];
+    assert!(app.flight.position.z > super::orbit::ARM_ALTITUDE - 100.0);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while app.network.get(route.target).is_none() && Instant::now() < deadline {
+        app.prepare_scene();
+        app.network.poll();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(app.network.get(route.target).is_some());
+    let space = MapKey {
+        kind: MapKind::Space,
+        seed: MapKind::Space.seed(),
+    };
+    for _ in 0..10 {
+        app.prepare_scene();
+        assert!(app.network.get(space).is_some());
+        assert!(app.network.get(route.target).is_some());
+        assert!(!app.network.loading());
+    }
+}
