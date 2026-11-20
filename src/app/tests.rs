@@ -160,8 +160,16 @@ fn wormhole_hotkey_replaces_one_forward_link_on_every_map_without_pausing() {
                 assert!(body.altitude(portal.center) >= 2199.0);
             }
         } else {
+            let offset = (portal.center - app.flight.position).truncate();
+            let forward = app.flight.axes()[1].truncate().normalize();
+            assert!(offset.length() >= 679.9);
+            assert!(offset.normalize().dot(forward) > 0.999);
             assert!(
-                (680.0..800.1).contains(&(portal.center - app.flight.position).truncate().length())
+                routes[0]
+                    .aperture
+                    .center
+                    .distance(routes[1].aperture.center)
+                    >= crate::world::portal::MIN_SPACING
             );
         }
         let previous: Vec<_> = routes.iter().map(|r| r.id).collect();

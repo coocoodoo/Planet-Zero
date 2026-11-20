@@ -11,6 +11,15 @@ pub struct Waypoint {
     pub portal: Option<u32>,
     pub body: Option<Body>,
 }
+impl Waypoint {
+    pub(crate) fn offset(self, kind: MapKind, position: Vec3) -> glam::Vec2 {
+        if self.portal.is_some() {
+            (self.position - position).truncate()
+        } else {
+            map_offset(kind, self.position.truncate(), position.truncate())
+        }
+    }
+}
 #[derive(Default)]
 pub struct Navigation {
     pub target: Option<Waypoint>,
@@ -140,11 +149,7 @@ impl App {
                 ..Default::default()
             });
         }
-        let delta = map_offset(
-            self.world.kind,
-            target.position.truncate(),
-            self.flight.position.truncate(),
-        );
+        let delta = target.offset(self.world.kind, self.flight.position);
         let dz = target.position.z - self.flight.position.z;
         if target.portal.is_none() && delta.length() < 24.0 && dz.abs() < 20.0 {
             self.navigation.active = false;
@@ -176,6 +181,23 @@ mod tests {
         app.flight.yaw = 0.0;
         app
     }
+    #[test]
+    fn distant_surface_portals_use_their_actual_position_for_navigation() {
+        let mut app = App::new(World::generate(MapKind::Moon, MapKind::Moon.seed()));
+        app.start();
+        app.auto = false;
+        app.flight.yaw = 0.0;
+        app.navigation.active = true;
+        app.navigation.target = Some(Waypoint {
+            map: MapKey::of(&app.world),
+            position: app.flight.position - Vec3::Y * 3000.0,
+            portal: Some(1),
+            body: None,
+        });
+        let controls = app.navigation_controls().unwrap();
+        assert!(controls.turn.abs() < 0.001);
+    }
+
     #[test]
     fn space_navigation_reaches_vertical_and_far_targets_and_stops() {
         for delta in [

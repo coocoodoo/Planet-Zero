@@ -138,10 +138,7 @@ pub fn draw(app: &mut App) {
         route_line(
             &mut c,
             player,
-            player
-                + map_offset(app.world.kind, t.position.truncate(), f.position.truncate())
-                    * CHART_SIZE as f32
-                    / chart.span,
+            player + t.offset(app.world.kind, f.position) * CHART_SIZE as f32 / chart.span,
             GOLD,
         );
         let p = chart.point(t.position);
@@ -297,7 +294,7 @@ pub fn draw(app: &mut App) {
         CYAN,
     );
     if let Some(t) = target {
-        let delta = map_offset(app.world.kind, t.position.truncate(), f.position.truncate());
+        let delta = t.offset(app.world.kind, f.position);
         c.osd(171, 69, &format!("RANGE {:.0} U", delta.length()), WHITE);
     } else if let Some(route) = focused {
         c.osd(171, 69, route.target.kind.name(), WHITE);

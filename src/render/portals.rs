@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::world::portal::LENS_RADIUS;
+use crate::world::portal::{LENS_RADIUS, PREVIEW_DISTANCE, Portal};
 
 struct Aperture {
     entry: crate::world::portal::Portal,
@@ -65,14 +65,11 @@ impl Renderer {
         if flight.orbit_quiet {
             return;
         }
-        for (entry, _, _, _) in portal_scenes(world, flight, network) {
+        for (entry, _, _, _) in portal_scenes(world, flight, camera, network) {
             let Some(window) = self.aperture(entry, flight, camera) else {
                 continue;
             };
             let Aperture { center, depth, .. } = window;
-            if entry.center.distance_squared(camera.position) > 2400.0_f32.powi(2) {
-                continue;
-            }
             let radius = window.radius * 0.81;
             let x0 = ((center.x - radius).ceil() as i32).max(0);
             let x1 = ((center.x + radius).floor() as i32).min(self.w as i32 - 1);
@@ -107,31 +104,27 @@ impl Renderer {
         }
         if let Some(network) = network.filter(|n| n.active) {
             for route in network.routes(world) {
-                if network.get(route.target).is_some() || flight.hides_portal(route.aperture) {
+                if (network.get(route.target).is_some()
+                    && preview_in_range(route.aperture, flight, camera))
+                    || flight.hides_portal(route.aperture)
+                {
                     continue;
                 }
-                let Some((p, d, scale)) = camera.project(route.aperture.center) else {
-                    continue;
-                };
-                let r = route.aperture.radius * scale;
-                for i in 0..40 {
-                    let a = i as f32 * std::f32::consts::TAU / 40.0;
-                    let b = (i + 1) as f32 * std::f32::consts::TAU / 40.0;
-                    if ((i as f32 + flight.time * 12.0) as usize % 10) < 7 {
-                        self.stroke(
-                            p + vec2(a.cos(), a.sin()) * r,
-                            p + vec2(b.cos(), b.sin()) * r,
-                            d,
-                            portal_color(
-                                route.target.kind,
-                                network.environment(route.target).theme,
-                            ),
-                        );
-                    }
+                self.portal_marker(
+                    route.aperture,
+                    flight,
+                    camera,
+                    portal_color(route.target.kind, theme),
+                );
+            }
+        } else {
+            for &portal in &world.portals {
+                if !flight.hides_portal(portal) && !preview_in_range(portal, flight, camera) {
+                    self.portal_marker(portal, flight, camera, portal_color(world.kind, theme));
                 }
             }
         }
-        let mut scenes = portal_scenes(world, flight, network);
+        let mut scenes = portal_scenes(world, flight, camera, network);
         if scenes.is_empty() {
             return;
         }
@@ -173,9 +166,6 @@ impl Renderer {
                 membrane,
                 entering,
             } = window;
-            if entry.center.distance_squared(camera.position) > 2400.0_f32.powi(2) {
-                continue;
-            }
             let extent = radius * LENS_RADIUS;
             let min_x = ((center.x - extent).floor() as i32).max(0);
             let max_x = ((center.x + extent).ceil() as i32).min(self.w as i32 - 1);
@@ -324,11 +314,33 @@ impl Renderer {
         }
         self.portal_view = Some(remote);
     }
+    fn portal_marker(&mut self, portal: Portal, flight: &Flight, camera: &Camera, color: u32) {
+        if portal.center.distance_squared(camera.position) > 2400.0_f32.powi(2) {
+            return;
+        }
+        let Some((p, depth, scale)) = camera.project(portal.center) else {
+            return;
+        };
+        let radius = portal.radius * scale;
+        for i in 0..40 {
+            let a = i as f32 * std::f32::consts::TAU / 40.0;
+            let b = (i + 1) as f32 * std::f32::consts::TAU / 40.0;
+            if ((i as f32 + flight.time * 12.0) as usize % 10) < 7 {
+                self.stroke(
+                    p + vec2(a.cos(), a.sin()) * radius,
+                    p + vec2(b.cos(), b.sin()) * radius,
+                    depth,
+                    color,
+                );
+            }
+        }
+    }
 }
 
 fn portal_scenes<'a>(
     world: &'a World,
     flight: &Flight,
+    camera: &Camera,
     network: Option<&'a crate::world::network::Network>,
 ) -> Vec<(
     crate::world::portal::Portal,
@@ -339,11 +351,16 @@ fn portal_scenes<'a>(
     let mut scenes = vec![];
     if world.portals.len() == 2 && network.is_none_or(|n| !n.active) {
         for i in 0..2 {
-            scenes.push((world.portals[i], world.portals[1 - i], world, i));
+            if preview_in_range(world.portals[i], flight, camera) {
+                scenes.push((world.portals[i], world.portals[1 - i], world, i));
+            }
         }
     }
     if let Some(network) = network.filter(|n| n.active) {
         for route in network.routes(world) {
+            if !preview_in_range(route.aperture, flight, camera) {
+                continue;
+            }
             if let Some(target) = network.get(route.target) {
                 scenes.push((
                     route.aperture,
@@ -356,6 +373,11 @@ fn portal_scenes<'a>(
     }
     scenes.retain(|(entry, _, _, _)| !flight.hides_portal(*entry));
     scenes
+}
+
+fn preview_in_range(portal: Portal, flight: &Flight, camera: &Camera) -> bool {
+    flight.portal_transit.is_some_and(|t| t.matches(portal))
+        || portal.center.distance_squared(camera.position) <= PREVIEW_DISTANCE.powi(2)
 }
 
 fn portal_color(kind: crate::world::MapKind, theme: usize) -> u32 {
@@ -388,6 +410,47 @@ fn portal_waves() -> &'static [f32; 256] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn distant_portals_keep_a_marker_without_rendering_or_masking_the_destination() {
+        let mut world = World::generate(crate::world::MapKind::Space, 1999);
+        world.portals = vec![
+            Portal {
+                center: vec3(0.0, -1400.0, 0.0),
+                yaw: 0.0,
+                radius: 60.0,
+            },
+            Portal {
+                center: vec3(4000.0, -1400.0, 0.0),
+                yaw: 0.0,
+                radius: 60.0,
+            },
+        ];
+        let mut flight = Flight::new(&world);
+        flight.position = Vec3::ZERO;
+        flight.follow = flight.position;
+        flight.yaw = 0.0;
+        flight.camera_yaw = 0.0;
+        flight.weights = [0.0, 1.0, 0.0];
+        flight.wing_count = 0;
+        let mut renderer = Renderer::single();
+        renderer.render(&world, &flight, 320, 170, 0);
+        assert!(renderer.portal_view.is_none());
+        renderer.depth.fill(f32::INFINITY);
+        let depths = renderer.depth.clone();
+        let camera = Camera::new(&flight, 320, 170);
+        renderer.portal_mask(&world, &flight, &camera, None);
+        assert_eq!(depths, renderer.depth);
+        let far = renderer.rgba.clone();
+        let portals = std::mem::take(&mut world.portals);
+        renderer.render(&world, &flight, 320, 170, 0);
+        assert_ne!(far, renderer.rgba, "远处门标记保持可见");
+        world.portals = portals;
+        flight.position.y = -900.0;
+        flight.follow = flight.position;
+        renderer.render(&world, &flight, 320, 170, 0);
+        assert!(renderer.portal_view.is_some());
+    }
+
     #[test]
     fn overhead_expansion_reveals_the_destination_without_a_camera_jump() {
         use crate::world::portal::Portal;

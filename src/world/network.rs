@@ -1,4 +1,4 @@
-use super::portal::Portal;
+use super::portal::{MIN_SPACING, PRELOAD_DISTANCE, Portal};
 use super::{MapKind, Random, World};
 use glam::{Vec3, vec3};
 use std::sync::Arc;
@@ -62,6 +62,7 @@ impl Network {
         let direction = forward.normalize_or_zero();
         let right = vec3(-direction.y, direction.x, 0.0).normalize_or_zero();
         let key = MapKey::of(world);
+        let mut previous = None;
         for (i, link) in self
             .links
             .iter_mut()
@@ -84,7 +85,8 @@ impl Network {
                 yaw: forward.x.atan2(-forward.y),
                 radius: 48.0,
             };
-            safe_aperture(world, &mut portal);
+            place_aperture(world, &mut portal, previous);
+            previous = Some(portal);
             link.entrances[side] = Some(portal);
         }
     }
@@ -144,13 +146,25 @@ impl Network {
     }
     pub fn ensure(&mut self, world: &World) {
         let key = MapKey::of(world);
-        if self.links.iter().any(|l| l.ends.contains(&key)) {
+        if !self.links.iter().any(|l| l.ends.contains(&key)) {
+            let at = self.random_link(world.kind);
+            let link = self.links.remove(at);
+            self.add_link([link.ends[0], key], [link.entrances[0], None]);
+            self.add_link([key, link.ends[1]], [None, link.entrances[1]]);
+        }
+        if self
+            .links
+            .iter()
+            .filter(|link| link.ends.contains(&key))
+            .all(|link| link.entrances[usize::from(link.ends[1] == key)].is_some())
+        {
             return;
         }
-        let at = self.random_link(world.kind);
-        let link = self.links.remove(at);
-        self.add_link([link.ends[0], key], [link.entrances[0], None]);
-        self.add_link([key, link.ends[1]], [None, link.entrances[1]]);
+        for route in self.routes(world) {
+            let link = self.links.iter_mut().find(|l| l.id == route.id).unwrap();
+            let side = usize::from(link.ends[1] == key);
+            link.entrances[side] = Some(route.aperture);
+        }
     }
     fn random_link(&mut self, exclude: MapKind) -> usize {
         let choices: Vec<_> = self
@@ -164,29 +178,39 @@ impl Network {
     }
     pub fn routes(&self, world: &World) -> Vec<Route> {
         let key = MapKey::of(world);
-        self.links
-            .iter()
-            .filter_map(|link| {
-                let side = link.ends.iter().position(|k| *k == key)?;
-                Some(Route {
+        let mut routes = Vec::with_capacity(2);
+        for placed in [true, false] {
+            for link in &self.links {
+                let Some(side) = link.ends.iter().position(|k| *k == key) else {
+                    continue;
+                };
+                if link.entrances[side].is_some() != placed {
+                    continue;
+                }
+                let aperture = link.entrances[side].unwrap_or_else(|| {
+                    let mut portal = endpoint(world, link.id);
+                    place_aperture(
+                        world,
+                        &mut portal,
+                        routes.first().map(|r: &Route| r.aperture),
+                    );
+                    portal
+                });
+                routes.push(Route {
                     id: link.id,
-                    aperture: link.entrances[side].unwrap_or_else(|| endpoint(world, link.id)),
+                    aperture,
                     target: link.ends[1 - side],
-                })
-            })
-            .collect()
+                });
+            }
+        }
+        routes
     }
     pub fn exit(&self, world: &World, id: u32) -> Portal {
-        self.links
-            .iter()
-            .find(|link| link.id == id)
-            .and_then(|link| {
-                link.ends
-                    .iter()
-                    .position(|key| *key == MapKey::of(world))
-                    .and_then(|side| link.entrances[side])
-            })
-            .unwrap_or_else(|| endpoint(world, id))
+        self.routes(world)
+            .into_iter()
+            .find(|route| route.id == id)
+            .expect("虫洞连接存在于目标地图")
+            .aperture
     }
     pub fn summon(&mut self, world: &World, position: Vec3, forward: Vec3) {
         self.ensure(world);
@@ -238,7 +262,8 @@ impl Network {
             yaw: yaw + std::f32::consts::PI,
             radius: 48.0 + self.random.next() * 8.0,
         };
-        safe_aperture(world, &mut aperture);
+        let other = self.routes(world).first().map(|r| r.aperture);
+        place_aperture(world, &mut aperture, other);
         self.add_link(
             [key, remote.ends[target_side]],
             [Some(aperture), remote.entrances[target_side]],
@@ -283,7 +308,13 @@ impl Network {
             yaw: yaw + std::f32::consts::PI,
             radius: 62.0,
         };
-        safe_aperture(world, &mut portal);
+        self.ensure(world);
+        let other = self
+            .routes(world)
+            .into_iter()
+            .find(|r| r.id != id)
+            .map(|r| r.aperture);
+        place_aperture(world, &mut portal, other);
         if let Some(link) = self.links.iter_mut().find(|link| link.id == id) {
             let side = usize::from(link.ends[1] == MapKey::of(world));
             link.entrances[side] = Some(portal);
@@ -294,6 +325,7 @@ impl Network {
         self.cache.iter().find(|w| MapKey::of(w) == key)
     }
     pub fn remember(&mut self, world: Arc<World>) {
+        self.ensure(&world);
         let key = MapKey::of(&world);
         self.cache.retain(|w| MapKey::of(w) != key);
         self.cache.push(world);
@@ -323,7 +355,7 @@ impl Network {
         self.cache
             .retain(|world| routes.iter().any(|r| r.target == MapKey::of(world)));
         routes.retain(|route| {
-            if route.aperture.center.distance_squared(camera.position) > 3200.0_f32.powi(2) {
+            if route.aperture.center.distance_squared(camera.position) > PRELOAD_DISTANCE.powi(2) {
                 return false;
             }
             camera
@@ -359,13 +391,32 @@ fn endpoint(world: &World, id: u32) -> Portal {
         world.spawn.1 - azimuth.cos() * distance,
         105.0 + random.next() * 330.0,
     );
-    let mut aperture = Portal {
+    Portal {
         center,
         yaw: azimuth + std::f32::consts::PI,
         radius: 38.0 + random.next() * 23.0,
-    };
-    safe_aperture(world, &mut aperture);
-    aperture
+    }
+}
+fn place_aperture(world: &World, aperture: &mut Portal, other: Option<Portal>) {
+    safe_aperture(world, aperture);
+    let Some(other) = other else { return };
+    let offset = (aperture.center - other.center).truncate();
+    if offset.length_squared() >= MIN_SPACING.powi(2) {
+        return;
+    }
+    let direction = -aperture.normal();
+    let along = offset.dot(direction.truncate());
+    let across_squared = (offset.length_squared() - along * along).max(0.0);
+    let distance = (MIN_SPACING.powi(2) - across_squared).sqrt() - along + 1.0;
+    let mut center = aperture.center + direction * distance;
+    loop {
+        aperture.center = center;
+        safe_aperture(world, aperture);
+        if (aperture.center - other.center).truncate().length_squared() >= MIN_SPACING.powi(2) {
+            break;
+        }
+        center += direction * MIN_SPACING;
+    }
 }
 fn safe_aperture(world: &World, aperture: &mut Portal) {
     if world.kind == MapKind::Space {
@@ -411,6 +462,8 @@ mod tests {
             (vec3(0.0, 800.0, 0.0), false),
             (vec3(2000.0, -800.0, 0.0), false),
             (vec3(0.0, -4000.0, 0.0), false),
+            (vec3(0.0, -1500.0, 0.0), false),
+            (vec3(0.0, -1100.0, 0.0), true),
             (vec3(0.0, -800.0, 0.0), true),
         ] {
             let mut network = Network::new(7);
@@ -437,6 +490,57 @@ mod tests {
         }
     }
     #[test]
+    fn all_portal_placements_keep_exits_separate_and_existing_exits_stable() {
+        for kind in MapKind::ALL {
+            let world = World::generate(kind, kind.seed());
+            for seed in 1..=24 {
+                let mut network = Network::new(seed);
+                network.ensure(&world);
+                let initial = network.routes(&world);
+                assert!(
+                    initial[0]
+                        .aperture
+                        .center
+                        .distance(initial[1].aperture.center)
+                        >= MIN_SPACING
+                );
+                let fixed = initial[1];
+                let staged = network.stage_portal(
+                    &world,
+                    initial[0].id,
+                    fixed.aperture.center + Vec3::Y * 650.0,
+                    -Vec3::Y,
+                );
+                assert!(staged.center.distance(fixed.aperture.center) >= MIN_SPACING);
+                assert_eq!(network.exit(&world, fixed.id).center, fixed.aperture.center);
+                network.summon(&world, fixed.aperture.center + Vec3::Y * 740.0, -Vec3::Y);
+                let routes = network.routes(&world);
+                assert!(
+                    routes[0]
+                        .aperture
+                        .center
+                        .distance(routes[1].aperture.center)
+                        >= MIN_SPACING
+                );
+                for route in &routes {
+                    assert_eq!(network.exit(&world, route.id).center, route.aperture.center);
+                }
+                for forward in [-Vec3::Y, Vec3::Z] {
+                    network.park_portals(&world, fixed.aperture.center, forward);
+                    let parked = network.routes(&world);
+                    assert!(
+                        parked[0]
+                            .aperture
+                            .center
+                            .distance(parked[1].aperture.center)
+                            >= MIN_SPACING
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn replacing_portals_preserves_a_connected_two_exit_network() {
         let mut network = Network::new(7109);
         let mut world = World::generate(MapKind::City, MapKind::City.seed());
@@ -446,6 +550,14 @@ mod tests {
                 network.ensure(&world);
             }
             network.summon(&world, vec3(2200.0, 2700.0, 350.0), -Vec3::Y);
+            let routes = network.routes(&world);
+            assert!(
+                routes[0]
+                    .aperture
+                    .center
+                    .distance(routes[1].aperture.center)
+                    >= MIN_SPACING
+            );
             let keys: std::collections::HashSet<_> =
                 network.links.iter().flat_map(|l| l.ends).collect();
             for key in &keys {

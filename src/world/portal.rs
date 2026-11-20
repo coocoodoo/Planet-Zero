@@ -1,6 +1,9 @@
 use glam::{Vec3, vec3};
 
 pub(crate) const LENS_RADIUS: f32 = 2.25;
+pub(crate) const PREVIEW_DISTANCE: f32 = 1000.0;
+pub(crate) const PRELOAD_DISTANCE: f32 = 1200.0;
+pub(crate) const MIN_SPACING: f32 = 2600.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Portal {
@@ -76,7 +79,7 @@ impl super::World {
                 radius,
             },
             Portal {
-                center: safe(position + direction * 1500.0 + right * 850.0),
+                center: safe(position + direction * (240.0 + MIN_SPACING) + right * 850.0),
                 yaw: heading + 0.9,
                 radius,
             },
