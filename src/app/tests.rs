@@ -75,7 +75,7 @@ fn success_advances_with_reward_and_failure_retries_snapshot() {
     let deadline = Instant::now() + Duration::from_secs(10);
     while app.page == Page::Loading && Instant::now() < deadline {
         app.step(0.01, None);
-        std::thread::yield_now();
+        std::thread::sleep(Duration::from_millis(1));
     }
     assert_eq!(app.page, Page::Playing);
     assert_eq!(app.world.kind, crate::world::MapKind::Alpine);
