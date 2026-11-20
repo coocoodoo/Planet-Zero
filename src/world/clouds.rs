@@ -28,6 +28,7 @@ pub struct CloudFace {
 
 impl Cloud {
     pub const CELL: f32 = 6.0;
+    pub const LAYER_ALTITUDE: f32 = 230.0;
     pub fn extent(&self) -> Vec2 {
         self.shape.extent * self.scale
     }
@@ -234,6 +235,23 @@ fn smooth_normals<'a>(faces: impl Iterator<Item = (&'a mut CloudFace, Vec2)>) {
 }
 
 impl World {
+    pub(super) fn cloud_layer_range(&self) -> Option<(f32, f32)> {
+        self.clouds
+            .iter()
+            .filter(|cloud| cloud.shape.layer)
+            .flat_map(|cloud| {
+                cloud.shape.faces[1].iter().flat_map(|face| {
+                    face.points
+                        .map(|point| Cloud::LAYER_ALTITUDE + point.z * cloud.scale)
+                })
+            })
+            .fold(None, |range, height| {
+                Some(range.map_or((height, height), |(bottom, top): (f32, f32)| {
+                    (bottom.min(height), top.max(height))
+                }))
+            })
+    }
+
     pub(super) fn generate_clouds(&mut self, random: &mut Random, clusters: usize) {
         for cluster in 0..clusters {
             let thin = cluster % 4 == 3;

@@ -412,7 +412,7 @@ fn place_aperture(world: &World, aperture: &mut Portal, other: Option<Portal>) {
         aperture.yaw = direction.x.atan2(-direction.y);
         return;
     }
-    safe_aperture(world, aperture);
+    aperture.place_height(world);
     let Some(other) = other else { return };
     let offset = (aperture.center - other.center).truncate();
     if offset.length_squared() >= MIN_SPACING.powi(2) {
@@ -425,28 +425,12 @@ fn place_aperture(world: &World, aperture: &mut Portal, other: Option<Portal>) {
     let mut center = aperture.center + direction * distance;
     loop {
         aperture.center = center;
-        safe_aperture(world, aperture);
+        aperture.place_height(world);
         if (aperture.center - other.center).truncate().length_squared() >= MIN_SPACING.powi(2) {
             break;
         }
         center += direction * MIN_SPACING;
     }
-}
-fn safe_aperture(world: &World, aperture: &mut Portal) {
-    let mut floor = 0.0_f32;
-    for x in [-1.0, 0.0, 1.0] {
-        for y in [-1.0, 0.0, 1.0] {
-            floor = floor.max(world.height(
-                aperture.center.x + x * aperture.radius,
-                aperture.center.y + y * aperture.radius,
-            ));
-        }
-    }
-    aperture.center.z = aperture
-        .center
-        .z
-        .max(floor + aperture.radius + crate::flight::MIN_CLEARANCE)
-        .max(world.airspace.floor(world, aperture.center) + aperture.radius);
 }
 
 #[cfg(test)]
@@ -496,10 +480,25 @@ mod tests {
     fn all_portal_placements_keep_exits_separate_and_existing_exits_stable() {
         for kind in MapKind::ALL {
             let world = World::generate(kind, kind.seed());
+            let cloud_range = world.cloud_layer_range();
+            let check_height = |portal: Portal| {
+                if let Some((bottom, top)) = cloud_range {
+                    let clearance = portal.radius * 1.08 + crate::flight::MIN_CLEARANCE;
+                    assert!(
+                        portal.center.z + clearance <= bottom + 0.001
+                            || portal.center.z - clearance >= top - 0.001,
+                        "{kind:?}: portal {} intersects cloud sea {bottom}..{top}",
+                        portal.center.z
+                    );
+                }
+            };
             for seed in 1..=24 {
                 let mut network = Network::new(seed);
                 network.ensure(&world);
                 let initial = network.routes(&world);
+                for route in &initial {
+                    check_height(route.aperture);
+                }
                 assert!(
                     initial[0]
                         .aperture
@@ -514,6 +513,7 @@ mod tests {
                     fixed.aperture.center + Vec3::Y * 650.0,
                     -Vec3::Y,
                 );
+                check_height(staged);
                 assert!(staged.center.distance(fixed.aperture.center) >= MIN_SPACING);
                 assert_eq!(network.exit(&world, fixed.id).center, fixed.aperture.center);
                 network.summon(&world, fixed.aperture.center + Vec3::Y * 740.0, -Vec3::Y);
@@ -526,11 +526,15 @@ mod tests {
                         >= MIN_SPACING
                 );
                 for route in &routes {
+                    check_height(route.aperture);
                     assert_eq!(network.exit(&world, route.id).center, route.aperture.center);
                 }
                 for forward in [-Vec3::Y, Vec3::Z] {
                     network.park_portals(&world, fixed.aperture.center, forward);
                     let parked = network.routes(&world);
+                    for route in &parked {
+                        check_height(route.aperture);
+                    }
                     assert!(
                         parked[0]
                             .aperture

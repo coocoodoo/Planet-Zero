@@ -90,7 +90,7 @@ impl Renderer {
             }
             let thickness = if cloud.shape.thin { 0.12 } else { 1.0 };
             let center = xy.extend(if cloud.shape.layer {
-                230.0
+                Cloud::LAYER_ALTITUDE
             } else {
                 world.cloud_height(xy.x, xy.y) - if cloud.shape.thin { 9.0 } else { 0.0 }
             });

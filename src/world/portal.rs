@@ -13,6 +13,34 @@ pub struct Portal {
 }
 
 impl Portal {
+    pub(super) fn place_height(&mut self, world: &super::World) {
+        if world.kind == super::MapKind::Space {
+            return;
+        }
+        let mut floor = 0.0_f32;
+        for dx in [-self.radius, 0.0, self.radius] {
+            for dy in [-self.radius, 0.0, self.radius] {
+                floor = floor.max(world.height(self.center.x + dx, self.center.y + dy));
+            }
+        }
+        let minimum = (floor + self.radius + crate::flight::MIN_CLEARANCE)
+            .max(world.airspace.floor(world, self.center) + self.radius);
+        self.center.z = self.center.z.max(minimum);
+        if let Some((bottom, top)) = world.cloud_layer_range() {
+            let clearance = self.radius * 1.08 + crate::flight::MIN_CLEARANCE;
+            let below = bottom - clearance;
+            let above = top + clearance;
+            if self.center.z > below && self.center.z < above {
+                self.center.z =
+                    if below >= minimum && self.center.z - below <= above - self.center.z {
+                        below
+                    } else {
+                        above
+                    };
+            }
+        }
+    }
+
     pub fn normal(self) -> Vec3 {
         vec3(self.yaw.sin(), -self.yaw.cos(), 0.0)
     }
@@ -60,36 +88,64 @@ impl super::World {
         let direction = vec3(heading.sin(), -heading.cos(), 0.0);
         let right = vec3(direction.y, -direction.x, 0.0);
         let radius = 48.0;
-        let safe = |mut center: Vec3| {
-            if self.kind != super::MapKind::Space {
-                let mut floor = 0.0_f32;
-                for dx in [-radius, 0.0, radius] {
-                    for dy in [-radius, 0.0, radius] {
-                        floor = floor.max(self.height(center.x + dx, center.y + dy));
-                    }
-                }
-                center.z = center.z.max(floor + radius + crate::flight::MIN_CLEARANCE);
-            }
-            center
-        };
-        self.portals = vec![
+        let mut portals = vec![
             Portal {
-                center: safe(position + forward * 240.0),
+                center: position + forward * 240.0,
                 yaw: heading + std::f32::consts::PI,
                 radius,
             },
             Portal {
-                center: safe(position + direction * (240.0 + MIN_SPACING) + right * 850.0),
+                center: position + direction * (240.0 + MIN_SPACING) + right * 850.0,
                 yaw: heading + 0.9,
                 radius,
             },
         ];
+        for portal in &mut portals {
+            portal.place_height(self);
+        }
+        self.portals = portals;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn portal_height_uses_the_nearest_clear_side_of_the_cloud_sea() {
+        let mut world = super::super::World::new(7);
+        world.heights.fill(0);
+        world.obstacles.clear();
+        world.scenery.clear();
+        world.airspace = Default::default();
+        let (bottom, top) = world.cloud_layer_range().unwrap();
+        let mut portal = Portal {
+            center: vec3(100.0, 100.0, bottom),
+            yaw: 0.0,
+            radius: 48.0,
+        };
+        let clearance = portal.radius * 1.08 + crate::flight::MIN_CLEARANCE;
+        let below = bottom - clearance;
+        let above = top + clearance;
+        for (requested, expected) in [
+            (bottom, below),
+            (top, above),
+            (below - 10.0, below - 10.0),
+            (above + 10.0, above + 10.0),
+        ] {
+            portal.center.z = requested;
+            portal.place_height(&world);
+            assert!((portal.center.z - expected).abs() < 0.001);
+        }
+        world.heights.fill(180);
+        portal.center.z = bottom;
+        portal.place_height(&world);
+        assert!((portal.center.z - above).abs() < 0.001);
+        world.clouds.clear();
+        portal.center.z = top;
+        portal.place_height(&world);
+        assert_eq!(portal.center.z, top);
+    }
+
     #[test]
     fn portal_mapping_preserves_distances_and_reverses_the_surface_normal() {
         let a = Portal {
