@@ -21,6 +21,7 @@ pub struct CloudFace {
     pub points: [Vec3; 3],
     pub normal: Vec3,
     pub thickness: [f32; 3],
+    pub shade_normals: [[i8; 3]; 3],
 }
 
 impl Cloud {
@@ -128,6 +129,9 @@ impl CloudShape {
                     }
                 }
             }
+            if !layer {
+                smooth_normals(faces.iter_mut().map(|face| (face, Vec2::ZERO)));
+            }
             faces.shrink_to_fit();
             faces
         });
@@ -192,7 +196,36 @@ impl CloudShape {
                 points,
                 normal,
                 thickness: thicknesses,
+                shade_normals: [[0; 3]; 3],
             });
+        }
+    }
+}
+
+fn smooth_normals<'a>(faces: impl Iterator<Item = (&'a mut CloudFace, Vec2)>) {
+    let mut faces: Vec<_> = faces.collect();
+    let key = |face: &CloudFace, offset: Vec2, i: usize| {
+        let p = ((face.points[i] + offset.extend(0.0)) * 256.0)
+            .round()
+            .as_ivec3();
+        (
+            p.x.rem_euclid(CLOUD_SIZE as i32 * 256),
+            p.y.rem_euclid(CLOUD_SIZE as i32 * 256),
+            p.z,
+            face.normal.z > 0.0,
+        )
+    };
+    let mut normals = std::collections::HashMap::new();
+    for (face, offset) in &faces {
+        let area_normal = (face.points[1] - face.points[0]).cross(face.points[2] - face.points[0]);
+        for i in 0..3 {
+            *normals.entry(key(face, *offset, i)).or_insert(Vec3::ZERO) += area_normal;
+        }
+    }
+    for (face, offset) in &mut faces {
+        for i in 0..3 {
+            let normal = normals[&key(face, *offset, i)].normalize();
+            face.shade_normals[i] = normal.to_array().map(|v| (v * 127.0).round() as i8);
         }
     }
 }
@@ -310,6 +343,19 @@ impl World {
                 });
             }
         }
+        for level in 0..2 {
+            smooth_normals(
+                self.clouds
+                    .iter_mut()
+                    .filter(|cloud| cloud.shape.layer)
+                    .flat_map(|cloud| {
+                        let offset = cloud.center;
+                        Arc::get_mut(&mut cloud.shape).unwrap().faces[level]
+                            .iter_mut()
+                            .map(move |face| (face, offset))
+                    }),
+            );
+        }
     }
     pub(super) fn prepare_cloud_heights(&mut self) {
         if self.kind.vacuum() {
@@ -366,4 +412,44 @@ fn cloud_noise(point: Vec2, seed: u32, period: i32) -> f32 {
         value(cell.x + 1, cell.y + 1),
     );
     a + (b - a) * t.x + (c - a + (d - c - b + a) * t.x) * t.y
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cloud_shading_joins_faces_and_periodic_layer_tiles() {
+        let world = World::generate(MapKind::Islands, 7);
+        let mut normals = std::collections::HashMap::new();
+        let mut shared = 0;
+        let mut smoothed = 0;
+        for cloud in world.clouds.iter().filter(|cloud| cloud.shape.layer) {
+            for face in &cloud.shape.faces[1] {
+                for (point, packed) in face.points.into_iter().zip(face.shade_normals) {
+                    let normal = Vec3::from_array(packed.map(|v| v as f32 / 127.0));
+                    assert!((0.99..1.01).contains(&normal.length()));
+                    smoothed += usize::from(normal.distance(face.normal) > 0.05);
+                    let position = point + cloud.center.extend(0.0);
+                    if position.x.rem_euclid(256.0).abs() > 0.001
+                        || position.y.rem_euclid(256.0).abs() > 0.001
+                    {
+                        continue;
+                    }
+                    let key = (
+                        position.x as i32 % 2048,
+                        position.y as i32 % 2048,
+                        position.z.to_bits(),
+                        face.normal.z > 0.0,
+                    );
+                    if let Some(previous) = normals.insert(key, packed) {
+                        assert_eq!(previous, packed);
+                        shared += 1;
+                    }
+                }
+            }
+        }
+        assert!(shared > 20);
+        assert!(smoothed > 100);
+    }
 }

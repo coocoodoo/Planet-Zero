@@ -2,6 +2,12 @@ use super::*;
 use crate::world::Cloud;
 
 #[derive(Clone, Copy)]
+pub(super) struct CloudSurface<'a> {
+    pub attributes: [Vec2; 3],
+    pub palette: &'a [u32; 8],
+}
+
+#[derive(Clone, Copy)]
 pub(super) struct CloudPixel {
     pub depth: f32,
     pub color: u32,
@@ -126,8 +132,8 @@ impl Renderer {
         visible.sort_unstable_by(|a, b| b.4.total_cmp(&a.4));
         for (cloud, center, scale, level, depth) in visible {
             let fog = ((depth - far * 0.7) / (far * 0.3)).clamp(0.0, 1.0);
-            let palette: [u32; 16] =
-                std::array::from_fn(|i| mix(mix(dark, light, i as f32 / 15.0), haze, fog));
+            let palette: [u32; 8] =
+                std::array::from_fn(|i| mix(mix(dark, light, i as f32 / 7.0), haze, fog));
             let local_eye = (eye - center) / scale;
             for face in &cloud.shape.faces[level] {
                 let toward = if camera.q > 0.00001 {
@@ -152,17 +158,25 @@ impl Renderer {
                                 p.with_z(0.0)
                             } * scale
                     }),
-                    palette[((face.normal.dot(self.light.direction) * 0.7 + 0.3).clamp(0.0, 1.0)
-                        * 15.0) as usize],
+                    0,
                     false,
-                    Some(face.thickness.map(|t| {
-                        t * scale
-                            * if cloud.shape.layer {
-                                layer_strength * opacity
-                            } else {
-                                1.0
-                            }
-                    })),
+                    Some(CloudSurface {
+                        attributes: std::array::from_fn(|i| {
+                            let normal =
+                                Vec3::from_array(face.shade_normals[i].map(|v| v as f32 / 127.0));
+                            let shade =
+                                (normal.dot(self.light.direction) * 0.7 + 0.3).clamp(0.0, 1.0);
+                            let thickness = face.thickness[i]
+                                * scale
+                                * if cloud.shape.layer {
+                                    layer_strength * opacity
+                                } else {
+                                    1.0
+                                };
+                            vec2(thickness, shade)
+                        }),
+                        palette: &palette,
+                    }),
                 );
             }
             for at in self.cloud_touched.drain(..) {

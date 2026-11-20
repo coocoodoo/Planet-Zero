@@ -79,7 +79,7 @@ impl Renderer {
         points: [Vec3; 3],
         color: u32,
         stone: bool,
-        thickness: Option<[f32; 3]>,
+        cloud: Option<super::clouds::CloudSurface<'_>>,
     ) {
         let points = points.map(|point| self.warp.map_or(point, |warp| warp.point(point)));
         let forward = camera.forward;
@@ -91,12 +91,12 @@ impl Renderer {
         .max(self.near_depth);
         let near = camera.position + forward * near_depth;
         if points.iter().all(|p| (*p - near).dot(forward) >= 0.0) {
-            self.raster_triangle(camera, points, color, stone, thickness);
+            self.raster_triangle(camera, points, color, stone, cloud);
             return;
         }
         let mut polygon = [Vec3::ZERO; 4];
-        let mut amounts = [0.0; 4];
-        let attributes = thickness.unwrap_or([0.0; 3]);
+        let mut amounts = [Vec2::ZERO; 4];
+        let attributes = cloud.map_or([Vec2::ZERO; 3], |cloud| cloud.attributes);
         let mut count = 0;
         for i in 0..3 {
             let a = points[i];
@@ -121,7 +121,10 @@ impl Renderer {
                 [polygon[0], polygon[i], polygon[i + 1]],
                 color,
                 stone,
-                thickness.map(|_| [amounts[0], amounts[i], amounts[i + 1]]),
+                cloud.map(|cloud| super::clouds::CloudSurface {
+                    attributes: [amounts[0], amounts[i], amounts[i + 1]],
+                    ..cloud
+                }),
             );
         }
     }
@@ -131,7 +134,7 @@ impl Renderer {
         points: [Vec3; 3],
         color: u32,
         stone: bool,
-        thickness: Option<[f32; 3]>,
+        cloud: Option<super::clouds::CloudSurface<'_>>,
     ) {
         self.triangles = self.triangles.wrapping_add(1);
         let [Some((a, da, _)), Some((b, db, _)), Some((c, dc, _))] =
@@ -197,16 +200,22 @@ impl Renderer {
                     if depth > self.depth[at] + 1.0 {
                         continue;
                     }
-                    if let Some(thickness) = thickness {
+                    if let Some(cloud) = cloud {
                         let sample = &mut self.cloud_pixels[at];
                         if depth < sample.depth {
                             if sample.depth == f32::INFINITY {
                                 self.cloud_touched.push(at);
                             }
                             let weights = vec3(u * inverse[0], v * inverse[1], w * inverse[2]);
-                            let thickness =
-                                weights.dot(Vec3::from_array(thickness)) / weights.element_sum();
-                            let density = (thickness / 8.0).clamp(0.0, 1.0);
+                            let attributes = (cloud.attributes[0] * weights.x
+                                + cloud.attributes[1] * weights.y
+                                + cloud.attributes[2] * weights.z)
+                                / weights.element_sum();
+                            let density = (attributes.x / 8.0).clamp(0.0, 1.0);
+                            let dither = [0.0, 0.5, 0.75, 0.25]
+                                [((y as usize & 1) << 1) | ((x as usize + self.x_origin) & 1)];
+                            let color = cloud.palette
+                                [(attributes.y * 7.0 + dither * 0.5).clamp(0.0, 7.0) as usize];
                             *sample = super::clouds::CloudPixel {
                                 depth,
                                 color,
