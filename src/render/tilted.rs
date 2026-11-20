@@ -107,10 +107,19 @@ impl Renderer {
             );
             let mut center = vec3(x as f32 + half.x, y as f32 + half.y, low as f32 + half.z);
             let mut half = half;
+            let mut footprint_span = size as f32 * footprint_scale;
             if let Some(warp) = self.warp {
                 if !warp.contains(center.truncate(), size as f32 * 0.6) {
                     continue;
                 }
+                let latitude = ((center.y - warp.origin.y).abs() - half.y).max(0.0)
+                    / crate::world::orbit::UV_SCALE;
+                let compression = latitude
+                    .min(std::f32::consts::FRAC_PI_2)
+                    .cos()
+                    .max(0.0)
+                    .sqrt();
+                footprint_span *= 1.0 + (compression - 1.0) * warp.polar_row(center.y).z;
                 let mut low = Vec3::splat(f32::INFINITY);
                 let mut high = Vec3::splat(f32::NEG_INFINITY);
                 for dx in [-1.0, 0.0, 1.0] {
@@ -142,9 +151,15 @@ impl Renderer {
             } else {
                 center.with_z(world.ceiling as f32 * 0.5)
             };
-            let footprint = camera.scale * size as f32 * footprint_scale
+            let pixel_scale = camera.scale
                 / (1.0 + camera.q * (lod_center - camera.position).dot(camera.forward)).max(0.15);
-            if size > 8 && footprint > 10.0 {
+            let footprint = pixel_scale * footprint_span;
+            // 球面弦高的投影误差限制为四分之一像素
+            let curvature_error = self.warp.map_or(0.0, |warp| {
+                (size as f32 * footprint_scale).powi(2) * warp.bend * pixel_scale
+                    / (8.0 * warp.body.radius())
+            });
+            if size > 8 && (footprint > 10.0 || curvature_error > 0.25) {
                 let h = size / 2;
                 cells.extend([(x, y, h), (x + h, y, h), (x, y + h, h), (x + h, y + h, h)]);
                 continue;
