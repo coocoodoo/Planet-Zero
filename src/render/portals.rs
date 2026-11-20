@@ -61,7 +61,6 @@ impl Renderer {
         flight: &Flight,
         camera: &Camera,
         network: Option<&crate::world::network::Network>,
-        radius_scale: f32,
     ) {
         if flight.orbit_quiet {
             return;
@@ -71,7 +70,7 @@ impl Renderer {
                 continue;
             };
             let Aperture { center, depth, .. } = window;
-            let radius = window.radius * radius_scale;
+            let radius = window.radius * 0.81;
             let x0 = ((center.x - radius).ceil() as i32).max(0);
             let x1 = ((center.x + radius).floor() as i32).min(self.w as i32 - 1);
             for x in x0..=x1 {
@@ -100,6 +99,7 @@ impl Renderer {
         theme: usize,
         network: Option<&crate::world::network::Network>,
     ) {
+        self.portal_samples.clear();
         if flight.orbit_quiet {
             return;
         }
@@ -173,7 +173,7 @@ impl Renderer {
             let extent = radius * LENS_RADIUS;
             let min_x = ((center.x - extent).floor() as i32).max(0);
             let max_x = ((center.x + extent).ceil() as i32).min(self.w as i32 - 1);
-            samples.clear();
+            let first_sample = samples.len();
             remote.visible.fill((rh as i32, 0));
             for x in min_x..=max_x {
                 let rx = (x as usize * rw / self.w).min(rw - 1);
@@ -203,6 +203,7 @@ impl Renderer {
                     remote.visible[rx].1 = remote.visible[rx].1.max(rows[last_y] as i32 + 1);
                 }
             }
+            let samples = &samples[first_sample..];
             if samples.is_empty() {
                 continue;
             }
@@ -338,7 +339,7 @@ impl Renderer {
                 }
             };
             if self.workers.is_empty() || samples.len() < 1200 {
-                compose(0, &mut self.pixels, &mut self.depth, &samples);
+                compose(0, &mut self.pixels, &mut self.depth, samples);
             } else {
                 let chunk = self.w.div_ceil(4) * self.h;
                 render_pool().in_place_scope(|scope| {
@@ -536,7 +537,7 @@ mod tests {
         renderer.depth.fill(f32::INFINITY);
         let depths = renderer.depth.clone();
         let camera = Camera::new(&flight, 320, 170);
-        renderer.portal_mask(&world, &flight, &camera, None, 0.81);
+        renderer.portal_mask(&world, &flight, &camera, None);
         assert_eq!(depths, renderer.depth);
         let far = renderer.rgba.clone();
         let portals = std::mem::take(&mut world.portals);
@@ -652,7 +653,7 @@ mod window_tests {
     use super::*;
     use crate::world::celestial::{Scenery, Structure};
     #[test]
-    fn source_clouds_stay_behind_the_portal_during_transit() {
+    fn portal_preview_and_rim_draw_over_source_clouds() {
         use crate::world::{Cloud, CloudShape};
         let mut world = World::generate(crate::world::MapKind::Islands, 7);
         world.clouds.clear();
@@ -683,7 +684,7 @@ mod window_tests {
             rank: 0,
             shape: std::sync::Arc::new(CloudShape::new(9, &density, false)),
         };
-        for entering in [false, true] {
+        for (entering, workers) in [(false, 0), (true, 0), (false, 3), (true, 3)] {
             let mut flight = Flight::new(&world);
             flight.position = entry.center + Vec3::Y * 30.0;
             flight.follow = flight.position;
@@ -696,20 +697,21 @@ mod window_tests {
                 assert!(flight.portal_transit.is_some());
             }
             let mut renderer = Renderer::single();
+            renderer.workers = (0..workers).map(|_| Renderer::single()).collect();
             world.clouds.clear();
             renderer.render(&world, &flight, 320, 170, 0);
             let before = renderer.pixels.clone();
             let camera = Camera::new(&flight, 320, 170);
             let aperture = renderer.aperture(entry, &flight, &camera).unwrap();
             world.clouds.push(cloud.clone());
-            renderer.draw_clouds(&world, &flight, &camera);
+            renderer.draw_parallel(&world, &flight, &camera, 0, true);
             let inside_changes = |pixels: &[u32]| {
                 pixels
                     .iter()
                     .enumerate()
                     .filter(|&(at, pixel)| {
                         let point = vec2((at / 170) as f32, (at % 170) as f32);
-                        point.distance(aperture.center) < aperture.radius * 0.75
+                        point.distance(aperture.center) < aperture.radius * 1.08
                             && *pixel != before[at]
                     })
                     .count()
@@ -718,11 +720,19 @@ mod window_tests {
             renderer.pixels.copy_from_slice(&before);
             world.clouds[0].center.y = 50.0;
             world.clouds[0].scale = 1.0;
-            renderer.draw_clouds(&world, &flight, &camera);
-            assert!(
-                inside_changes(&renderer.pixels) > 20,
+            renderer.draw_parallel(&world, &flight, &camera, 0, true);
+            assert_eq!(
+                inside_changes(&renderer.pixels),
+                0,
                 "foreground entering {entering}"
             );
+            renderer.depth.fill(f32::INFINITY);
+            renderer.draw_parallel(&world, &flight, &camera, 0, true);
+            assert!(inside_changes(&renderer.pixels) > 20);
+            let portals = std::mem::take(&mut world.portals);
+            renderer.render(&world, &flight, 320, 170, 0);
+            assert!(renderer.portal_samples.is_empty());
+            world.portals = portals;
         }
     }
 
