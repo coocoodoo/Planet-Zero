@@ -99,6 +99,7 @@ pub struct Renderer {
     terrain_cache: terrain_cache::TerrainCache,
     workers: Vec<Renderer>,
     portal_view: Option<Box<Renderer>>,
+    portal_samples: Vec<(u32, u32, f32)>,
     near_depth: f32,
     cockpit: crate::render::cockpit::Cockpit,
     visible: Vec<(i32, i32)>,
@@ -121,6 +122,17 @@ pub struct Renderer {
     output: Vec<u32>,
     voxels: Vec<Vec<(f32, f32, usize, bool)>>,
     pub detail: [f64; 4],
+}
+
+fn render_pool() -> &'static rayon_core::ThreadPool {
+    static POOL: std::sync::OnceLock<rayon_core::ThreadPool> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        rayon_core::ThreadPoolBuilder::new()
+            .num_threads(3)
+            .thread_name(|i| format!("render-{i}"))
+            .build()
+            .expect("创建渲染线程失败")
+    })
 }
 
 impl Default for Renderer {
@@ -172,6 +184,7 @@ impl Renderer {
             terrain_cache: terrain_cache::TerrainCache::default(),
             workers: vec![],
             portal_view: None,
+            portal_samples: Vec::new(),
             near_depth: f32::NEG_INFINITY,
             cockpit: crate::render::cockpit::Cockpit::new(),
             visible: vec![],
@@ -461,15 +474,7 @@ impl Renderer {
             let w = self.w;
             let h = self.h;
             let visible = &self.visible;
-            static POOL: std::sync::OnceLock<rayon_core::ThreadPool> = std::sync::OnceLock::new();
-            let pool = POOL.get_or_init(|| {
-                rayon_core::ThreadPoolBuilder::new()
-                    .num_threads(3)
-                    .thread_name(|i| format!("render-{i}"))
-                    .build()
-                    .expect("创建渲染线程失败")
-            });
-            pool.in_place_scope(|scope| {
+            render_pool().in_place_scope(|scope| {
                 for (i, worker) in self.workers.iter_mut().enumerate().rev() {
                     let start = i * strip;
                     let end = ((i + 1) * strip).min(w);
@@ -496,7 +501,9 @@ impl Renderer {
                         .copy_from_slice(&self.depth[start * h..end * h]);
                     worker.visible.clear();
                     worker.visible.extend_from_slice(&visible[start..end]);
-                    if worker.visible.iter().all(|&(top, bottom)| top >= bottom) {
+                    if worker.visible.iter().all(|&(top, bottom)| top >= bottom)
+                        || worker.depth.iter().all(|&depth| depth == f32::NEG_INFINITY)
+                    {
                         worker.detail = [0.0; 4];
                         worker.triangles = 0;
                         continue;

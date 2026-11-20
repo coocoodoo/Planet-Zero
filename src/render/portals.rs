@@ -153,6 +153,8 @@ impl Renderer {
         remote.depth.resize(rw * rh, f32::INFINITY);
         remote.mask.resize(rw * rh, 0);
         remote.visible.resize(rw, (0, 0));
+        let rows: Vec<_> = (0..self.h).map(|y| y * rh / self.h).collect();
+        let mut samples = std::mem::take(&mut self.portal_samples);
         for (original, exit, destination, _) in scenes {
             let Some(window) = self.aperture(original, flight, camera) else {
                 continue;
@@ -166,16 +168,20 @@ impl Renderer {
                 membrane,
                 entering,
             } = window;
+            let inverse_radius = radius.recip();
             let extent = radius * LENS_RADIUS;
             let min_x = ((center.x - extent).floor() as i32).max(0);
             let max_x = ((center.x + extent).ceil() as i32).min(self.w as i32 - 1);
-            let mut samples = Vec::new();
+            samples.clear();
             remote.visible.fill((rh as i32, 0));
             for x in min_x..=max_x {
-                let nx = (x as f32 - center.x) / radius;
+                let rx = (x as usize * rw / self.w).min(rw - 1);
+                let nx = (x as f32 - center.x) * inverse_radius;
                 let half = (LENS_RADIUS * LENS_RADIUS - nx * nx).max(0.0).sqrt() * radius;
                 let y0 = ((center.y - half).ceil() as i32).max(self.visible[x as usize].0);
                 let y1 = ((center.y + half).floor() as i32 + 1).min(self.visible[x as usize].1);
+                let mut first_y = self.h;
+                let mut last_y = 0;
                 for y in y0..y1 {
                     let at = x as usize * self.h + y as usize;
                     if self.occluded.get(at).copied().unwrap_or(false)
@@ -183,15 +189,17 @@ impl Renderer {
                     {
                         continue;
                     }
-                    let ny = (y as f32 - center.y) / radius;
+                    let ny = (y as f32 - center.y) * inverse_radius;
                     let radius2 = nx * nx + ny * ny;
-                    samples.push((x as usize, y as usize, depth, radius2));
+                    samples.push((x as u32, y as u32, radius2));
                     if radius2 < 1.08_f32.powi(2) {
-                        let rx = (x as usize * rw / self.w).min(rw - 1);
-                        let ry = (y as usize * rh / self.h).min(rh - 1);
-                        remote.visible[rx].0 = remote.visible[rx].0.min(ry as i32);
-                        remote.visible[rx].1 = remote.visible[rx].1.max(ry as i32 + 1);
+                        first_y = first_y.min(y as usize);
+                        last_y = y as usize;
                     }
+                }
+                if first_y < self.h {
+                    remote.visible[rx].0 = remote.visible[rx].0.min(rows[first_y] as i32);
+                    remote.visible[rx].1 = remote.visible[rx].1.max(rows[last_y] as i32 + 1);
                 }
             }
             if samples.is_empty() {
@@ -220,7 +228,7 @@ impl Renderer {
                 && (cfg!(target_os = "linux") || self.w > 640)
                 && remote.workers.is_empty()
             {
-                remote.workers = (0..3).map(|_| Self::single()).collect();
+                remote.workers = (0..4).map(|_| Self::single()).collect();
             }
             let live_preview = flight.portal_preview || entering;
             if live_preview {
@@ -250,68 +258,112 @@ impl Renderer {
                 waves[((phase * (256.0 / std::f32::consts::TAU)) as i32 & 255) as usize]
             };
             let pixel_scale = camera.scale / Camera::new(flight, 320, 170).scale;
-            for (x, y, depth, radius2) in samples {
-                let at = x * self.h + y;
-                let point = vec2(x as f32, y as f32);
-                let uv = (point - center) / radius;
-                let r = radius2.sqrt();
-                let direction = uv / r.max(0.001);
-                let tangent = vec2(-direction.y, direction.x);
-                let influence = ((LENS_RADIUS - r) / (LENS_RADIUS - 1.0))
-                    .clamp(0.0, 1.0)
-                    .powi(2);
-                let pull = influence
-                    * (radius * 0.35).clamp(5.0 * pixel_scale, 22.0 * pixel_scale)
-                    * membrane;
-                let swirl =
-                    (direction.x * c + direction.y * s) * influence * 4.0 * pixel_scale * membrane;
-                let mut color = if r < 1.0 {
-                    let ripple = wave(r * 28.0 - phase * 3.0);
-                    let cross = wave(uv.x * 13.0 + uv.y * 9.0 + phase * 2.0);
-                    let amplitude = (radius * 0.035).min(5.0 * pixel_scale) * membrane;
-                    let offset = direction * (ripple * amplitude - pull * 0.15)
-                        + tangent * (cross * amplitude + swirl * 0.5);
-                    let sample = point + offset;
-                    let px = (sample.x.clamp(0.0, self.w as f32 - 1.0) * ratio_x)
-                        .min((rw - 1) as f32) as usize;
-                    let py = (sample.y.clamp(0.0, self.h as f32 - 1.0) * ratio_y)
-                        .min((rh - 1) as f32) as usize;
-                    let scene = if live_preview {
-                        remote.pixels[px * rh + py]
+            let (w, h) = (self.w, self.h);
+            let compose = |offset: usize,
+                           pixels: &mut [u32],
+                           depths: &mut [f32],
+                           samples: &[(u32, u32, f32)]| {
+                for &(x, y, radius2) in samples {
+                    let (x, y) = (x as usize, y as usize);
+                    let at = x * h + y;
+                    let point = vec2(x as f32, y as f32);
+                    let uv = (point - center) * inverse_radius;
+                    let r = radius2.sqrt();
+                    let direction = uv * r.max(0.001).recip();
+                    let tangent = vec2(-direction.y, direction.x);
+                    let influence = ((LENS_RADIUS - r) / (LENS_RADIUS - 1.0))
+                        .clamp(0.0, 1.0)
+                        .powi(2);
+                    let pull = influence
+                        * (radius * 0.35).clamp(5.0 * pixel_scale, 22.0 * pixel_scale)
+                        * membrane;
+                    let swirl = (direction.x * c + direction.y * s)
+                        * influence
+                        * 4.0
+                        * pixel_scale
+                        * membrane;
+                    let mut color = if r < 1.0 {
+                        let ripple = wave(r * 28.0 - phase * 3.0);
+                        let cross = wave(uv.x * 13.0 + uv.y * 9.0 + phase * 2.0);
+                        let amplitude = (radius * 0.035).min(5.0 * pixel_scale) * membrane;
+                        let offset = direction * (ripple * amplitude - pull * 0.15)
+                            + tangent * (cross * amplitude + swirl * 0.5);
+                        let sample = point + offset;
+                        let px = (sample.x.clamp(0.0, w as f32 - 1.0) * ratio_x)
+                            .min((rw - 1) as f32) as usize;
+                        let py = (sample.y.clamp(0.0, h as f32 - 1.0) * ratio_y)
+                            .min((rh - 1) as f32) as usize;
+                        let scene = if live_preview {
+                            remote.pixels[px * rh + py]
+                        } else {
+                            mix(rgb(5, 10, 25), rim, 0.2 + cross * 0.08)
+                        };
+                        let veil = (0.14 + ripple * 0.04 + cross * 0.03) * membrane;
+                        let shaded = mix(scene, rgb(15, 24, 52), 0.13 * membrane);
+                        let tinted = mix(shaded, rim, veil);
+                        if r > 0.82 {
+                            mix(
+                                tinted,
+                                rgb(3, 5, 13),
+                                ((r - 0.82) / 0.18).clamp(0.0, 1.0) * 0.65 * membrane,
+                            )
+                        } else {
+                            tinted
+                        }
                     } else {
-                        mix(rgb(5, 10, 25), rim, 0.2 + cross * 0.08)
+                        let warped = point + direction * pull + tangent * swirl;
+                        let sx = warped.x.clamp(0.0, w as f32 - 1.0) as usize;
+                        let sy = warped.y.clamp(0.0, h as f32 - 1.0) as usize;
+                        let sample = base[sx * h + sy];
+                        if sample == 0 { base[at] } else { sample }
                     };
-                    let veil = (0.14 + ripple * 0.04 + cross * 0.03) * membrane;
-                    let shaded = mix(scene, rgb(15, 24, 52), 0.13 * membrane);
-                    let tinted = mix(shaded, rim, veil);
-                    mix(
-                        tinted,
-                        rgb(3, 5, 13),
-                        ((r - 0.82) / 0.18).clamp(0.0, 1.0) * 0.65 * membrane,
-                    )
-                } else {
-                    let warped = point + direction * pull + tangent * swirl;
-                    let sx = warped.x.clamp(0.0, self.w as f32 - 1.0) as usize;
-                    let sy = warped.y.clamp(0.0, self.h as f32 - 1.0) as usize;
-                    let sample = base[sx * self.h + sy];
-                    if sample == 0 { base[at] } else { sample }
-                };
-                let photon = (1.0 - ((r - 1.035) / 0.045).abs()).max(0.0);
-                let halo = (1.0 - ((r - 1.13) / 0.2).abs()).max(0.0);
-                let filament =
-                    wave(direction.x * 17.0 + direction.y * 11.0 - phase * 3.0) * 0.18 + 0.42;
-                color = mix(color, rim, (halo * filament * membrane).clamp(0.0, 0.7));
-                color = mix(color, photon_color, photon * 0.95 * membrane);
-                self.pixels[at] = color;
-                if r < 1.0 && entering {
-                    let rx = (x * rw / self.w).min(rw - 1);
-                    let ry = (y * rh / self.h).min(rh - 1);
-                    self.depth[at] = remote.depth[rx * rh + ry];
-                } else if r < 1.06 {
-                    self.depth[at] = depth;
+                    let photon = (1.0 - ((r - 1.035) / 0.045).abs()).max(0.0);
+                    let halo = (1.0 - ((r - 1.13) / 0.2).abs()).max(0.0);
+                    if halo > 0.0 {
+                        let filament = wave(direction.x * 17.0 + direction.y * 11.0 - phase * 3.0)
+                            * 0.18
+                            + 0.42;
+                        color = mix(color, rim, (halo * filament * membrane).clamp(0.0, 0.7));
+                    }
+                    if photon > 0.0 {
+                        color = mix(color, photon_color, photon * 0.95 * membrane);
+                    }
+                    pixels[at - offset] = color | 0xff000000;
+                    if r < 1.0 && entering {
+                        depths[at - offset] = remote.depth[at];
+                    } else if r < 1.06 {
+                        depths[at - offset] = depth;
+                    }
                 }
+            };
+            if self.workers.is_empty() || samples.len() < 1200 {
+                compose(0, &mut self.pixels, &mut self.depth, &samples);
+            } else {
+                let chunk = self.w.div_ceil(4) * self.h;
+                render_pool().in_place_scope(|scope| {
+                    for (i, (pixels, depths)) in self
+                        .pixels
+                        .chunks_mut(chunk)
+                        .zip(self.depth.chunks_mut(chunk))
+                        .enumerate()
+                        .rev()
+                    {
+                        let offset = i * chunk;
+                        let first = samples.partition_point(|s| (s.0 as usize) < offset / h);
+                        let last = samples
+                            .partition_point(|s| (s.0 as usize) < (offset + pixels.len()) / h);
+                        let samples = &samples[first..last];
+                        let compose = &compose;
+                        if i == 0 {
+                            compose(offset, pixels, depths, samples);
+                        } else {
+                            scope.spawn(move |_| compose(offset, pixels, depths, samples));
+                        }
+                    }
+                });
             }
         }
+        self.portal_samples = samples;
         self.portal_view = Some(remote);
     }
     fn portal_marker(&mut self, portal: Portal, flight: &Flight, camera: &Camera, color: u32) {
@@ -410,6 +462,51 @@ fn portal_waves() -> &'static [f32; 256] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn parallel_composition_preserves_pixels_and_depth() {
+        let world = World::generate(crate::world::MapKind::Space, 1999);
+        let entry = world.portals[0];
+        for (w, h) in [(320, 170), (391, 391)] {
+            for view in 0..3 {
+                for entering in [false, true] {
+                    let mut flight = Flight::new(&world);
+                    flight.position = entry.center + entry.normal() * 10.0;
+                    flight.follow = flight.position;
+                    flight.yaw = entry.yaw + std::f32::consts::PI;
+                    flight.camera_yaw = -flight.yaw;
+                    flight.weights = [0.0; 3];
+                    flight.weights[view] = 1.0;
+                    if entering {
+                        flight.approach_portal(entry, flight.position + entry.normal() * 5.0);
+                        flight.portal_transit.as_mut().unwrap().elapsed = 0.5;
+                    }
+                    let camera = Camera::new(&flight, w, h);
+                    let mut single = Renderer::single();
+                    let mut parallel = Renderer::single();
+                    parallel.workers = (0..4).map(|_| Renderer::single()).collect();
+                    for renderer in [&mut single, &mut parallel] {
+                        renderer.w = w;
+                        renderer.full_width = w;
+                        renderer.h = h;
+                        renderer.pixels = (0..w * h)
+                            .map(|at| rgb((at / h) as u8, (at % h) as u8, 80))
+                            .collect();
+                        renderer.depth = vec![f32::INFINITY; w * h];
+                        renderer.visible = vec![(8, h as i32 - 8); w];
+                        renderer.occluded = (0..w * h).map(|at| at % 11 == 0).collect();
+                        renderer.portals(&world, &flight, &camera, None, 0, None);
+                        assert!(renderer.portal_samples.len() > 1200);
+                    }
+                    assert!(
+                        single.pixels == parallel.pixels,
+                        "{w}x{h}, view {view}, entering {entering}"
+                    );
+                    assert!(single.depth == parallel.depth);
+                }
+            }
+        }
+    }
+
     #[test]
     fn distant_portals_keep_a_marker_without_rendering_or_masking_the_destination() {
         let mut world = World::generate(crate::world::MapKind::Space, 1999);
