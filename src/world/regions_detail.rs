@@ -91,9 +91,11 @@ impl World {
             }
         }
         if self.kind == MapKind::Highlands {
+            let start = vec2(1650.0, 2600.0);
+            let spacing = vec2(210.0, 115.0);
+            self.paint_road(start - spacing * 0.5, start + spacing * 3.5, 2.0);
             for i in 0..4 {
-                let p = vec2(1650.0 + i as f32 * 210.0, 2600.0 + i as f32 * 115.0);
-                self.paint_road(p - vec2(140.0, 110.0), p + vec2(180.0, 160.0), 2.0);
+                let p = start + spacing * i as f32;
                 for dy in -65..=65 {
                     for dx in -85..=85 {
                         let at = index(p.x as i32 + dx, p.y as i32 + dy, SIZE);

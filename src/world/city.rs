@@ -132,24 +132,83 @@ impl World {
         let length = a.distance(b);
         let d = (b - a) / length;
         let n = vec2(-d.y, d.x);
-        for i in 0..=length.ceil() as usize {
-            let p = a + d * i as f32;
-            for side in -(width.ceil() as i32 + 3)..=width.ceil() as i32 + 3 {
-                let q = p + n * side as f32;
-                let at = index(q.x as i32, q.y as i32, SIZE);
-                let edge = (side as f32).abs();
-                self.materials[at] = if edge > width {
+        let axis = usize::from(d.y.abs() > d.x.abs());
+        let other = 1 - axis;
+        let radius = width + 3.0;
+        let extent = radius / d[axis].abs();
+        let first = (a[axis].min(b[axis]) - radius).floor() as i32;
+        let last = (a[axis].max(b[axis]) + radius).ceil() as i32;
+        for along in first..=last {
+            let center = a[other] + (along as f32 - a[axis]) * d[other] / d[axis];
+            for across in (center - extent).floor() as i32..=(center + extent).ceil() as i32 {
+                let mut p = Vec2::ZERO;
+                p[axis] = along as f32;
+                p[other] = across as f32;
+                let progress = (p - a).dot(d).clamp(0.0, length);
+                let distance = p.distance_squared(a + d * progress);
+                if distance > radius * radius {
+                    continue;
+                }
+                let at = index(p.x as i32, p.y as i32, SIZE);
+                let material = if distance > width * width {
                     32
-                } else if side == 0 && i % 24 < 12 {
+                } else if (p - a).dot(n).abs() < 0.6 && progress as usize % 24 < 12 {
                     31
                 } else {
                     30
                 };
+                if material == 32 && matches!(self.materials[at], 30 | 31) {
+                    continue;
+                }
+                self.materials[at] = material;
                 self.heights[at] = self.heights[at].max(5);
             }
         }
     }
 }
+
 pub(super) fn river_x(y: f32) -> f32 {
     1760.0 + (y * std::f32::consts::TAU / 4096.0).sin() * 190.0 + (y * 0.003).sin() * 65.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roads_fill_rotated_pixels_and_keep_junctions_open() {
+        let mut world = World::generate(MapKind::Moon, 7);
+        world.materials.fill(6);
+        let center = vec2(500.0, 500.0);
+        for angle in [0.2_f32, 0.6, 1.2, 2.4] {
+            let d = vec2(angle.cos(), angle.sin());
+            let n = vec2(-d.y, d.x);
+            world.paint_road(center - d * 90.0, center + d * 90.0, 4.0);
+            for y in 410..590 {
+                for x in 410..590 {
+                    let offset = vec2(x as f32, y as f32) - center;
+                    if offset.dot(d).abs() < 88.0 && offset.dot(n).abs() < 3.5 {
+                        assert!(matches!(world.materials[index(x, y, SIZE)], 30 | 31));
+                    }
+                }
+            }
+        }
+        world.paint_road(center - vec2(100.0, 0.0), center + vec2(100.0, 0.0), 4.0);
+        world.paint_road(center, center + vec2(0.0, 100.0), 4.0);
+        for x in 410..590 {
+            assert!(matches!(world.materials[index(x, 500, SIZE)], 30 | 31));
+        }
+    }
+
+    #[test]
+    fn highland_road_connects_all_four_settlements() {
+        let world = World::generate(MapKind::Highlands, MapKind::Highlands.seed());
+        for i in 0..=900 {
+            let p = vec2(1650.0, 2600.0) + vec2(210.0, 115.0) * (i as f32 / 300.0);
+            assert!(matches!(
+                world.materials[index(p.x as i32, p.y as i32, SIZE)],
+                30 | 31
+            ));
+        }
+    }
 }
