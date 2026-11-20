@@ -1,6 +1,6 @@
 [package]
 name = "flight-club"
-version = "0.28.2"
+version = "0.29.0"
 edition = "2024"
 default-run = "flight-club"
 description = "Pixel flight arcade with sprite stacking rendering for desktop and Cardputer Zero"
