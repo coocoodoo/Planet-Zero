@@ -116,9 +116,56 @@ impl Game {
 }
 
 pub fn rgb565(rgba: &[u8], destination: &mut [u8]) {
-    for (src, dst) in rgba.chunks_exact(4).zip(destination.chunks_exact_mut(2)) {
-        let pixel =
-            ((src[0] as u16 >> 3) << 11) | ((src[1] as u16 >> 2) << 5) | (src[2] as u16 >> 3);
+    const DITHER: [u16; 16] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    for (i, (src, dst)) in rgba
+        .chunks_exact(4)
+        .zip(destination.chunks_exact_mut(2))
+        .enumerate()
+    {
+        let threshold = DITHER[(i / WIDTH % 4) * 4 + i % 4] * 16 + 8;
+        let r = (src[0] as u16 * 31 + threshold) / 255;
+        let g = (src[1] as u16 * 63 + threshold) / 255;
+        let b = (src[2] as u16 * 31 + threshold) / 255;
+        let pixel = (r << 11) | (g << 5) | b;
         dst.copy_from_slice(&pixel.to_le_bytes());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rgb565_preserves_endpoints_and_smooths_gradual_brightness() {
+        let count = WIDTH * 4;
+        let mut rgba = vec![255; count * 4];
+        let mut packed = vec![0; count * 2];
+        let mut previous = [0; 3];
+        for value in 0..=255 {
+            for p in rgba.chunks_exact_mut(4) {
+                p[..3].fill(value);
+            }
+            rgb565(&rgba, &mut packed);
+            let mut totals = [0_usize; 3];
+            for p in packed.chunks_exact(2) {
+                let color = u16::from_le_bytes([p[0], p[1]]);
+                for (sum, channel) in
+                    totals
+                        .iter_mut()
+                        .zip([color >> 11, (color >> 5) & 63, color & 31])
+                {
+                    *sum += channel as usize;
+                }
+            }
+            for channel in 0..3 {
+                assert!(totals[channel] >= previous[channel]);
+                let limit = if channel == 1 { count / 4 } else { count / 8 };
+                assert!(totals[channel] - previous[channel] <= limit);
+            }
+            if value == 0 || value == 255 {
+                assert!(packed.iter().all(|&b| b == value));
+            }
+            previous = totals;
+        }
     }
 }
