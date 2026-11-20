@@ -14,6 +14,7 @@ pub(super) struct Settings {
     pub dynamic_clouds: bool,
     pub cloud_pixel_texture: bool,
     pub dynamic_lighting: bool,
+    pub smooth_sky_gradient: bool,
     pub portal_preview: bool,
 }
 impl Default for Settings {
@@ -24,6 +25,7 @@ impl Default for Settings {
             dynamic_clouds: true,
             cloud_pixel_texture: true,
             dynamic_lighting: true,
+            smooth_sky_gradient: true,
             portal_preview: true,
         }
     }
@@ -48,14 +50,14 @@ impl App {
     pub(crate) fn settings_rows(&self) -> usize {
         match self.settings_section {
             Some(SettingsSection::General) => 5,
-            Some(SettingsSection::Advanced) => 6,
+            Some(SettingsSection::Advanced) => 7,
             None => 3,
         }
     }
     pub(crate) fn settings_row_height(&self) -> usize {
         match self.settings_section {
             Some(SettingsSection::General) => 15,
-            Some(SettingsSection::Advanced) => 13,
+            Some(SettingsSection::Advanced) => 11,
             None => 28,
         }
     }
@@ -103,6 +105,9 @@ impl App {
                 self.flight.dynamic_lighting = !self.flight.dynamic_lighting
             }
             (Some(SettingsSection::Advanced), 4) => {
+                self.flight.smooth_sky_gradient = !self.flight.smooth_sky_gradient
+            }
+            (Some(SettingsSection::Advanced), 5) => {
                 self.flight.portal_preview = !self.flight.portal_preview
             }
             _ => return,
@@ -117,12 +122,13 @@ impl App {
                 std::fs::write(
                     path,
                     format!(
-                        "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ncloud_pixel_texture = {}\ndynamic_lighting = {}\nportal_preview = {}\n",
+                        "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ncloud_pixel_texture = {}\ndynamic_lighting = {}\nsmooth_sky_gradient = {}\nportal_preview = {}\n",
                         self.flight.faceted,
                         self.portal_labels,
                         self.flight.dynamic_clouds,
                         self.flight.cloud_pixel_texture,
                         self.flight.dynamic_lighting,
+                        self.flight.smooth_sky_gradient,
                         self.flight.portal_preview
                     ),
                 )

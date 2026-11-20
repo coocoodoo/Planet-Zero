@@ -287,6 +287,7 @@ pub fn draw(app: &mut App) {
                 ("DYNAMIC CLOUDS", toggle(f.dynamic_clouds)),
                 ("CLOUD PIXEL TEXTURE", toggle(f.cloud_pixel_texture)),
                 ("DYNAMIC LIGHTING", toggle(f.dynamic_lighting)),
+                ("SMOOTH SKY GRADIENT", toggle(f.smooth_sky_gradient)),
                 ("PORTAL PREVIEW", toggle(f.portal_preview)),
                 ("BACK", String::new()),
             ],
@@ -324,7 +325,8 @@ pub fn draw(app: &mut App) {
                 (Some(SettingsSection::Advanced), 1) => "OFF: SIMPLE CLOUDS / FASTER",
                 (Some(SettingsSection::Advanced), 2) => "ON: DOTTED CLOUD SHADING",
                 (Some(SettingsSection::Advanced), 3) => "OFF: FREEZE SUN POSITION",
-                (Some(SettingsSection::Advanced), 4) => "OFF: ENERGY FIELD / FASTER",
+                (Some(SettingsSection::Advanced), 4) => "ON: CONTINUOUS SKY COLORS",
+                (Some(SettingsSection::Advanced), 5) => "OFF: ENERGY FIELD / FASTER",
                 (Some(SettingsSection::General), 2 | 3) => "LEFT / RIGHT ADJUST",
                 _ => "ENTER TOGGLE",
             }

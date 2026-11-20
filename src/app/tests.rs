@@ -594,7 +594,7 @@ fn cloud_setting_survives_world_changes_and_menu_navigation() {
     app.selection = 0;
     app.key(crate::keys::UP, 1);
     app.key(crate::keys::UP, 0);
-    assert_eq!(app.selection, 5);
+    assert_eq!(app.selection, 6);
     app.key(crate::keys::ENTER, 1);
     app.key(crate::keys::ENTER, 0);
     assert_eq!(app.page, Page::Settings);
@@ -626,6 +626,29 @@ fn cloud_pixel_texture_defaults_on_and_persists_across_maps() {
     assert!(!app.flight.cloud_pixel_texture);
     app.activate_setting();
     assert!(super::settings::Settings::load(Some(&path)).cloud_pixel_texture);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn smooth_sky_gradient_defaults_on_and_persists_across_maps() {
+    let defaults: super::settings::Settings = toml::from_str("").unwrap();
+    assert!(defaults.smooth_sky_gradient);
+    let mut app = App::new(World::generate(crate::world::MapKind::Islands, 7));
+    let path =
+        std::env::temp_dir().join(format!("smooth-sky-settings-{}.toml", std::process::id()));
+    app.settings_path = Some(path.clone());
+    app.flight.smooth_sky_gradient = true;
+    app.open_settings();
+    app.selection = 1;
+    app.activate_setting();
+    app.selection = 4;
+    app.activate_setting();
+    assert!(!app.flight.smooth_sky_gradient);
+    assert!(!super::settings::Settings::load(Some(&path)).smooth_sky_gradient);
+    app.flight.change_world(&app.world);
+    assert!(!app.flight.smooth_sky_gradient);
+    app.activate_setting();
+    assert!(super::settings::Settings::load(Some(&path)).smooth_sky_gradient);
     std::fs::remove_file(path).unwrap();
 }
 
@@ -702,7 +725,7 @@ fn settings_categories_route_controls_and_persist_portal_preview() {
     tap(&mut app, ENTER);
     assert_eq!(app.settings_section, Some(SettingsSection::Advanced));
     assert_eq!(app.selection, 0);
-    app.selection = 4;
+    app.selection = 5;
     app.flight.portal_preview = true;
     tap(&mut app, ENTER);
     assert!(!app.flight.portal_preview);

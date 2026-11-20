@@ -31,11 +31,12 @@ impl Renderer {
             let elevation = ray.z / ray.length();
             let gradient = (elevation * 1.4).clamp(0.0, 1.0);
             let glow = (1.0 - elevation.abs() / 0.26).max(0.0).powi(2) * twilight;
-            let color = mix(
-                mix(low, high, (gradient * 12.0).floor() / 12.0),
-                rgb(225, 234, 255),
-                flash,
-            );
+            let gradient = if flight.smooth_sky_gradient {
+                gradient
+            } else {
+                (gradient * 12.0).floor() / 12.0
+            };
+            let color = mix(mix(low, high, gradient), rgb(225, 234, 255), flash);
             for x in 0..self.w {
                 let at = x * self.h + y;
                 if (y as i32) >= self.visible[x].0

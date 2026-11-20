@@ -131,6 +131,7 @@ impl App {
         flight.dynamic_clouds = settings.dynamic_clouds;
         flight.cloud_pixel_texture = settings.cloud_pixel_texture;
         flight.dynamic_lighting = settings.dynamic_lighting;
+        flight.smooth_sky_gradient = settings.smooth_sky_gradient;
         flight.portal_preview = settings.portal_preview;
         Self {
             orbit: orbit::Orbit::default(),

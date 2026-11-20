@@ -75,6 +75,7 @@ pub struct Flight {
     pub cloud_pixel_texture: bool,
     pub portal_preview: bool,
     pub dynamic_lighting: bool,
+    pub smooth_sky_gradient: bool,
     pub day_time: f32,
     pub vehicle: crate::content::vehicles::Vehicle,
     pub weather: crate::content::weather::WeatherState,
@@ -150,6 +151,7 @@ impl Flight {
             cloud_pixel_texture: true,
             portal_preview: true,
             dynamic_lighting: true,
+            smooth_sky_gradient: true,
             day_time: 0.0,
             vehicle: crate::content::vehicles::Vehicle::Falcon,
             weather: crate::content::weather::WeatherState::new(
@@ -213,6 +215,7 @@ impl Flight {
         let faceted = self.faceted;
         let dynamic_clouds = self.dynamic_clouds;
         let cloud_pixel_texture = self.cloud_pixel_texture;
+        let smooth_sky_gradient = self.smooth_sky_gradient;
         let portal_preview = self.portal_preview;
         let (dynamic_lighting, day_time) = (self.dynamic_lighting, self.day_time);
         let vehicle = self.vehicle;
@@ -229,6 +232,7 @@ impl Flight {
         self.faceted = faceted;
         self.dynamic_clouds = dynamic_clouds;
         self.cloud_pixel_texture = cloud_pixel_texture;
+        self.smooth_sky_gradient = smooth_sky_gradient;
         self.portal_preview = portal_preview;
         self.dynamic_lighting = dynamic_lighting;
         self.day_time = day_time;
