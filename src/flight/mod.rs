@@ -400,14 +400,17 @@ impl Flight {
             None
         };
         let controls = scripted.as_ref().unwrap_or(controls);
-        // 高空体感输入使用相邻采样的角度差，参考方向随飞机姿态保留
-        let pitch_delta = controls
-            .pitch_target
-            .zip(self.imu_pitch)
-            .map_or(0.0, |(a, b)| a - b);
-        let bank_delta = controls.bank.zip(self.imu_bank).map_or(0.0, |(a, b)| a - b);
-        self.imu_pitch = controls.pitch_target;
-        self.imu_bank = controls.bank;
+        // 体感角度经过缓动后按增量调整姿态，首个采样建立参考方向
+        let imu_gain = ease(if self.space { 6.0 } else { 18.0 }, dt);
+        let track_imu = |previous: &mut Option<f32>, target: Option<f32>| {
+            let next = target
+                .map(|target| previous.map_or(target, |value| value + (target - value) * imu_gain));
+            let delta = next.zip(*previous).map_or(0.0, |(a, b)| a - b);
+            *previous = next;
+            delta
+        };
+        let pitch_delta = track_imu(&mut self.imu_pitch, controls.pitch_target);
+        let bank_delta = track_imu(&mut self.imu_bank, controls.bank);
         if controls.heading_only {
             self.loop_remaining = 0.0;
             self.pitch_rate = 0.0;
@@ -477,20 +480,20 @@ impl Flight {
             self.steer_attitude(dt, controls, attitude_freedom, pitch_delta, bank_delta);
         } else {
             self.settle_surface_attitude();
-            self.rate += (turn.clamp(-1.0, 1.0) * self.vehicle.turn() - self.rate) * ease(2.6, dt);
+            self.rate += (turn.clamp(-1.0, 1.0) * self.vehicle.turn() - self.rate) * ease(4.0, dt);
             self.yaw += self.rate * dt;
             self.bank += (controls
                 .bank
                 .unwrap_or(self.rate / self.vehicle.turn() * 52.0_f32.to_radians())
                 - self.bank)
-                * ease(5.0, dt);
+                * ease(7.0, dt);
         }
         if manual_attitude && !free_attitude {
             let input = controls.climb.clamp(-1.0, 1.0);
             if self.hover && self.loop_remaining <= 0.0 {
                 // 悬停时俯仰按角速度调整，松键后保持角度
                 let target_rate = input * 1.15;
-                self.pitch_rate += (target_rate - self.pitch_rate) * ease(5.0, dt);
+                self.pitch_rate += (target_rate - self.pitch_rate) * ease(7.0, dt);
                 let limit = std::f32::consts::FRAC_PI_2 - 0.02;
                 self.pitch = (self.pitch + self.pitch_rate * dt).clamp(-limit, limit);
             } else {
@@ -498,11 +501,11 @@ impl Flight {
                 let target_rate = if self.loop_remaining > 0.0 {
                     self.loop_direction * LOOP_RATE
                 } else if controls.pitch_target.is_some() || input == 0.0 {
-                    pitch_error * 2.0
+                    pitch_error * 2.6
                 } else {
                     input * 1.15
                 };
-                self.pitch_rate += (target_rate - self.pitch_rate) * ease(5.0, dt);
+                self.pitch_rate += (target_rate - self.pitch_rate) * ease(7.0, dt);
                 let mut rotation = self.pitch_rate * dt;
                 if self.loop_remaining > 0.0 {
                     rotation = self.loop_direction * rotation.abs().min(self.loop_remaining);

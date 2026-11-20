@@ -47,13 +47,13 @@ impl Flight {
             self.rate = 0.0;
             self.pitch_rate = 0.0;
         } else {
-            self.rate +=
-                (controls.turn.clamp(-1.0, 1.0) * self.vehicle.turn() - self.rate) * ease(5.0, dt);
+            self.rate += (controls.turn.clamp(-1.0, 1.0) * self.vehicle.turn() - self.rate)
+                * ease(if self.space { 5.0 } else { 6.0 }, dt);
             let loop_active = self.loop_remaining > 0.0;
             let limit = NORMAL_PITCH + freedom * (std::f32::consts::FRAC_PI_2 - NORMAL_PITCH);
             let input = controls.climb.clamp(-1.0, 1.0);
             let leveling = if controls.pitch_target.is_some() || input == 0.0 {
-                angle(input * limit - self.pitch) * 2.0 * (1.0 - freedom)
+                angle(input * limit - self.pitch) * 2.6 * (1.0 - freedom)
             } else {
                 0.0
             };
@@ -69,7 +69,8 @@ impl Flight {
             if freedom == 1.0 && goal == 0.0 {
                 self.pitch_rate = 0.0;
             } else {
-                self.pitch_rate += (goal - self.pitch_rate) * ease(5.0, dt);
+                self.pitch_rate +=
+                    (goal - self.pitch_rate) * ease(if self.space { 5.0 } else { 7.0 }, dt);
             }
             let mut pitch = self.pitch_rate * dt;
             if loop_active {
@@ -99,7 +100,7 @@ impl Flight {
                     .bank
                     .unwrap_or(self.rate / self.vehicle.turn() * 52.0_f32.to_radians());
                 q *= Quat::from_rotation_y(
-                    angle(bank - self.bank) * ease(5.0 * (1.0 - freedom), dt),
+                    angle(bank - self.bank) * ease(7.0 * (1.0 - freedom), dt),
                 );
             }
         }

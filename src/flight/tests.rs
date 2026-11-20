@@ -775,3 +775,93 @@ fn overhead_blocks_climb_and_keeps_pitch() {
     assert!((flight.position.z - z).abs() < 0.6, "俯瞰视角不应改变高度");
     assert!((flight.pitch - pitch).abs() < 0.01, "俯瞰视角不应改变俯仰");
 }
+
+#[test]
+fn surface_controls_keep_a_short_ramp_and_reverse_promptly() {
+    let world = terrain();
+    for (altitude, turn_range) in [(240.0, 0.30..0.40), (1200.0, 0.43..0.50)] {
+        let mut flight = Flight::new(&world);
+        flight.orbit_flight = true;
+        flight.position.z = altitude;
+        let mut controls = Controls {
+            manual: true,
+            aerobatic: true,
+            turn: 1.0,
+            climb: 1.0,
+            throttle: Some(0.0),
+            ..Default::default()
+        };
+        flight.step(0.1, &controls, &world);
+        assert!(turn_range.contains(&(flight.rate / flight.vehicle.turn())));
+        assert!((0.5..0.8).contains(&flight.pitch_rate));
+        for _ in 0..54 {
+            flight.step(1.0 / 60.0, &controls, &world);
+        }
+        controls.turn = -1.0;
+        controls.climb = -1.0;
+        for _ in 0..12 {
+            flight.step(1.0 / 60.0, &controls, &world);
+        }
+        assert!(flight.rate < 0.0 && flight.pitch_rate < 0.0);
+    }
+    let mut flight = Flight::new(&world);
+    flight.step(
+        0.1,
+        &Controls {
+            manual: true,
+            bank: Some(0.6),
+            ..Default::default()
+        },
+        &world,
+    );
+    assert!((0.28..0.4).contains(&flight.bank));
+}
+
+#[test]
+fn space_imu_eases_to_the_requested_angle_and_releases_its_reference() {
+    let world = World::generate(crate::world::MapKind::Space, 7);
+    for hz in [30, 60, 120] {
+        for roll in [false, true] {
+            let mut flight = Flight::new(&world);
+            flight.space_attitude = Some(glam::Quat::IDENTITY);
+            let mut controls = Controls {
+                manual: true,
+                aerobatic: true,
+                throttle: Some(0.0),
+                bank: roll.then_some(0.0),
+                pitch_target: (!roll).then_some(0.0),
+                ..Default::default()
+            };
+            let dt = 1.0 / hz as f32;
+            flight.step(dt, &controls, &world);
+            if roll {
+                controls.bank = Some(0.6);
+            } else {
+                controls.pitch_target = Some(0.6);
+            }
+            flight.step(dt, &controls, &world);
+            let angle = if roll { flight.bank } else { flight.pitch };
+            assert!((0.0..0.12).contains(&angle));
+            for _ in 1..hz / 2 {
+                flight.step(dt, &controls, &world);
+            }
+            let angle = if roll { flight.bank } else { flight.pitch };
+            assert!((0.56..0.59).contains(&angle));
+            for _ in 0..hz * 2 {
+                flight.step(dt, &controls, &world);
+            }
+            let attitude = flight.attitude();
+            for _ in 0..hz * 3 {
+                flight.step(dt, &controls, &world);
+            }
+            assert!(attitude.dot(flight.attitude()).abs() > 0.99999);
+            controls.bank = None;
+            controls.pitch_target = None;
+            flight.step(dt, &controls, &world);
+            controls.bank = roll.then_some(-0.4);
+            controls.pitch_target = (!roll).then_some(-0.4);
+            flight.step(dt, &controls, &world);
+            assert!(attitude.dot(flight.attitude()).abs() > 0.99999);
+        }
+    }
+}
