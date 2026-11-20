@@ -18,7 +18,7 @@ use crate::world::World;
 
 pub const MODEL_SCALE: f32 = 0.5;
 pub const VIEW_SCALE: f32 = 0.82;
-pub const DAY_SECONDS: f32 = 900.0;
+pub const DAY_SECONDS: f32 = 600.0;
 pub const MIN_CLEARANCE: f32 = 28.0;
 const LOOP_RATE: f32 = 1.25;
 const NORMAL_PITCH: f32 = 0.55;
