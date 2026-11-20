@@ -129,6 +129,7 @@ impl App {
         let settings = settings::Settings::load(settings_path.as_deref());
         flight.faceted = settings.faceted;
         flight.dynamic_clouds = settings.dynamic_clouds;
+        flight.cloud_pixel_texture = settings.cloud_pixel_texture;
         flight.dynamic_lighting = settings.dynamic_lighting;
         flight.portal_preview = settings.portal_preview;
         Self {

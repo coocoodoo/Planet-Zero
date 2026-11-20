@@ -433,11 +433,7 @@ impl App {
             self.selection = ((y - 45) / 16).min(5);
             self.activate();
         } else if self.page == Page::Settings && (24..296).contains(&x) {
-            let row_height = if self.settings_section.is_some() {
-                15
-            } else {
-                28
-            };
+            let row_height = self.settings_row_height();
             if self.settings_section.is_some() && (20..42).contains(&y) {
                 self.settings_back();
             } else if (49..49 + self.settings_rows() * row_height).contains(&y) {

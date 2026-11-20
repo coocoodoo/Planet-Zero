@@ -224,8 +224,13 @@ impl Renderer {
                             }
                             let dither = [0.0, 0.5, 0.75, 0.25]
                                 [((y as usize & 1) << 1) | ((x as usize + self.x_origin) & 1)];
-                            let color = cloud.palette
-                                [(shade * 7.0 + dither * 0.5).clamp(0.0, 7.0) as usize];
+                            let offset = if cloud.pixel_texture {
+                                dither * 0.5
+                            } else {
+                                0.1875
+                            };
+                            let color =
+                                cloud.palette[(shade * 7.0 + offset).clamp(0.0, 7.0) as usize];
                             *sample = super::clouds::CloudPixel {
                                 depth,
                                 color,

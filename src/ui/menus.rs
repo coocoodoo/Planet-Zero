@@ -137,6 +137,7 @@ fn help_page(mode: Mode, index: usize, device: bool) -> [&'static str; 8] {
 }
 
 pub fn draw(app: &mut App) {
+    let settings_row_height = app.settings_row_height() as i32;
     let mut c = Canvas {
         pixels: &mut app.screen,
     };
@@ -284,16 +285,13 @@ pub fn draw(app: &mut App) {
             Some(SettingsSection::Advanced) => vec![
                 ("FACETED TERRAIN", toggle(f.faceted)),
                 ("DYNAMIC CLOUDS", toggle(f.dynamic_clouds)),
+                ("CLOUD PIXEL TEXTURE", toggle(f.cloud_pixel_texture)),
                 ("DYNAMIC LIGHTING", toggle(f.dynamic_lighting)),
                 ("PORTAL PREVIEW", toggle(f.portal_preview)),
                 ("BACK", String::new()),
             ],
         };
-        let row_height = if app.settings_section.is_some() {
-            15
-        } else {
-            28
-        };
+        let row_height = settings_row_height;
         for (i, (label, value)) in rows.iter().enumerate() {
             let y = 52 + i as i32 * row_height;
             if i == app.selection {
@@ -324,8 +322,9 @@ pub fn draw(app: &mut App) {
             match (app.settings_section, app.selection) {
                 (None, _) => "ENTER OPEN",
                 (Some(SettingsSection::Advanced), 1) => "OFF: SIMPLE CLOUDS / FASTER",
-                (Some(SettingsSection::Advanced), 2) => "OFF: FREEZE SUN POSITION",
-                (Some(SettingsSection::Advanced), 3) => "OFF: ENERGY FIELD / FASTER",
+                (Some(SettingsSection::Advanced), 2) => "ON: DOTTED CLOUD SHADING",
+                (Some(SettingsSection::Advanced), 3) => "OFF: FREEZE SUN POSITION",
+                (Some(SettingsSection::Advanced), 4) => "OFF: ENERGY FIELD / FASTER",
                 (Some(SettingsSection::General), 2 | 3) => "LEFT / RIGHT ADJUST",
                 _ => "ENTER TOGGLE",
             }

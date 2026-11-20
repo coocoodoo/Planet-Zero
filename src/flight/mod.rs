@@ -72,6 +72,7 @@ pub struct Flight {
     pub hud: bool,
     pub faceted: bool,
     pub dynamic_clouds: bool,
+    pub cloud_pixel_texture: bool,
     pub portal_preview: bool,
     pub dynamic_lighting: bool,
     pub day_time: f32,
@@ -146,6 +147,7 @@ impl Flight {
             hud: true,
             faceted: true,
             dynamic_clouds: true,
+            cloud_pixel_texture: true,
             portal_preview: true,
             dynamic_lighting: true,
             day_time: 0.0,
@@ -210,6 +212,7 @@ impl Flight {
         let hud = self.hud;
         let faceted = self.faceted;
         let dynamic_clouds = self.dynamic_clouds;
+        let cloud_pixel_texture = self.cloud_pixel_texture;
         let portal_preview = self.portal_preview;
         let (dynamic_lighting, day_time) = (self.dynamic_lighting, self.day_time);
         let vehicle = self.vehicle;
@@ -225,6 +228,7 @@ impl Flight {
         self.hud = hud;
         self.faceted = faceted;
         self.dynamic_clouds = dynamic_clouds;
+        self.cloud_pixel_texture = cloud_pixel_texture;
         self.portal_preview = portal_preview;
         self.dynamic_lighting = dynamic_lighting;
         self.day_time = day_time;

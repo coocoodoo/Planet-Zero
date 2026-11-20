@@ -7,6 +7,7 @@ pub(super) struct CloudSurface<'a> {
     // 厚度、顶点亮度和细节纹理坐标
     pub attributes: [Vec4; 3],
     pub palette: &'a [u32; 8],
+    pub pixel_texture: bool,
     pub relief: &'a [[i8; 4]],
     pub relief_light: Vec4,
 }
@@ -181,6 +182,7 @@ impl Renderer {
                             Vec4::new(thickness, shade, texture.x, texture.y)
                         }),
                         palette: &palette,
+                        pixel_texture: flight.cloud_pixel_texture,
                         relief: if flight.dynamic_clouds && face.normal.z > 0.0 {
                             &cloud.shape.relief
                         } else {

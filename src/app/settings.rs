@@ -12,6 +12,7 @@ pub(super) struct Settings {
     pub faceted: bool,
     pub portal_labels: bool,
     pub dynamic_clouds: bool,
+    pub cloud_pixel_texture: bool,
     pub dynamic_lighting: bool,
     pub portal_preview: bool,
 }
@@ -21,6 +22,7 @@ impl Default for Settings {
             faceted: true,
             portal_labels: true,
             dynamic_clouds: true,
+            cloud_pixel_texture: true,
             dynamic_lighting: true,
             portal_preview: true,
         }
@@ -44,10 +46,17 @@ impl App {
         (self.page, self.selection) = self.settings_return;
     }
     pub(crate) fn settings_rows(&self) -> usize {
-        if self.settings_section.is_some() {
-            5
-        } else {
-            3
+        match self.settings_section {
+            Some(SettingsSection::General) => 5,
+            Some(SettingsSection::Advanced) => 6,
+            None => 3,
+        }
+    }
+    pub(crate) fn settings_row_height(&self) -> usize {
+        match self.settings_section {
+            Some(SettingsSection::General) => 15,
+            Some(SettingsSection::Advanced) => 13,
+            None => 28,
         }
     }
     pub(super) fn settings_back(&mut self) {
@@ -88,9 +97,12 @@ impl App {
                 self.flight.dynamic_clouds = !self.flight.dynamic_clouds
             }
             (Some(SettingsSection::Advanced), 2) => {
-                self.flight.dynamic_lighting = !self.flight.dynamic_lighting
+                self.flight.cloud_pixel_texture = !self.flight.cloud_pixel_texture
             }
             (Some(SettingsSection::Advanced), 3) => {
+                self.flight.dynamic_lighting = !self.flight.dynamic_lighting
+            }
+            (Some(SettingsSection::Advanced), 4) => {
                 self.flight.portal_preview = !self.flight.portal_preview
             }
             _ => return,
@@ -105,10 +117,11 @@ impl App {
                 std::fs::write(
                     path,
                     format!(
-                        "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ndynamic_lighting = {}\nportal_preview = {}\n",
+                        "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ncloud_pixel_texture = {}\ndynamic_lighting = {}\nportal_preview = {}\n",
                         self.flight.faceted,
                         self.portal_labels,
                         self.flight.dynamic_clouds,
+                        self.flight.cloud_pixel_texture,
                         self.flight.dynamic_lighting,
                         self.flight.portal_preview
                     ),

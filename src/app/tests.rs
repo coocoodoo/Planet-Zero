@@ -594,7 +594,7 @@ fn cloud_setting_survives_world_changes_and_menu_navigation() {
     app.selection = 0;
     app.key(crate::keys::UP, 1);
     app.key(crate::keys::UP, 0);
-    assert_eq!(app.selection, 4);
+    assert_eq!(app.selection, 5);
     app.key(crate::keys::ENTER, 1);
     app.key(crate::keys::ENTER, 0);
     assert_eq!(app.page, Page::Settings);
@@ -604,6 +604,29 @@ fn cloud_setting_survives_world_changes_and_menu_navigation() {
     assert_eq!(app.page, Page::Menu);
     let settings: super::settings::Settings = toml::from_str("dynamic_clouds = false").unwrap();
     assert!(!settings.dynamic_clouds);
+}
+
+#[test]
+fn cloud_pixel_texture_defaults_on_and_persists_across_maps() {
+    let defaults: super::settings::Settings = toml::from_str("").unwrap();
+    assert!(defaults.cloud_pixel_texture);
+    let mut app = App::new(World::generate(crate::world::MapKind::Islands, 7));
+    let path =
+        std::env::temp_dir().join(format!("cloud-pixel-settings-{}.toml", std::process::id()));
+    app.settings_path = Some(path.clone());
+    app.flight.cloud_pixel_texture = true;
+    app.open_settings();
+    app.selection = 1;
+    app.activate_setting();
+    app.selection = 2;
+    app.activate_setting();
+    assert!(!app.flight.cloud_pixel_texture);
+    assert!(!super::settings::Settings::load(Some(&path)).cloud_pixel_texture);
+    app.flight.change_world(&app.world);
+    assert!(!app.flight.cloud_pixel_texture);
+    app.activate_setting();
+    assert!(super::settings::Settings::load(Some(&path)).cloud_pixel_texture);
+    std::fs::remove_file(path).unwrap();
 }
 
 #[test]
@@ -679,7 +702,7 @@ fn settings_categories_route_controls_and_persist_portal_preview() {
     tap(&mut app, ENTER);
     assert_eq!(app.settings_section, Some(SettingsSection::Advanced));
     assert_eq!(app.selection, 0);
-    app.selection = 3;
+    app.selection = 4;
     app.flight.portal_preview = true;
     tap(&mut app, ENTER);
     assert!(!app.flight.portal_preview);
