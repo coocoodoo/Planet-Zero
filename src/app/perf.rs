@@ -4,6 +4,14 @@ use std::time::{Duration, Instant};
 const FRAME_SAMPLES: usize = 180;
 const RESOURCE_SAMPLES: usize = 60;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PerfPanel {
+    Off,
+    Full,
+    Half,
+    Mini,
+}
+
 #[derive(Clone, Copy, Default)]
 pub struct FrameTiming {
     pub logic: f32,

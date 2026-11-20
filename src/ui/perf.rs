@@ -1,10 +1,9 @@
 use super::canvas::{CYAN, Canvas, GOLD, MUTED, RED, WHITE};
-use crate::app::App;
+use crate::app::{App, PerfPanel, PerfStats};
 
 const X: i32 = 18;
 const Y: i32 = 12;
 const W: i32 = 284;
-const H: i32 = 110;
 const LOGIC: [u8; 3] = [114, 211, 135];
 const OUTPUT: [u8; 3] = [188, 139, 236];
 // 3x5 像素字体，每个字符占 4 列
@@ -88,7 +87,6 @@ fn graph(
     limit: Option<f32>,
 ) {
     let [x, y, w, h] = bounds;
-    canvas.rect(x, y, w, h, [14, 23, 34]);
     if count == 0 {
         return;
     }
@@ -121,21 +119,62 @@ fn graph(
     }
 }
 
+fn background(canvas: &mut Canvas, bounds: [i32; 4]) {
+    let [x, y, w, h] = bounds;
+    for row in y..y + h {
+        let start = (row as usize * crate::app::WIDTH + x as usize) * 4;
+        for pixel in canvas.pixels[start..start + w as usize * 4].chunks_exact_mut(4) {
+            let alpha = pixel[3] as u32;
+            let combined = 7 * 255 + 3 * alpha;
+            for (channel, color) in pixel[..3].iter_mut().zip([8, 12, 20]) {
+                *channel = ((color * 7 * 255 + *channel as u32 * alpha * 3) / combined) as u8;
+            }
+            pixel[3] = (combined / 10) as u8;
+        }
+    }
+}
+
 pub(super) fn draw(app: &mut App) {
-    if !app.perf_show {
+    if app.perf_panel == PerfPanel::Off {
         return;
     }
     let stats = &app.perf;
-    let resource = stats.resources.back().copied().unwrap_or_default();
     let mut canvas = Canvas {
         pixels: &mut app.screen,
     };
-    canvas.rect(X, Y, W, H, [8, 12, 20]);
+    if app.perf_panel == PerfPanel::Mini {
+        let resource = stats.resources.back().copied().unwrap_or_default();
+        let line = format!(
+            "{} {:.1}  DRAW {:.1}MS  CPU {}%  MEM {}M",
+            if stats.asynchronous { "UI FPS" } else { "FPS" },
+            stats.fps,
+            stats.timing.map_or(stats.render_ms, |t| t.draw),
+            value(resource.cpu, 0),
+            value(resource.rss_mb, 1)
+        );
+        let width = line.len() as i32 * 4 + 8;
+        let x = (crate::app::WIDTH as i32 - width) / 2;
+        background(&mut canvas, [x, 0, width, 9]);
+        text(&mut canvas, x + 4, 2, &line, WHITE);
+        return;
+    }
+    let half = app.perf_panel == PerfPanel::Half;
+    background(&mut canvas, [X, Y, W, if half { 60 } else { 110 }]);
     canvas.rect(X, Y, W, 1, MUTED);
+    let loading = app.loader.pending.is_some() || app.network.loading();
+    if half {
+        half_summary(&mut canvas, stats, loading);
+    } else {
+        full_summary(&mut canvas, stats, loading);
+    }
+    charts(&mut canvas, stats, half);
+}
+
+fn full_summary(canvas: &mut Canvas, stats: &PerfStats, loading: bool) {
+    let resource = stats.resources.back().copied().unwrap_or_default();
     let left = X + 4;
-    let width = W - 8;
     text(
-        &mut canvas,
+        canvas,
         left,
         Y + 3,
         &format!(
@@ -149,7 +188,7 @@ pub(super) fn draw(app: &mut App) {
         WHITE,
     );
     text(
-        &mut canvas,
+        canvas,
         left,
         Y + 10,
         &format!(
@@ -162,7 +201,7 @@ pub(super) fn draw(app: &mut App) {
         CYAN,
     );
     text(
-        &mut canvas,
+        canvas,
         left,
         Y + 17,
         &format!(
@@ -175,9 +214,8 @@ pub(super) fn draw(app: &mut App) {
         ),
         GOLD,
     );
-    let loading = app.loader.pending.is_some() || app.network.loading();
     text(
-        &mut canvas,
+        canvas,
         left,
         Y + 24,
         &format!(
@@ -193,7 +231,7 @@ pub(super) fn draw(app: &mut App) {
         },
     );
     text(
-        &mut canvas,
+        canvas,
         left,
         Y + 31,
         &format!(
@@ -202,19 +240,99 @@ pub(super) fn draw(app: &mut App) {
         ),
         CYAN,
     );
+}
+
+fn half_summary(canvas: &mut Canvas, stats: &PerfStats, loading: bool) {
+    let resource = stats.resources.back().copied().unwrap_or_default();
+    let lines = [
+        (
+            format!(
+                "{} {:.1} AVG {:.1} GOAL {:.0}",
+                if stats.asynchronous { "UI FPS" } else { "FPS" },
+                stats.fps,
+                stats.fps_avg,
+                stats.target_fps
+            ),
+            WHITE,
+        ),
+        (
+            format!(
+                "FRAME {:.1} P95 {:.1} MAX {:.1}MS",
+                stats.frame_ms, stats.frame_p95, stats.frame_peak
+            ),
+            CYAN,
+        ),
+        (
+            format!(
+                "SLOW {:.0}% TRI {} MAP {}",
+                stats.slow_percent,
+                compact(stats.triangles as f32),
+                if loading { "LOADING" } else { "READY" }
+            ),
+            MUTED,
+        ),
+        (
+            format!(
+                "CPU {}/{:.0}% RSS {}M",
+                value(resource.cpu, 0),
+                stats.cpu_capacity,
+                value(resource.rss_mb, 1)
+            ),
+            GOLD,
+        ),
+        (
+            format!(
+                "SWAP {}M FREE {}M",
+                value(resource.swap_mb, 1),
+                value(resource.available_mb, 0)
+            ),
+            GOLD,
+        ),
+        (
+            format!(
+                "FAULT {}/S TEMP {}C",
+                value(resource.faults_per_second, 1),
+                value(resource.temperature, 0)
+            ),
+            MUTED,
+        ),
+        (
+            format!("TERR {:.1} CLOUD {:.1}MS", stats.detail[0], stats.detail[1]),
+            CYAN,
+        ),
+        (
+            format!(
+                "OBJECT {:.1} PORTAL {:.1}MS",
+                stats.detail[2], stats.detail[3]
+            ),
+            CYAN,
+        ),
+    ];
+    for (i, (line, color)) in lines.iter().enumerate() {
+        text(canvas, X + 4, Y + 3 + i as i32 * 7, line, *color);
+    }
+}
+
+fn charts(canvas: &mut Canvas, stats: &PerfStats, half: bool) {
+    let left = if half { X + 172 } else { X + 4 };
+    let width = if half { W - 176 } else { W - 8 };
     let budget = 1000.0 / stats.target_fps;
     let maximum = budget * 3.0;
     let span = stats.frames.iter().map(|s| s.ms).sum::<f32>() / 1000.0;
-    text(
-        &mut canvas,
-        left,
-        Y + 39,
-        &format!("FRAME 0-{maximum:.0}MS  {span:.1}S  LIMIT {budget:.1}MS"),
-        MUTED,
-    );
+    let label = if half {
+        format!("FRAME 0-{maximum:.0}MS {span:.1}S")
+    } else {
+        format!("FRAME 0-{maximum:.0}MS  {span:.1}S  LIMIT {budget:.1}MS")
+    };
+    text(canvas, left, Y + if half { 3 } else { 39 }, &label, MUTED);
     graph(
-        &mut canvas,
-        [left, Y + 46, width, 20],
+        canvas,
+        [
+            left,
+            Y + if half { 10 } else { 46 },
+            width,
+            if half { 14 } else { 20 },
+        ],
         stats.frames.len(),
         |i| Some(stats.frames[i].ms),
         maximum,
@@ -225,11 +343,16 @@ pub(super) fn draw(app: &mut App) {
         let values = [timing.logic, timing.draw, timing.present, timing.wait];
         let colors = [LOGIC, CYAN, OUTPUT, MUTED];
         for (i, label) in ["LOGIC", "DRAW", "OUT", "WAIT"].iter().enumerate() {
+            let label = if half {
+                format!("{} {:.0}", &label[..1], values[i])
+            } else {
+                format!("{label} {:.1}MS", values[i])
+            };
             text(
-                &mut canvas,
-                left + i as i32 * 68,
-                Y + 69,
-                &format!("{label} {:.1}MS", values[i]),
+                canvas,
+                left + i as i32 * if half { 27 } else { 68 },
+                Y + if half { 27 } else { 69 },
+                &label,
                 colors[i],
             );
         }
@@ -239,16 +362,22 @@ pub(super) fn draw(app: &mut App) {
         for (amount, color) in values.into_iter().zip(colors) {
             sum += amount;
             let end = (sum / total * width as f32).round() as i32;
-            canvas.rect(left + previous, Y + 76, end - previous, 5, color);
+            canvas.rect(
+                left + previous,
+                Y + if half { 34 } else { 76 },
+                end - previous,
+                5,
+                color,
+            );
             previous = end;
         }
     } else {
         text(
-            &mut canvas,
+            canvas,
             left,
-            Y + 71,
+            Y + if half { 29 } else { 71 },
             &format!(
-                "DRAW {:.1}MS  {}",
+                "DRAW {:.1}MS {}",
                 stats.render_ms,
                 if stats.asynchronous {
                     "ASYNC"
@@ -259,7 +388,7 @@ pub(super) fn draw(app: &mut App) {
             CYAN,
         );
     }
-    let half = (width - 8) / 2;
+    let graph_width = (width - 8) / 2;
     let maximum_memory = stats
         .resources
         .iter()
@@ -271,43 +400,57 @@ pub(super) fn draw(app: &mut App) {
         .back()
         .zip(stats.resources.front())
         .map_or(0.0, |(last, first)| last.elapsed - first.elapsed);
-    text(
-        &mut canvas,
-        left,
-        Y + 85,
-        &format!("CPU 0-{:.0}%  {seconds:.0}S", stats.cpu_capacity),
-        LOGIC,
-    );
-    text(
-        &mut canvas,
-        left + half + 8,
-        Y + 85,
-        &format!("RSS 0-{maximum_memory:.0}M  {seconds:.0}S"),
-        GOLD,
-    );
-    graph(
-        &mut canvas,
-        [left, Y + 92, half, 14],
-        stats.resources.len(),
-        |i| stats.resources[i].cpu,
-        stats.cpu_capacity,
-        LOGIC,
-        None,
-    );
-    graph(
-        &mut canvas,
-        [left + half + 8, Y + 92, half, 14],
-        stats.resources.len(),
-        |i| stats.resources[i].rss_mb,
-        maximum_memory,
-        GOLD,
-        None,
-    );
+    for (i, label, maximum, color) in [
+        (0, "CPU", stats.cpu_capacity, LOGIC),
+        (1, "RSS", maximum_memory, GOLD),
+    ] {
+        let unit = if i == 0 { "%" } else { "M" };
+        let title = if half {
+            format!("{label}{maximum:.0}{unit} {seconds:.0}S")
+        } else {
+            format!("{label} 0-{maximum:.0}{unit}  {seconds:.0}S")
+        };
+        let x = left + i * (graph_width + 8);
+        text(canvas, x, Y + if half { 42 } else { 85 }, &title, color);
+        graph(
+            canvas,
+            [
+                x,
+                Y + if half { 49 } else { 92 },
+                graph_width,
+                if half { 7 } else { 14 },
+            ],
+            stats.resources.len(),
+            |n| {
+                if i == 0 {
+                    stats.resources[n].cpu
+                } else {
+                    stats.resources[n].rss_mb
+                }
+            },
+            maximum,
+            color,
+            None,
+        );
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn panel_background_blends_over_both_scene_and_transparent_overlay() {
+        let mut pixels = vec![0; crate::app::WIDTH * crate::app::HEIGHT * 4];
+        pixels[4..8].copy_from_slice(&[200, 160, 120, 255]);
+        let mut canvas = Canvas {
+            pixels: &mut pixels,
+        };
+        background(&mut canvas, [0, 0, 2, 1]);
+        assert_eq!(&canvas.pixels[..4], &[8, 12, 20, 178]);
+        assert_eq!(&canvas.pixels[4..8], &[65, 56, 50, 255]);
+        assert_eq!(&canvas.pixels[8..12], &[0, 0, 0, 0]);
+    }
 
     #[test]
     fn history_spans_the_width_and_keeps_compressed_spikes() {

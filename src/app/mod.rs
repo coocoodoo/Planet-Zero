@@ -5,7 +5,7 @@ mod input;
 pub mod navigation;
 pub(crate) mod orbit;
 pub mod perf;
-pub use perf::PerfStats;
+pub use perf::{PerfPanel, PerfStats};
 mod records;
 mod settings;
 pub(crate) use settings::SettingsSection;
@@ -87,7 +87,7 @@ pub struct App {
     records: Vec<(String, u32)>,
     record_path: Option<PathBuf>,
     pub keys: HashSet<u16>,
-    pub perf_show: bool,
+    pub perf_panel: PerfPanel,
     pub perf: PerfStats,
     escape_since: Option<Instant>,
 }
@@ -181,7 +181,7 @@ impl App {
             records,
             record_path,
             keys: HashSet::new(),
-            perf_show: false,
+            perf_panel: PerfPanel::Off,
             perf: PerfStats::default(),
             escape_since: None,
         }
@@ -277,7 +277,7 @@ impl App {
         self.keys.clear();
     }
     pub fn step(&mut self, dt: f32, external: Option<Controls>) {
-        if self.perf_show {
+        if self.perf_panel != PerfPanel::Off {
             self.perf.record(dt);
         }
         let dt = dt.clamp(0.0, 0.1);

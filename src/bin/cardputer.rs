@@ -441,7 +441,7 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
         if let Some(wait) = period.checked_sub(start.elapsed()) {
             std::thread::sleep(wait);
         }
-        if game.perf_show {
+        if game.perf_panel != flight_club::app::PerfPanel::Off {
             game.perf.last_timing = Some(flight_club::app::perf::FrameTiming {
                 logic: (draw_start - start).as_secs_f32() * 1000.0,
                 draw: (drawn - draw_start).as_secs_f32() * 1000.0,

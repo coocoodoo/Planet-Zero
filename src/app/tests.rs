@@ -472,19 +472,30 @@ fn chart_zooms_pans_marks_and_navigates_without_changing_the_view() {
 }
 
 #[test]
-fn perf_key_toggles_overlay_without_sound_conflict() {
+fn perf_key_cycles_layouts_without_resetting_samples_or_conflicting_with_sound() {
     let mut app = App::new(World::new(7));
     let press = |app: &mut App, key| {
         app.key(key, 1);
         app.key(key, 0);
     };
-    assert!(!app.perf_show);
-    press(&mut app, 68);
-    assert!(app.perf_show);
-    press(&mut app, 67);
-    assert!(app.perf_show);
-    press(&mut app, 68);
-    assert!(!app.perf_show);
+    assert_eq!(app.perf_panel, PerfPanel::Off);
+    press(&mut app, crate::keys::PERF);
+    assert_eq!(app.perf_panel, PerfPanel::Full);
+    app.step(0.3, None);
+    let count = app.perf.frames.len();
+    press(&mut app, crate::keys::SOUND);
+    assert_eq!(app.perf_panel, PerfPanel::Full);
+    for panel in [PerfPanel::Half, PerfPanel::Mini, PerfPanel::Off] {
+        press(&mut app, crate::keys::PERF);
+        assert_eq!(app.perf_panel, panel);
+        assert_eq!(app.perf.frames.len(), count);
+        assert_eq!(app.perf.frames.back().unwrap().ms, 300.0);
+    }
+    press(&mut app, crate::keys::PERF);
+    assert_eq!(app.perf_panel, PerfPanel::Full);
+    assert!(app.perf.frames.is_empty());
+    app.key(crate::keys::PERF, 2);
+    assert_eq!(app.perf_panel, PerfPanel::Full);
 }
 
 #[test]
@@ -492,7 +503,7 @@ fn perf_stats_track_frames_and_triangles() {
     let mut app = App::new(World::new(7));
     app.record_path = None;
     app.start();
-    app.perf_show = true;
+    app.perf_panel = PerfPanel::Full;
     for _ in 0..70 {
         app.step(1.0 / 30.0, None);
         app.draw();
@@ -634,11 +645,17 @@ fn performance_samples_unclamped_time_only_while_visible() {
     app.step(0.3, None);
     assert_eq!(app.perf.frames.back().unwrap().ms, 300.0);
     assert!((app.flight.time - before - 0.1).abs() < 0.0001);
-    app.key(crate::keys::PERF, 1);
-    app.key(crate::keys::PERF, 0);
-    let count = app.perf.frames.len();
-    app.step(0.1, None);
-    assert_eq!(app.perf.frames.len(), count);
+    for panel in [PerfPanel::Half, PerfPanel::Mini, PerfPanel::Off] {
+        app.key(crate::keys::PERF, 1);
+        app.key(crate::keys::PERF, 0);
+        assert_eq!(app.perf_panel, panel);
+        let count = app.perf.frames.len();
+        app.step(0.1, None);
+        assert_eq!(
+            app.perf.frames.len(),
+            count + usize::from(panel != PerfPanel::Off)
+        );
+    }
 }
 
 #[test]

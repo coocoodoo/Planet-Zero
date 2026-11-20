@@ -18,7 +18,7 @@ const HELP_PAGES: [[&str; 8]; 9] = [
         "R RETRY CURRENT STAGE",
         "F1 HELP / F2 SETTINGS",
         "F9 CHANGE SOUND MODE",
-        "F10 PERFORMANCE PANEL",
+        "F10 CYCLE PERFORMANCE PANEL",
         "ESC BACK / HOLD 2S TO EXIT",
     ],
     [

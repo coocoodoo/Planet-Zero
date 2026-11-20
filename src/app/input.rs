@@ -112,8 +112,13 @@ impl App {
                 return;
             }
             PERF => {
-                self.perf_show = !self.perf_show;
-                if self.perf_show {
+                self.perf_panel = match self.perf_panel {
+                    PerfPanel::Off => PerfPanel::Full,
+                    PerfPanel::Full => PerfPanel::Half,
+                    PerfPanel::Half => PerfPanel::Mini,
+                    PerfPanel::Mini => PerfPanel::Off,
+                };
+                if self.perf_panel == PerfPanel::Full {
                     let target_fps = self.perf.target_fps;
                     let asynchronous = self.perf.asynchronous;
                     self.perf = PerfStats::default();
