@@ -198,12 +198,10 @@ impl Cockpit {
             self.revision += 1;
         }
         self.native.copy_from_slice(&self.base);
-        if flight
+        let sunlight_weight = flight
             .weather
-            .weight(crate::content::weather::Weather::Clear)
-            > 0.0
-            && theme < 2
-        {
+            .weight(crate::content::weather::Weather::Clear);
+        if sunlight_weight > 0.0 && theme < 2 {
             let sunlight = ((flight.yaw + 0.7).sin() * 75.0 + 160.0) as i32;
             for y in 0..170_i32 {
                 let center = sunlight - (y - 95) / 2;
@@ -211,13 +209,9 @@ impl Cockpit {
                 let end = (center + 40).clamp(0, 320) as usize;
                 let row = y as usize * 320;
                 for at in row + start..row + end {
-                    self.native[at] = mix(
-                        self.base[at],
-                        self.lit[at],
-                        flight
-                            .weather
-                            .weight(crate::content::weather::Weather::Clear),
-                    );
+                    if self.base[at] != 0 {
+                        self.native[at] = mix(self.base[at], self.lit[at], sunlight_weight);
+                    }
                 }
             }
         }
@@ -621,6 +615,40 @@ fn levers(p: &mut Paint<'_>, f: &Flight) {
         if d == 4 || d == 5 {
             p.rect(x + 2, y, 3, 1, AMBER);
             p.rect(x - 4, y, 3, 1, rgb(22, 26, 33));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::content::weather::Weather;
+
+    #[test]
+    fn sunlight_preserves_transparent_cockpit_windows() {
+        let world = World::generate(crate::world::MapKind::Islands, 7);
+        let mut flight = Flight::new(&world);
+        flight.weights = [0.0, 0.0, 1.0];
+        let mut cockpit = Cockpit::new();
+        for theme in 0..3 {
+            for yaw in [0.0, 0.8, 2.4] {
+                for pitch in [-0.6, 0.0, 0.6] {
+                    flight.yaw = yaw;
+                    flight.pitch = pitch;
+                    for size in [(320, 170), (640, 340)] {
+                        cockpit.prepare(&flight, &world, size, theme, None);
+                        for y in 0..size.1 {
+                            for x in 0..size.0 {
+                                if !cockpit.opaque(x * 320 / size.0, y * 170 / size.1) {
+                                    assert_eq!(cockpit.pixels[y * size.0 + x], 0);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            flight.weather.change(Weather::Cloudy);
+            flight.weather.step(3.0, world.kind);
         }
     }
 }
