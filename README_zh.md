@@ -42,14 +42,14 @@ bash scripts/build-cardputer.sh
 python3 scripts/package-cardputer.py
 ```
 
-构建得到静态 AArch64 可执行文件 `dist/flight-club-cardputer` 和安装包 `dist/flight-club_0.29.5_arm64.deb`
+构建得到静态 AArch64 可执行文件 `dist/flight-club-cardputer` 和安装包 `dist/flight-club_0.29.6_arm64.deb`
 
 打包工具使用本机 `dpkg-deb`，或通过 Docker 在 `ubuntu:22.04` 中运行
 
 将安装包复制到设备，在设备上执行：
 
 ```sh
-sudo apt install ./flight-club_0.29.5_arm64.deb
+sudo apt install ./flight-club_0.29.6_arm64.deb
 ```
 
 安装后从 APPLaunch 选择带战机图标的 Flight Club 启动

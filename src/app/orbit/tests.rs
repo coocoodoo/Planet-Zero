@@ -321,10 +321,19 @@ fn earth_destination_is_stable_while_visible_and_uses_surface_maps() {
         kinds.insert(key.kind);
     }
     assert_eq!(kinds.len(), 10);
+    let routes = app.network.routes(&app.world);
     app.network
         .park_portals(&app.world, app.flight.position, app.flight.axes()[1]);
     for route in app.network.routes(&app.world) {
-        assert!((route.aperture.center - app.flight.position).dot(app.flight.axes()[1]) < -3000.0);
+        assert_eq!(
+            routes
+                .iter()
+                .find(|r| r.id == route.id)
+                .unwrap()
+                .aperture
+                .center,
+            route.aperture.center
+        );
         for body in Body::ALL {
             assert!(body.altitude(route.aperture.center) >= 2199.0);
         }

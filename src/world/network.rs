@@ -59,6 +59,9 @@ impl Network {
     }
     pub fn park_portals(&mut self, world: &World, position: Vec3, forward: Vec3) {
         self.ensure(world);
+        if world.kind == MapKind::Space {
+            return;
+        }
         let direction = forward.normalize_or_zero();
         let right = vec3(-direction.y, direction.x, 0.0).normalize_or_zero();
         let key = MapKey::of(world);
@@ -70,16 +73,8 @@ impl Network {
             .enumerate()
         {
             let side = usize::from(link.ends[1] == key);
-            let mut center = position - direction * (3200.0 + i as f32 * 500.0)
+            let center = position - direction * (3200.0 + i as f32 * 500.0)
                 + right * (i as f32 * 2.0 - 1.0) * 450.0;
-            if world.kind == MapKind::Space {
-                while super::orbit::Body::ALL
-                    .into_iter()
-                    .any(|body| body.altitude(center) < body.orbit_altitude() + 500.0)
-                {
-                    center -= direction * 1200.0;
-                }
-            }
             let mut portal = Portal {
                 center,
                 yaw: forward.x.atan2(-forward.y),
@@ -396,6 +391,27 @@ fn endpoint(world: &World, id: u32) -> Portal {
     }
 }
 fn place_aperture(world: &World, aperture: &mut Portal, other: Option<Portal>) {
+    if world.kind == MapKind::Space {
+        use super::orbit::Body;
+        let body = if other.is_some_and(|portal| {
+            portal.center.distance_squared(Body::Moon.center())
+                < portal.center.distance_squared(Body::Earth.center())
+        }) {
+            Body::Earth
+        } else {
+            Body::Moon
+        };
+        let neighbor = if body == Body::Moon {
+            Body::Earth
+        } else {
+            Body::Moon
+        };
+        let direction = (neighbor.center() - body.center()).normalize();
+        aperture.center =
+            body.center() + direction * (body.radius() + body.orbit_altitude() + PRELOAD_DISTANCE);
+        aperture.yaw = direction.x.atan2(-direction.y);
+        return;
+    }
     safe_aperture(world, aperture);
     let Some(other) = other else { return };
     let offset = (aperture.center - other.center).truncate();
@@ -417,17 +433,6 @@ fn place_aperture(world: &World, aperture: &mut Portal, other: Option<Portal>) {
     }
 }
 fn safe_aperture(world: &World, aperture: &mut Portal) {
-    if world.kind == MapKind::Space {
-        for body in super::orbit::Body::ALL {
-            let delta = aperture.center - body.center();
-            if delta.length() < body.radius() + body.orbit_altitude() + 500.0 {
-                aperture.center = body.center()
-                    + delta.try_normalize().unwrap_or(Vec3::Y)
-                        * (body.radius() + body.orbit_altitude() + 500.0);
-            }
-        }
-        return;
-    }
     let mut floor = 0.0_f32;
     for x in [-1.0, 0.0, 1.0] {
         for y in [-1.0, 0.0, 1.0] {
@@ -535,6 +540,50 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn space_routes_stay_near_distinct_bodies() {
+        use super::super::orbit::Body;
+        let world = World::generate(MapKind::Space, MapKind::Space.seed());
+        let check = |network: &Network| {
+            let routes = network.routes(&world);
+            assert_eq!(routes.len(), 2);
+            assert!(
+                routes[0]
+                    .aperture
+                    .center
+                    .distance(routes[1].aperture.center)
+                    > 10000.0
+            );
+            for body in Body::ALL {
+                assert_eq!(
+                    routes
+                        .iter()
+                        .filter(|route| {
+                            (body.altitude(route.aperture.center)
+                                - body.orbit_altitude()
+                                - PRELOAD_DISTANCE)
+                                .abs()
+                                < 0.01
+                        })
+                        .count(),
+                    1
+                );
+            }
+        };
+        for seed in [7, 7109] {
+            let mut network = Network::new(seed);
+            network.ensure(&world);
+            check(&network);
+            let id = network.routes(&world)[0].id;
+            network.stage_portal(&world, id, Vec3::ZERO, -Vec3::Y);
+            check(&network);
+            network.summon(&world, Vec3::ZERO, -Vec3::Y);
+            check(&network);
+            network.park_portals(&world, Vec3::ZERO, Vec3::Z);
+            check(&network);
         }
     }
 
