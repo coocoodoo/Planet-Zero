@@ -239,30 +239,27 @@ pub(super) fn stone_texel(p: Vec3) -> usize {
     stone_texture()[index(u, v, 256)] as usize
 }
 
-fn stone_level(p: Vec3, level: usize) -> f32 {
-    let levels = stone_mips();
-    let level = level.min(levels.len() - 1);
-    let size = 256usize >> level;
-    let u = ((p.x * 0.8 + p.y * 0.6).floor() as i32) >> level;
-    let v = ((p.z * 1.2 + p.y * 0.3).floor() as i32) >> level;
-    levels[level][index(u, v, size)] as f32
-}
-
 /// 按视距在相邻层级间插值采样，越远纹样越平缓
-pub(super) fn stone_texel_lod(p: Vec3, lod: f32) -> f32 {
+pub(super) fn stone_texels_lod<const N: usize>(points: [Vec3; N], lod: f32) -> [f32; N] {
     if lod <= 0.0 {
-        return stone_texel(p) as f32;
+        return points.map(|p| stone_texel(p) as f32);
     }
-    let top = stone_mips().len() as f32 - 1.0;
-    let lod = lod.clamp(0.0, top);
+    let levels = stone_mips();
+    let lod = lod.clamp(0.0, levels.len() as f32 - 1.0);
     let lower = lod.floor() as usize;
     let blend = lod - lower as f32;
-    let value = stone_level(p, lower);
-    if blend == 0.0 {
-        value
-    } else {
-        value * (1.0 - blend) + stone_level(p, lower + 1) * blend
-    }
+    points.map(|p| {
+        let u = (p.x * 0.8 + p.y * 0.6).floor() as i32;
+        let v = (p.z * 1.2 + p.y * 0.3).floor() as i32;
+        let sample =
+            |level: usize| levels[level][index(u >> level, v >> level, 256usize >> level)] as f32;
+        let value = sample(lower);
+        if blend == 0.0 {
+            value
+        } else {
+            value * (1.0 - blend) + sample(lower + 1) * blend
+        }
+    })
 }
 
 #[cfg(test)]
@@ -272,10 +269,7 @@ mod tests {
         let mut values = Vec::new();
         for y in 0..24 {
             for x in 0..24 {
-                values.push(stone_texel_lod(
-                    vec3(x as f32 * 7.0, y as f32 * 7.0, 20.0),
-                    lod,
-                ));
+                values.push(stone_texels_lod([vec3(x as f32 * 7.0, y as f32 * 7.0, 20.0)], lod)[0]);
             }
         }
         let mean = values.iter().sum::<f32>() / values.len() as f32;

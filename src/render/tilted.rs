@@ -154,7 +154,14 @@ impl Renderer {
         self.terrain_cache.topology(&leaves);
         let mut boundary = Vec::with_capacity(16);
         for (x, y, size) in leaves {
-            let sample = |x, y| vec3(x as f32, y as f32, world.mesh_height(x, y));
+            let sample = |x, y| {
+                let uv = vec2(x as f32, y as f32);
+                let height = self.warp.map_or_else(
+                    || world.mesh_height(x, y),
+                    |warp| self.terrain_cache.terrain_height(warp, world, uv),
+                );
+                uv.extend(height)
+            };
             let center = sample(x + size / 2, y + size / 2);
             boundary.clear();
             for edge in 0..4 {
@@ -214,6 +221,46 @@ impl Renderer {
         faceted: bool,
         fog: (f32, f32, u32),
     ) {
+        if let Some(warp) = self.warp.filter(|warp| warp.bend == 1.0) {
+            let half = std::f32::consts::FRAC_PI_2 * crate::world::orbit::UV_SCALE;
+            if let Some(outside) = vertices.iter().find(|p| (p.y - warp.origin.y).abs() > half) {
+                let sign = (outside.y - warp.origin.y).signum();
+                let boundary = warp.origin.y + sign * half;
+                let mut clipped = [Vec3::ZERO; 4];
+                let mut count = 0;
+                for i in 0..3 {
+                    let a = vertices[i];
+                    let b = vertices[(i + 1) % 3];
+                    let da = (boundary - a.y) * sign;
+                    let db = (boundary - b.y) * sign;
+                    if da >= 0.0 {
+                        clipped[count] = a;
+                        count += 1;
+                    }
+                    if (da >= 0.0) != (db >= 0.0) {
+                        let mut edge = a.lerp(b, da / (da - db));
+                        edge.y = boundary;
+                        edge.z = self
+                            .terrain_cache
+                            .terrain_height(warp, world, edge.truncate());
+                        clipped[count] = edge;
+                        count += 1;
+                    }
+                }
+                for i in 1..count.saturating_sub(1) {
+                    let vertices = [clipped[0], clipped[i], clipped[i + 1]];
+                    self.ground_polygon(
+                        camera,
+                        world,
+                        vertices,
+                        vertices.map(|p| warp.point(p)),
+                        faceted,
+                        fog,
+                    );
+                }
+                return;
+            }
+        }
         let points = vertices.map(|p| {
             self.warp
                 .map_or(p, |warp| self.terrain_cache.warped_point(warp, p))
@@ -311,6 +358,14 @@ impl Renderer {
         let inverse_area = 1.0 / area as f32;
         let columns = super::primitives::TriangleColumns::new([a, b, c]);
         let weighted = std::array::from_fn::<_, 3, _>(|i| vertices[i] * inverse[i]);
+        let polar = self.warp.and_then(|warp| {
+            let samples = std::array::from_fn::<_, 3, _>(|i| {
+                self.terrain_cache
+                    .polar_sample(warp, vertices[i].truncate())
+                    * inverse[i]
+            });
+            samples.iter().any(|p| p.z > 0.0).then_some(samples)
+        });
         let vertex_shade = if self.warp.is_some() || (faceted && altitude_fade == 0.0) {
             [shade; 3]
         } else {
@@ -425,11 +480,18 @@ impl Renderer {
                         smooth_shade
                     }
                 };
+                let cap = polar.map(|samples| {
+                    let u = u_edge as f32 * inverse_area;
+                    let v = v_edge as f32 * inverse_area;
+                    (samples[2] + (samples[0] - samples[2]) * u + (samples[1] - samples[2]) * v)
+                        * reciprocal
+                });
+                let uv = cap.filter(|p| p.z >= 0.9999).unwrap_or(pos);
                 let cell = sample_step;
-                let gx = (pos.x / cell).floor();
-                let gy = (pos.y / cell).floor();
-                let fx = pos.x / cell - gx;
-                let fy = pos.y / cell - gy;
+                let gx = (uv.x / cell).floor();
+                let gy = (uv.y / cell).floor();
+                let fx = uv.x / cell - gx;
+                let fy = uv.y / cell - gy;
                 let samples = [
                     (gx, gy, (1.0 - fx) * (1.0 - fy)),
                     (gx + 1.0, gy, fx * (1.0 - fy)),
@@ -470,10 +532,19 @@ impl Renderer {
                     self.terrain_cache.shade(materials[0], shade)
                 } else {
                     let (mut red, mut green, mut blue) = (0.0_f32, 0.0_f32, 0.0_f32);
-                    for ((ix, iy, weight), material) in samples.into_iter().zip(materials) {
+                    let details = if materials.iter().any(|&m| rocky(m)) {
+                        super::geology::stone_texels_lod(
+                            samples.map(|(x, y, _)| vec3(x * cell, y * cell, pos.z)),
+                            lod,
+                        )
+                    } else {
+                        [0.0; 4]
+                    };
+                    for (((_, _, weight), material), detail) in
+                        samples.into_iter().zip(materials).zip(details)
+                    {
                         let detail = if rocky(material) {
-                            let sample = vec3(ix * cell, iy * cell, pos.z);
-                            0.65 + super::geology::stone_texel_lod(sample, lod) * 0.035
+                            0.65 + detail * 0.035
                         } else {
                             1.0
                         };
@@ -487,6 +558,11 @@ impl Renderer {
                     }
                     rgb(red as u8, green as u8, blue as u8)
                 };
+                if let Some(sample) = cap.filter(|p| p.z < 0.9999) {
+                    let material =
+                        world.materials[index(sample.x as i32, sample.y as i32, SIZE)] as usize;
+                    color = mix(color, self.terrain_cache.shade(material, shade), sample.z);
+                }
                 if let Some(warp) = self.warp {
                     color = super::orbit::earth_color(
                         warp,
@@ -507,6 +583,51 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn spherical_terrain_covers_both_poles_with_off_grid_origins() {
+        use crate::world::orbit::{Body, SurfaceWarp, UV_SCALE};
+        let mut world = World::generate(crate::world::MapKind::Moon, 7);
+        world.heights.fill(60);
+        world.materials.fill(27);
+        world.update_ceiling();
+        let origin = vec2(2073.25, 1919.5);
+        let mut renderer = Renderer::single();
+        renderer.w = 320;
+        renderer.h = 170;
+        renderer.visible = vec![(0, 170); 320];
+        renderer.depth = vec![f32::INFINITY; 320 * 170];
+        renderer.pixels = vec![0; 320 * 170];
+        for body in Body::ALL {
+            for latitude in [-90.0_f32, -82.0, 82.0, 90.0] {
+                let anchor = origin + vec2(0.7, latitude.to_radians()) * UV_SCALE;
+                renderer.warp = Some(SurfaceWarp::new(body, origin, anchor, 1.0));
+                renderer.depth.fill(f32::INFINITY);
+                let camera = Camera {
+                    position: anchor.extend(1500.0),
+                    yaw: 0.0,
+                    pitch: -std::f32::consts::FRAC_PI_2,
+                    forward: -Vec3::Z,
+                    right: Vec3::X,
+                    up: Vec3::Y,
+                    q: 1.0 / 80.0,
+                    scale: 3.0,
+                    slope: 0.0,
+                    center: vec2(160.0, 85.0),
+                };
+                let weather =
+                    crate::content::weather::WeatherState::new(Weather::Clear, world.kind, 7);
+                renderer.pitched_terrain(&world, false, &camera, weather);
+                for x in 125..195 {
+                    for y in 50..120 {
+                        assert!(
+                            renderer.depth[x * 170 + y].is_finite(),
+                            "{body:?} {latitude}: {x}/{y}"
+                        );
+                    }
+                }
+            }
+        }
+    }
     #[test]
     fn terrain_covers_shared_edges_at_every_camera_attitude() {
         let mut world = World::new(7);

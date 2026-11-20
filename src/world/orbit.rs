@@ -180,6 +180,19 @@ impl SurfaceWarp {
                 p.z - r * (dy + cp * cos_latitude * dx),
             )
     }
+    pub(crate) fn polar_row(&self, y: f32) -> Vec3 {
+        // 极区使用方位投影采样地形，45° 到 75° 之间渐变衔接经纬采样
+        let latitude = (y - self.origin.y) / UV_SCALE;
+        let weight = smooth((latitude.abs() - PI / 4.0) / (PI / 6.0)) * self.bend;
+        let radius = (PI * 0.5 - latitude.abs()).max(0.0) * UV_SCALE;
+        let pole = self.origin.y + latitude.signum() * PI * 0.5 * UV_SCALE;
+        vec3(radius, pole, weight)
+    }
+    pub(crate) fn polar_sample(&self, uv: Vec2) -> (Vec2, f32) {
+        let row = self.polar_row(uv.y);
+        let (s, c) = ((uv.x - self.origin.x) / UV_SCALE).sin_cos();
+        (vec2(self.origin.x, row.y) + vec2(c, s) * row.x, row.z)
+    }
     pub fn contains(&self, p: Vec2, margin: f32) -> bool {
         let expansion = (1.0 - self.bend) * 6000.0 + margin;
         (p.x - self.anchor.x).abs() <= PI * UV_SCALE + expansion
@@ -200,6 +213,32 @@ pub fn thin_air(altitude: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn polar_terrain_has_one_height_and_material_location_at_each_pole() {
+        let world = World::generate(MapKind::Moon, 7);
+        let origin = vec2(2073.25, 1919.5);
+        for body in Body::ALL {
+            let mut warp = SurfaceWarp::new(body, origin, origin, 1.0);
+            for sign in [-1.0, 1.0] {
+                let pole = origin + vec2(0.0, sign * PI * 0.5 * UV_SCALE);
+                let height = world.mesh_height(pole.x as i32, pole.y as i32);
+                for longitude in [-PI, -2.0, -0.7, 0.0, 1.2, PI] {
+                    let uv = pole + vec2(longitude * UV_SCALE, 0.0);
+                    let (sample, weight) = warp.polar_sample(uv);
+                    assert!(sample.distance(pole) < 0.001);
+                    assert_eq!(weight, 1.0);
+                    assert_eq!(world.mesh_height(sample.x as i32, sample.y as i32), height);
+                    let p = warp.point(uv.extend(height));
+                    assert!(p.distance(warp.point(pole.extend(height))) < 0.002);
+                }
+            }
+            let equator = origin + vec2(800.0, 200.0);
+            assert_eq!(warp.polar_sample(equator).1, 0.0);
+            warp.set_bend(0.0);
+            let uv = origin + vec2(900.0, 1024.0);
+            assert_eq!(warp.polar_sample(uv).1, 0.0);
+        }
+    }
     #[test]
     fn surface_sky_keeps_the_other_body_distant_and_above_the_horizon() {
         for kind in [MapKind::Moon, MapKind::Islands] {

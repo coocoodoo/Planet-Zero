@@ -12,7 +12,10 @@ pub(super) struct TerrainCache {
     warp_origin: Vec2,
     warp_x: Vec<Vec3>,
     warp_y: Vec<Vec3>,
+    polar_x: Vec<Vec2>,
+    polar_y: Vec<Vec3>,
 }
+
 impl TerrainCache {
     pub fn prepare_warp(
         &mut self,
@@ -23,6 +26,8 @@ impl TerrainCache {
         self.warp_origin = origin;
         self.warp_x.clear();
         self.warp_y.clear();
+        self.polar_x.clear();
+        self.polar_y.clear();
         let scale = warp.angle_scale();
         for i in 0..=span / 4 {
             let angles = (origin + Vec2::splat((i * 4) as f32) - warp.anchor) * scale;
@@ -30,7 +35,36 @@ impl TerrainCache {
                 .push(crate::world::orbit::SurfaceWarp::axis(angles.x));
             self.warp_y
                 .push(crate::world::orbit::SurfaceWarp::axis(angles.y));
+            let uv = origin + Vec2::splat((i * 4) as f32);
+            let longitude = (uv.x - warp.origin.x) / crate::world::orbit::UV_SCALE;
+            let (s, c) = longitude.sin_cos();
+            self.polar_x.push(vec2(c, s));
+            self.polar_y.push(warp.polar_row(uv.y));
         }
+    }
+    pub fn polar_sample(&self, warp: crate::world::orbit::SurfaceWarp, uv: Vec2) -> Vec3 {
+        let at = (uv - self.warp_origin) * 0.25;
+        if at.x.fract() != 0.0 || at.y.fract() != 0.0 {
+            let (sample, weight) = warp.polar_sample(uv);
+            return sample.extend(weight);
+        }
+        let row = self.polar_y[at.y as usize];
+        let sample = vec2(warp.origin.x, row.y) + self.polar_x[at.x as usize] * row.x;
+        sample.extend(row.z)
+    }
+    pub fn terrain_height(
+        &self,
+        warp: crate::world::orbit::SurfaceWarp,
+        world: &World,
+        uv: Vec2,
+    ) -> f32 {
+        let height = world.mesh_height(uv.x as i32, uv.y as i32);
+        let sample = self.polar_sample(warp, uv);
+        if sample.z == 0.0 {
+            return height;
+        }
+        let cap = world.mesh_height(sample.x as i32, sample.y as i32);
+        height + (cap - height) * sample.z
     }
     pub fn warped_point(&self, warp: crate::world::orbit::SurfaceWarp, point: Vec3) -> Vec3 {
         let at = ((point.truncate() - self.warp_origin) * 0.25).as_ivec2();
@@ -112,5 +146,31 @@ impl TerrainCache {
         }
         let level = self.lod[(y * self.side + x) as usize];
         if level == 0 { fallback } else { 1 << level }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::orbit::{Body, SurfaceWarp};
+
+    #[test]
+    fn polar_cache_matches_projection_at_grid_and_clipped_vertices() {
+        let origin = vec2(2073.25, 1919.5);
+        let anchor = origin + vec2(300.0, 980.0);
+        let mut cache = TerrainCache::default();
+        for body in Body::ALL {
+            for bend in [0.0, 0.4, 1.0] {
+                let warp = SurfaceWarp::new(body, origin, anchor, bend);
+                cache.prepare_warp(warp, Vec2::ZERO, SIZE as i32);
+                for x in [0.0, 104.0, 2073.25, 4096.0] {
+                    for y in [0.0, 896.0, 1919.5 + 1024.0, 3072.0, 4096.0] {
+                        let uv = vec2(x, y);
+                        let (sample, weight) = warp.polar_sample(uv);
+                        assert_eq!(cache.polar_sample(warp, uv), sample.extend(weight));
+                    }
+                }
+            }
+        }
     }
 }
