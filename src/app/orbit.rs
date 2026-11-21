@@ -124,6 +124,22 @@ impl App {
             });
         }
     }
+    /// 太空地图中把飞机挡在星体外侧，所有模式都生效
+    pub(super) fn keep_clear_of_bodies(&mut self) {
+        if self.world.kind != MapKind::Space {
+            return;
+        }
+        for body in Body::ALL {
+            let delta = body.center() - self.flight.position;
+            let radius = body.radius() + 420.0;
+            if delta.length() < radius {
+                let normal = (-delta).try_normalize().unwrap_or(Vec3::Z);
+                self.flight
+                    .translate(body.center() + normal * radius - self.flight.position);
+                self.flight.speed *= 0.5;
+            }
+        }
+    }
     pub(super) fn step_orbit(&mut self, dt: f32) -> bool {
         self.orbit.cooldown = (self.orbit.cooldown - dt).max(0.0);
         self.orbit.arrival_notice = (self.orbit.arrival_notice - dt).max(0.0);
@@ -201,14 +217,8 @@ impl App {
                     }
                     self.network.request(key);
                 }
-                let radius = body.radius() + 420.0;
-                if delta.length() < radius {
-                    let normal = (-delta).try_normalize().unwrap_or(Vec3::Z);
-                    self.flight
-                        .translate(body.center() + normal * radius - self.flight.position);
-                    self.flight.speed *= 0.5;
-                }
             }
+            self.keep_clear_of_bodies();
         } else if self.orbit.cooldown <= 0.0
             && self.orbit.boost
             && self.flight.position.z >= Body::of(self.world.kind).surface_altitude()

@@ -846,3 +846,21 @@ fn records_stay_with_the_starting_map_after_wormhole_travel() {
     assert!(app.records.iter().any(|(k, s)| k == &key && *s == 5000));
     assert!(!app.records.iter().any(|(k, _)| k == &app.record_key()));
 }
+
+#[test]
+fn space_bodies_block_the_aircraft_in_every_mode() {
+    use crate::world::{MapKind, orbit::Body};
+    for mode in [Mode::Race, Mode::Coins, Mode::Combat] {
+        let mut app = App::new(World::generate(MapKind::Space, MapKind::Space.seed()));
+        app.mode = mode;
+        app.start();
+        app.mission.countdown = 0.0;
+        let body = Body::Moon;
+        app.flight.position = body.center() + glam::Vec3::Z * (body.radius() * 0.5);
+        app.step(1.0 / 30.0, None);
+        assert!(
+            app.flight.position.distance(body.center()) >= body.radius() + 419.0,
+            "{mode:?}"
+        );
+    }
+}

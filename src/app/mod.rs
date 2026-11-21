@@ -391,6 +391,9 @@ impl App {
         if self.step_orbit(dt) {
             return;
         }
+        if !self.flight.orbit_flight {
+            self.keep_clear_of_bodies();
+        }
         if self.cross_world(previous) {
             return;
         }
