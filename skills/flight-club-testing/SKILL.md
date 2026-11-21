@@ -114,15 +114,19 @@ im.save("/tmp/x.png")
 
 ### 5.1 连接
 
-设备凭据放在本机的环境文件中（包含 `DEVICE_IP`、`DEVICE_USER`、`DEVICE_PASS`、`DEVICE_SUDO_PASS`），通过环境变量导入，不提交到仓库。连接前先确认设备 IP。
+设备凭据统一放在仓库外的设备信息目录 `/home/dev/projects/.secrets/`，文件为 `.device.env`（包含 `DEVICE_IP`、`DEVICE_USER`、`DEVICE_PASS`、`DEVICE_SUDO_PASS`，`DEVICE_SUDO_PASS` 留空时复用 `DEVICE_PASS`），通过环境变量导入，不复制进仓库、不提交、不在输出中打印口令。连接前先确认设备 IP，换网后直接修改该文件中的 `DEVICE_IP`。
 
 ```sh
-set -a; . ./device.env; set +a
+DEVICE_SECRETS=/home/dev/projects/.secrets
+set -a; . "$DEVICE_SECRETS/.device.env"; set +a
+: "${DEVICE_SUDO_PASS:=$DEVICE_PASS}"
+# 设备只接受口令登录；用同目录的 askpass.sh（仅回显 $DEVICE_PASS，不含口令）免交互输入，无需 sshpass
+export DEVICE_PASS SSH_ASKPASS="$DEVICE_SECRETS/askpass.sh" SSH_ASKPASS_REQUIRE=force
 export DEVICE_HOST="${DEVICE_USER:-pi}@${DEVICE_IP}"
 ssh "$DEVICE_HOST" -o ConnectTimeout=8 'uname -m; ls /dev/fb_lcd'
 ```
 
-连接脚本通过 `DEVICE_HOST` 传入主机地址，换网后重新设置 `DEVICE_IP` 即可。`asroot`、`copy`、`fetch` 等封装可以手工展开成 `ssh`/`scp`。
+连接脚本通过 `DEVICE_HOST` 传入主机地址。`asroot`、`copy`、`fetch` 等封装可以手工展开成 `ssh`/`scp`。
 
 设备是 aarch64 Debian（CardputerZero），屏幕 `/dev/fb_lcd` 为 320×170 RGB565，键盘事件节点 `/dev/input/by-path/platform-3f804000.i2c-event`。
 
@@ -131,7 +135,7 @@ ssh "$DEVICE_HOST" -o ConnectTimeout=8 'uname -m; ls /dev/fb_lcd'
 ```sh
 bash scripts/build-cardputer.sh   # 脚本可能没有执行位，用 bash 调用
 scp dist/flight-club-cardputer "$DEVICE_HOST":/tmp/flight-club-cardputer
-ssh "$DEVICE_HOST" 'sudo -S install -m 755 /tmp/flight-club-cardputer /usr/share/APPLaunch/bin/flight-club-cardputer'
+printf '%s\n' "$DEVICE_SUDO_PASS" | ssh "$DEVICE_HOST" 'sudo -S -p "" install -m 755 /tmp/flight-club-cardputer /usr/share/APPLaunch/bin/flight-club-cardputer'
 ```
 
 交叉编译使用 `aarch64-unknown-linux-musl`、`cortex-a53`、`link-self-contained`；脚本已封装这些参数，产物固定为 `dist/flight-club-cardputer`。
