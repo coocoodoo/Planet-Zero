@@ -23,6 +23,24 @@ impl Mission {
         if fire && self.fire_timer <= 0.0 {
             self.fire(flight);
         }
+        self.wing_support(dt, flight);
+        let collision = self.enemy_turn(dt, flight, world, previous);
+        self.jammer_repair(dt);
+        if collision {
+            self.damage(18.0 * self.difficulty.factor());
+        }
+        self.move_shots(dt, flight, world, previous);
+        self.resolve_kills();
+        if self.health <= 0.0 {
+            if self.outcome.is_none() {
+                self.sounds.push(crate::audio::Sound::Destroyed);
+            }
+            self.outcome = Some(false);
+            self.announce("AIRCRAFT LOST");
+        }
+    }
+    /// 僚机支援：每 0.5 秒向视野内的敌机发射追踪弹
+    fn wing_support(&mut self, dt: f32, flight: &Flight) {
         self.support_timer -= dt;
         if self.support > 0.0 && self.support_timer <= 0.0 {
             self.support_timer = 0.5;
@@ -50,6 +68,9 @@ impl Mission {
                 }
             }
         }
+    }
+    /// 敌机机动与射击；返回本帧是否与玩家相撞
+    fn enemy_turn(&mut self, dt: f32, flight: &Flight, world: &World, previous: Vec3) -> bool {
         let (forward, right) = heading(flight.yaw);
         let difficulty = self.difficulty.factor();
         let mut collision = false;
@@ -138,6 +159,10 @@ impl Mission {
                 }
             }
         }
+        collision
+    }
+    /// 维修无人机修复附近仍存活的敌机
+    fn jammer_repair(&mut self, dt: f32) {
         let jammers: Vec<_> = self
             .enemies
             .iter()
@@ -153,9 +178,9 @@ impl Mission {
                 enemy.health = (enemy.health + dt * 8.0).min(enemy.max_health);
             }
         }
-        if collision {
-            self.damage(18.0 * difficulty);
-        }
+    }
+    /// 推进弹体并结算命中、擦弹与溅射
+    fn move_shots(&mut self, dt: f32, flight: &Flight, world: &World, previous: Vec3) {
         let mut explosions = Vec::new();
         let mut damage = 0.0_f32;
         for shot in &mut self.shots {
@@ -252,6 +277,9 @@ impl Mission {
             self.effect(position, radius, weapon.color());
         }
         self.shots.retain(|s| s.life > 0.0);
+    }
+    /// 移除被击毁的敌机，结算得分、连击与掉落
+    fn resolve_kills(&mut self) {
         let dead: Vec<_> = self
             .enemies
             .iter()
@@ -296,13 +324,6 @@ impl Mission {
                     collected: false,
                 });
             }
-        }
-        if self.health <= 0.0 {
-            if self.outcome.is_none() {
-                self.sounds.push(crate::audio::Sound::Destroyed);
-            }
-            self.outcome = Some(false);
-            self.announce("AIRCRAFT LOST");
         }
     }
     pub(super) fn damage(&mut self, amount: f32) {

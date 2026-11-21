@@ -43,54 +43,8 @@ impl World {
                 let at = y * NOISE_SIZE + x;
                 let e = elevation[at];
                 let m = moisture[at];
-                elevation[at] = match kind {
-                    MapKind::Moon
-                    | MapKind::Space
-                    | MapKind::Fjords
-                    | MapKind::Icebergs
-                    | MapKind::City
-                    | MapKind::Highlands => unreachable!(),
-                    MapKind::Islands => (e - sea) / (1.0 - sea) * 59.0,
-                    MapKind::Alpine => {
-                        let ridge =
-                            (e * e * 165.0 + 5.0) * ((m - 0.49).abs() / 0.075).clamp(0.0, 1.0);
-                        if ridge < 1.1 { -1.0 } else { ridge }
-                    }
-                    MapKind::Canyon => {
-                        let canyon = ((m - 0.5).abs() - 0.025).max(0.0) / 0.075;
-                        if canyon < 0.08 {
-                            -1.0
-                        } else {
-                            (14.0 + (e * 8.0).floor() * 17.0) * canyon.min(1.0)
-                        }
-                    }
-                    MapKind::Desert => {
-                        if m > 0.73 && e < 0.4 {
-                            -1.0
-                        } else {
-                            8.0 + e * 19.0
-                                + (x as f32 * 0.13 + y as f32 * 0.047 + m * 6.0).sin() * 5.0
-                                + (e - 0.64).max(0.0) * 78.0
-                        }
-                    }
-                    MapKind::Wetlands => {
-                        if (m - 0.5).abs() < 0.028 {
-                            -1.0
-                        } else {
-                            (e - sea) * 30.0
-                        }
-                    }
-                    MapKind::Volcanic => {
-                        let d = ((x as f32 - 532.0).powi(2) + (y as f32 - 508.0).powi(2)).sqrt();
-                        let cone = (1.0 - d / 155.0).max(0.0) * 79.0;
-                        lava[at] = d < 25.0 || cone > 22.0 && (m - 0.5).abs() < 0.017;
-                        if d < 30.0 {
-                            27.0 + d * 0.35
-                        } else {
-                            ((e - 0.38) * 55.0).max(cone)
-                        }
-                    }
-                } * profile.height_scale;
+                elevation[at] = terrain_elevation(kind, e, m, (x, y), sea, &mut lava[at])
+                    * profile.height_scale;
             }
         }
         let mut world = Self {
@@ -147,72 +101,15 @@ impl World {
                         3
                     }
                 } else {
-                    match kind {
-                        MapKind::Moon
-                        | MapKind::Space
-                        | MapKind::Fjords
-                        | MapKind::Icebergs
-                        | MapKind::City
-                        | MapKind::Highlands => unreachable!(),
-                        MapKind::Islands => {
-                            if h < 1.6 {
-                                if n < 40 { 5 } else { 4 }
-                            } else if h > 45.0 {
-                                15 + u8::from(n < 80)
-                            } else if h > 28.0 {
-                                12 + n % 3
-                            } else {
-                                6 + u8::from(n < 40) + u8::from(n > 240) * 2
-                            }
-                        }
-                        MapKind::Alpine => {
-                            if h > 44.0 {
-                                if moisture[gy * NOISE_SIZE + gx] > 0.69 && h < 105.0 {
-                                    26
-                                } else {
-                                    15 + u8::from(n < 55)
-                                }
-                            } else if h > 25.0 {
-                                12 + n % 3
-                            } else {
-                                6 + u8::from(n < 60)
-                            }
-                        }
-                        MapKind::Canyon => {
-                            if h < 4.0 {
-                                17
-                            } else if (level / 5).is_multiple_of(2) {
-                                19
-                            } else {
-                                20
-                            }
-                        }
-                        MapKind::Desert => {
-                            if (b - a) + (d - c) > 0.0 {
-                                17
-                            } else {
-                                18
-                            }
-                        }
-                        MapKind::Wetlands => {
-                            if h < 1.8 {
-                                25
-                            } else if n < 70 {
-                                6
-                            } else {
-                                24
-                            }
-                        }
-                        MapKind::Volcanic => {
-                            if lava[gy * NOISE_SIZE + gx] {
-                                23
-                            } else if level > 50 || n < 50 {
-                                22
-                            } else {
-                                21
-                            }
-                        }
-                    }
+                    land_material(
+                        kind,
+                        h,
+                        level,
+                        n,
+                        moisture[gy * NOISE_SIZE + gx],
+                        lava[gy * NOISE_SIZE + gx],
+                        (b - a) + (d - c),
+                    )
                 };
             }
         }
@@ -220,70 +117,9 @@ impl World {
         drop(moisture);
         drop(lava);
         if matches!(kind, MapKind::Islands | MapKind::Alpine | MapKind::Wetlands) {
-            for gy in (0..SIZE as i32).step_by(6) {
-                for gx in (0..SIZE as i32).step_by(6) {
-                    let n = hash((gy * 977 + gx * 131) as u32 ^ seed);
-                    let cx = gx + (n & 3) as i32;
-                    let cy = gy + ((n >> 2) & 3) as i32;
-                    let at = index(cx, cy, SIZE);
-                    let material = world.materials[at];
-                    if !(6..=8).contains(&material) && material != 24 {
-                        continue;
-                    }
-                    if n > profile.tree_threshold {
-                        continue;
-                    }
-                    let base = world.heights[at];
-                    let radius = 1 + (n & 1) as i32;
-                    for dy in -radius..=radius {
-                        for dx in -radius..=radius {
-                            let distance = dx.abs() + dy.abs();
-                            if distance > radius + 1 {
-                                continue;
-                            }
-                            let cell = index(cx + dx, cy + dy, SIZE);
-                            if world.materials[cell] < 6 {
-                                continue;
-                            }
-                            let height = base + 2 + (radius + 1 - distance).max(0) as u8;
-                            if height > world.heights[cell] {
-                                world.heights[cell] = height;
-                                world.materials[cell] = if distance == 0 {
-                                    9
-                                } else if dx + dy < 0 {
-                                    10
-                                } else {
-                                    11
-                                };
-                            }
-                        }
-                    }
-                }
-            }
+            world.plant_trees(seed, profile.tree_threshold);
         }
-        let mut best = -1.0;
-        for _ in 0..600 {
-            let x = (random.next() * SIZE as f32) as i32;
-            let y = (random.next() * SIZE as f32) as i32;
-            let base = world.height(x as f32, y as f32);
-            let mut score = 0.0;
-            for a in 0..8 {
-                let angle = a as f32 * std::f32::consts::FRAC_PI_4;
-                let at = index(
-                    x + (angle.sin() * 160.0) as i32,
-                    y - (angle.cos() * 160.0) as i32,
-                    SIZE,
-                );
-                score += (world.heights[at] as f32 - base).abs();
-                if world.materials[at] < 4 {
-                    score += 4.0;
-                }
-            }
-            if score > best && base < 45.0 {
-                best = score;
-                world.spawn = (x as f32, y as f32);
-            }
-        }
+        world.choose_spawn(&mut random);
         if kind == MapKind::Volcanic {
             world.spawn = (532.0 * CELL as f32 - 180.0, 508.0 * CELL as f32 + 630.0);
         }
@@ -292,5 +128,211 @@ impl World {
         world.add_landmarks();
         world.update_ceiling();
         world
+    }
+
+    /// 在草地与湿地上种下高出地面的树冠
+    fn plant_trees(&mut self, seed: u32, threshold: u8) {
+        for gy in (0..SIZE as i32).step_by(6) {
+            for gx in (0..SIZE as i32).step_by(6) {
+                let n = hash((gy * 977 + gx * 131) as u32 ^ seed);
+                let cx = gx + (n & 3) as i32;
+                let cy = gy + ((n >> 2) & 3) as i32;
+                let at = index(cx, cy, SIZE);
+                let material = self.materials[at];
+                if !(6..=8).contains(&material) && material != 24 {
+                    continue;
+                }
+                if n > threshold {
+                    continue;
+                }
+                let base = self.heights[at];
+                let radius = 1 + (n & 1) as i32;
+                for dy in -radius..=radius {
+                    for dx in -radius..=radius {
+                        let distance = dx.abs() + dy.abs();
+                        if distance > radius + 1 {
+                            continue;
+                        }
+                        let cell = index(cx + dx, cy + dy, SIZE);
+                        if self.materials[cell] < 6 {
+                            continue;
+                        }
+                        let height = base + 2 + (radius + 1 - distance).max(0) as u8;
+                        if height > self.heights[cell] {
+                            self.heights[cell] = height;
+                            self.materials[cell] = if distance == 0 {
+                                9
+                            } else if dx + dy < 0 {
+                                10
+                            } else {
+                                11
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /// 随机采样，选择四周起伏最丰富、海拔不高的出生点
+    fn choose_spawn(&mut self, random: &mut Random) {
+        let mut best = -1.0;
+        for _ in 0..600 {
+            let x = (random.next() * SIZE as f32) as i32;
+            let y = (random.next() * SIZE as f32) as i32;
+            let base = self.height(x as f32, y as f32);
+            let mut score = 0.0;
+            for a in 0..8 {
+                let angle = a as f32 * std::f32::consts::FRAC_PI_4;
+                let at = index(
+                    x + (angle.sin() * 160.0) as i32,
+                    y - (angle.cos() * 160.0) as i32,
+                    SIZE,
+                );
+                score += (self.heights[at] as f32 - base).abs();
+                if self.materials[at] < 4 {
+                    score += 4.0;
+                }
+            }
+            if score > best && base < 45.0 {
+                best = score;
+                self.spawn = (x as f32, y as f32);
+            }
+        }
+    }
+}
+
+/// 地图特有的地形起伏；`lava` 标记熔岩格
+fn terrain_elevation(
+    kind: MapKind,
+    e: f32,
+    m: f32,
+    (x, y): (usize, usize),
+    sea: f32,
+    lava: &mut bool,
+) -> f32 {
+    match kind {
+        MapKind::Moon
+        | MapKind::Space
+        | MapKind::Fjords
+        | MapKind::Icebergs
+        | MapKind::City
+        | MapKind::Highlands => unreachable!(),
+        MapKind::Islands => (e - sea) / (1.0 - sea) * 59.0,
+        MapKind::Alpine => {
+            let ridge = (e * e * 165.0 + 5.0) * ((m - 0.49).abs() / 0.075).clamp(0.0, 1.0);
+            if ridge < 1.1 { -1.0 } else { ridge }
+        }
+        MapKind::Canyon => {
+            let canyon = ((m - 0.5).abs() - 0.025).max(0.0) / 0.075;
+            if canyon < 0.08 {
+                -1.0
+            } else {
+                (14.0 + (e * 8.0).floor() * 17.0) * canyon.min(1.0)
+            }
+        }
+        MapKind::Desert => {
+            if m > 0.73 && e < 0.4 {
+                -1.0
+            } else {
+                8.0 + e * 19.0
+                    + (x as f32 * 0.13 + y as f32 * 0.047 + m * 6.0).sin() * 5.0
+                    + (e - 0.64).max(0.0) * 78.0
+            }
+        }
+        MapKind::Wetlands => {
+            if (m - 0.5).abs() < 0.028 {
+                -1.0
+            } else {
+                (e - sea) * 30.0
+            }
+        }
+        MapKind::Volcanic => {
+            let d = ((x as f32 - 532.0).powi(2) + (y as f32 - 508.0).powi(2)).sqrt();
+            let cone = (1.0 - d / 155.0).max(0.0) * 79.0;
+            *lava = d < 25.0 || cone > 22.0 && (m - 0.5).abs() < 0.017;
+            if d < 30.0 {
+                27.0 + d * 0.35
+            } else {
+                ((e - 0.38) * 55.0).max(cone)
+            }
+        }
+    }
+}
+
+/// 陆地格的材质；`slope` 为该格沿 x 方向的高度变化
+fn land_material(
+    kind: MapKind,
+    h: f32,
+    level: u8,
+    n: u8,
+    moisture: f32,
+    lava: bool,
+    slope: f32,
+) -> u8 {
+    match kind {
+        MapKind::Moon
+        | MapKind::Space
+        | MapKind::Fjords
+        | MapKind::Icebergs
+        | MapKind::City
+        | MapKind::Highlands => unreachable!(),
+        MapKind::Islands => {
+            if h < 1.6 {
+                if n < 40 { 5 } else { 4 }
+            } else if h > 45.0 {
+                15 + u8::from(n < 80)
+            } else if h > 28.0 {
+                12 + n % 3
+            } else {
+                6 + u8::from(n < 40) + u8::from(n > 240) * 2
+            }
+        }
+        MapKind::Alpine => {
+            if h > 44.0 {
+                if moisture > 0.69 && h < 105.0 {
+                    26
+                } else {
+                    15 + u8::from(n < 55)
+                }
+            } else if h > 25.0 {
+                12 + n % 3
+            } else {
+                6 + u8::from(n < 60)
+            }
+        }
+        MapKind::Canyon => {
+            if h < 4.0 {
+                17
+            } else if (level / 5).is_multiple_of(2) {
+                19
+            } else {
+                20
+            }
+        }
+        MapKind::Desert => {
+            if slope > 0.0 {
+                17
+            } else {
+                18
+            }
+        }
+        MapKind::Wetlands => {
+            if h < 1.8 {
+                25
+            } else if n < 70 {
+                6
+            } else {
+                24
+            }
+        }
+        MapKind::Volcanic => {
+            if lava {
+                23
+            } else if level > 50 || n < 50 {
+                22
+            } else {
+                21
+            }
+        }
     }
 }
