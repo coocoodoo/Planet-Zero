@@ -356,6 +356,7 @@ impl Mission {
         if self.invulnerable <= 0.0 {
             self.health = (self.health - amount).max(0.0);
             self.invulnerable = 0.9;
+            self.hurt = 0.35;
             self.announce("SHIELD HIT / ROLL TO EVADE");
             self.sounds.push(crate::audio::Sound::Damage);
         }

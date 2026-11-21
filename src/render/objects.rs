@@ -1,5 +1,8 @@
 use super::*;
 
+/// 敌机像素的遮罩值，描边时只识别敌机自身
+const ENEMY_MARK: u8 = 3;
+
 impl Renderer {
     pub(super) fn mission(&mut self, mission: &Mission, flight: &Flight, camera: &Camera) {
         for (index, gate) in mission
@@ -242,6 +245,7 @@ impl Renderer {
                 }
             };
             let dark = mix(color, rgb(22, 24, 42), 0.55);
+            self.mark = ENEMY_MARK;
             for side in [-1.0, 1.0] {
                 self.triangle(
                     camera,
@@ -300,6 +304,12 @@ impl Renderer {
                 ],
                 rgb(144, 238, 255),
             );
+            self.mark = 1;
+            // 深色描边，让敌机从地形和云层中跳出来
+            let reach = 20.0 * scale;
+            if let Some((p, d, s)) = camera.project(enemy.position) {
+                self.outline(p, reach * s + 2.0, d, ENEMY_MARK, rgb(20, 18, 36));
+            }
         }
         if flight.hud && mission.mode == Mode::Combat {
             for enemy in &mission.enemies {
@@ -392,19 +402,19 @@ impl Renderer {
             }
         }
         for effect in &mission.effects {
-            let t = 1.0 - effect.life / effect.duration;
-            let c = effect.color;
-            let color = mix(rgb(c[0], c[1], c[2]), rgb(85, 60, 79), t * 0.7);
-            let right = vec3(camera.yaw.cos(), -camera.yaw.sin(), 0.0);
-            for i in 0..20 {
-                let a = i as f32 * std::f32::consts::TAU / 20.0;
-                let b = (i + 1) as f32 * std::f32::consts::TAU / 20.0;
-                self.world_line(
-                    camera,
-                    effect.position + (right * a.cos() + Vec3::Z * a.sin()) * effect.radius * t,
-                    effect.position + (right * b.cos() + Vec3::Z * b.sin()) * effect.radius * t,
-                    color,
-                );
+            self.explosion(effect, camera);
+        }
+        // 枪口焰：开火后短暂的十字星芒
+        if mission.muzzle > 0.0 && flight.weights[2] < 0.5 {
+            let glow = mission.muzzle / 0.06;
+            for side in [-1.0, 1.0] {
+                if let Some((p, d, s)) = camera.project(flight.local(vec3(side * 4.5, 25.0, 0.0))) {
+                    let arm = (s * 3.0 * glow).clamp(1.0, 5.0);
+                    let hot = mix(rgb(255, 196, 92), rgb(255, 255, 236), glow);
+                    self.stroke(p - vec2(arm, 0.0), p + vec2(arm, 0.0), d - 2.0, hot);
+                    self.stroke(p - vec2(0.0, arm), p + vec2(0.0, arm), d - 2.0, hot);
+                    self.point(p, d - 3.0, rgb(255, 255, 255), (arm * 0.35) as i32, 0);
+                }
             }
         }
         if mission.mode == Mode::Combat
@@ -422,6 +432,128 @@ impl Renderer {
                     0,
                     0,
                 );
+            }
+        }
+    }
+
+    /// 爆炸：抖动的火球、上升的烟团与抛物线碎片，小型命中只有火花
+    fn explosion(&mut self, effect: &crate::gameplay::Effect, camera: &Camera) {
+        const BAYER: [f32; 16] = [
+            0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0,
+        ];
+        let Some((p, d, s)) = camera.project(effect.position) else {
+            return;
+        };
+        let t = 1.0 - effect.life / effect.duration;
+        let scale = self.full_width.max(320) as f32 / 320.0;
+        let size = (effect.radius * s).min(26.0 * scale);
+        let tint = rgb(effect.color[0], effect.color[1], effect.color[2]);
+        let seed = effect.position.x.to_bits() ^ effect.position.y.to_bits().rotate_left(11);
+        let mut blob = |r: f32, center: Vec2, color: u32, hot: u32, density: f32, depth: f32| {
+            let reach = r.ceil() as i32;
+            for y in -reach..=reach {
+                for x in -reach..=reach {
+                    let distance = ((x * x + y * y) as f32).sqrt() / r.max(0.5);
+                    if distance > 1.0 {
+                        continue;
+                    }
+                    let at = center + vec2(x as f32, y as f32);
+                    let cell = ((at.y as i32 & 3) << 2 | (at.x as i32 & 3)) as usize;
+                    // 核心实心，只在外缘用抖动过渡，避免整团变成网格
+                    let edge = ((distance - 0.55) / 0.45).max(0.0);
+                    if BAYER[cell] < density * (1.0 - edge) * 16.0 {
+                        let color = if distance < 0.45 { hot } else { color };
+                        self.point(at, depth, color, 0, 0);
+                    }
+                }
+            }
+        };
+        if effect.radius > 10.0 {
+            if t > 0.25 {
+                let k = (t - 0.25) / 0.75;
+                for i in 0..3 {
+                    let side = (i as f32 - 1.0) * 0.45;
+                    let center = p + vec2(side * size, -k * size * (0.7 + i as f32 * 0.15));
+                    let smoke = mix(rgb(84, 78, 86), tint, 0.12);
+                    blob(
+                        size * (0.3 + 0.25 * k),
+                        center,
+                        smoke,
+                        mix(smoke, rgb(120, 112, 116), 0.4),
+                        (1.0 - k) * 0.55,
+                        d + 1.0,
+                    );
+                }
+            }
+            if t < 0.4 {
+                let k = t / 0.4;
+                let color = if k < 0.33 {
+                    mix(rgb(255, 250, 220), rgb(255, 214, 92), k * 3.0)
+                } else if k < 0.66 {
+                    mix(rgb(255, 214, 92), rgb(255, 128, 48), (k - 0.33) * 3.0)
+                } else {
+                    mix(rgb(255, 128, 48), rgb(150, 44, 36), (k - 0.66) * 3.0)
+                };
+                let hot = mix(color, rgb(255, 255, 240), 0.6 * (1.0 - k));
+                blob(
+                    size * (0.3 + 0.55 * k),
+                    p,
+                    color,
+                    hot,
+                    1.0 - k * 0.5,
+                    d - 1.0,
+                );
+            }
+        }
+        let sparks = if effect.radius > 10.0 { 8 } else { 4 };
+        let reach = size.max(6.0 * scale) * 1.6;
+        for i in 0..sparks {
+            let h = crate::world::hash(seed.wrapping_add(i * 7919)) as f32 / 255.0;
+            let angle = (i as f32 + h) * std::f32::consts::TAU / sparks as f32;
+            let travel = reach * t * (0.6 + 0.4 * h);
+            let at =
+                p + vec2(angle.cos(), angle.sin() * 0.8) * travel + vec2(0.0, t * t * reach * 0.5);
+            let color = mix(
+                mix(rgb(255, 245, 200), tint, t.min(0.5) * 2.0),
+                rgb(90, 40, 30),
+                t,
+            );
+            self.point(at, d - 2.0, color, 0, 0);
+            if t < 0.6 {
+                let tail = p + vec2(angle.cos(), angle.sin() * 0.8) * travel * 0.8;
+                self.point(tail, d - 2.0, mix(color, rgb(60, 30, 30), 0.4), 0, 0);
+            }
+        }
+    }
+    /// 在包围范围内给指定遮罩的像素外缘描一圈深色
+    fn outline(&mut self, center: Vec2, reach: f32, depth: f32, mark: u8, color: u32) {
+        let (w, h) = (self.w as i32, self.h as i32);
+        let reach = reach.min(80.0);
+        let x0 = ((center.x - reach) as i32).max(1);
+        let x1 = ((center.x + reach) as i32).min(w - 2);
+        let y0 = ((center.y - reach) as i32).max(1);
+        let y1 = ((center.y + reach) as i32).min(h - 2);
+        let h = self.h;
+        for x in x0..=x1 {
+            for y in y0..=y1 {
+                let at = x as usize * h + y as usize;
+                if self.mask[at] != mark
+                    && self.depth[at] >= depth - 30.0
+                    && [at - 1, at + 1, at - h, at + h]
+                        .iter()
+                        .any(|&n| self.mask[n] == mark)
+                {
+                    self.pixels[at] = color;
+                }
+            }
+        }
+        // 描边完成后归还遮罩，避免与下一架敌机混在一起
+        for x in x0..=x1 {
+            for y in y0..=y1 {
+                let at = x as usize * h + y as usize;
+                if self.mask[at] == mark {
+                    self.mask[at] = 1;
+                }
             }
         }
     }

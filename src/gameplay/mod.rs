@@ -110,6 +110,10 @@ pub struct Mission {
     pub support: f32,
     pub invulnerable: f32,
     pub flash: f32,
+    /// 刚开火后的枪口焰计时
+    pub muzzle: f32,
+    /// 受击后的画面红闪与抖动计时
+    pub hurt: f32,
     pub message: &'static str,
     pub message_time: f32,
     pub gates: Vec<Gate>,
@@ -205,6 +209,8 @@ impl Mission {
             support: 0.0,
             invulnerable: 0.0,
             flash: 0.0,
+            muzzle: 0.0,
+            hurt: 0.0,
             message: "READY",
             message_time: 3.0,
             gates: vec![],
@@ -346,6 +352,8 @@ impl Mission {
         }
         self.message_time = (self.message_time - dt).max(0.0);
         self.flash = (self.flash - dt).max(0.0);
+        self.muzzle = (self.muzzle - dt).max(0.0);
+        self.hurt = (self.hurt - dt).max(0.0);
         self.invulnerable = (self.invulnerable - dt).max(0.0);
         self.effects.iter_mut().for_each(|e| e.life -= dt);
         self.effects.retain(|e| e.life > 0.0);

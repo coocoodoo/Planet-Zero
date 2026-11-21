@@ -199,6 +199,7 @@ impl Mission {
             }
         }
         self.shots_fired += 1;
+        self.muzzle = 0.06;
         self.sounds.push(match w {
             Weapon::Gun => crate::audio::Sound::Gun,
             Weapon::Missile => crate::audio::Sound::Missile,

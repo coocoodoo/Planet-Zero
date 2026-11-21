@@ -102,6 +102,8 @@ pub struct Renderer {
     portal_samples: Vec<(u32, u32, f32)>,
     /// 虫洞合成时读取的原画面副本，跨帧复用
     portal_base: Vec<u32>,
+    /// 实心三角形写入的遮罩值；敌机用独立值以便描边
+    mark: u8,
     near_depth: f32,
     cockpit: crate::render::cockpit::Cockpit,
     visible: Vec<(i32, i32)>,
@@ -223,6 +225,7 @@ impl Renderer {
             portal_view: None,
             portal_samples: Vec::new(),
             portal_base: Vec::new(),
+            mark: 1,
             near_depth: f32::NEG_INFINITY,
             cockpit: crate::render::cockpit::Cockpit::new(),
             visible: vec![],
@@ -437,6 +440,11 @@ impl Renderer {
         }
         self.stages[2] = started.elapsed().as_secs_f64() * 1000.0;
         self.rgba.resize(width * height * 4, 0);
+        let hurt = mission.map_or(0.0, |m| m.hurt / 0.35);
+        if hurt > 0.0 {
+            self.hurt_frame(width, height, hurt, flight.time);
+            return;
+        }
         for (dest, color) in self.rgba.chunks_exact_mut(4).zip(&self.output) {
             let color = if flight.warp_flash > 0.0 {
                 mix(*color, rgb(139, 220, 255), flight.warp_flash * 0.55)
@@ -444,6 +452,29 @@ impl Renderer {
                 *color
             };
             dest.copy_from_slice(&color.to_le_bytes());
+        }
+    }
+    /// 受击画面：整体抖动一两个像素，边缘偏红并随时间淡去
+    fn hurt_frame(&mut self, width: usize, height: usize, hurt: f32, time: f32) {
+        let amplitude = hurt * 2.0 * width as f32 / 320.0;
+        let dx = ((time * 97.0).sin() * amplitude).round() as isize;
+        let dy = ((time * 83.0).cos() * amplitude).round() as isize;
+        let red = rgb(255, 40, 36);
+        for y in 0..height {
+            let sy = (y as isize + dy).clamp(0, height as isize - 1) as usize;
+            let ny = (y as f32 / height as f32 - 0.5).abs() * 2.0;
+            for x in 0..width {
+                let sx = (x as isize + dx).clamp(0, width as isize - 1) as usize;
+                let nx = (x as f32 / width as f32 - 0.5).abs() * 2.0;
+                let edge = nx.max(ny);
+                let color = mix(
+                    self.output[sy * width + sx],
+                    red,
+                    hurt * 0.55 * edge * edge * edge,
+                );
+                let at = (y * width + x) * 4;
+                self.rgba[at..at + 4].copy_from_slice(&color.to_le_bytes());
+            }
         }
     }
     fn layer(&mut self, world: &World, flight: &Flight, camera: &Camera, clouds: bool) {

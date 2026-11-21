@@ -249,7 +249,7 @@ impl Renderer {
                         color
                     };
                     self.pixels[at] = self.fogged_scenery(shaded, depth);
-                    self.mask[at] = 1;
+                    self.mask[at] = self.mark;
                     self.depth[at] = self.depth[at].min(depth);
                 }
             }
