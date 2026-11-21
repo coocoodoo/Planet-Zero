@@ -36,6 +36,21 @@ pub enum Structure {
 }
 
 impl Structure {
+    /// 烙进地形的构件占地半宽（x、y）与高度；不占地形的构件返回 `None`
+    pub fn footprint(self) -> Option<Vec3> {
+        Some(match self {
+            Self::Building => vec3(11.0, 14.0, 91.0),
+            Self::House => vec3(10.0, 12.0, 16.0),
+            Self::Warehouse => vec3(20.0, 28.0, 20.0),
+            Self::IceSpire => vec3(10.0, 10.0, 45.0),
+            Self::Boulder => vec3(9.0, 7.0, 10.0),
+            Self::Windmill => vec3(3.0, 3.0, 70.0),
+            Self::Lighthouse => vec3(6.0, 6.0, 36.0),
+            Self::RockStack => vec3(10.0, 10.0, 50.0),
+            _ => return self.landmark_size(),
+        })
+    }
+    /// 地标建筑的尺寸
     pub fn landmark_size(self) -> Option<Vec3> {
         Some(match self {
             Self::Pyramid => vec3(65.0, 65.0, 90.0),

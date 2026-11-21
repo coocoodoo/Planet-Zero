@@ -43,13 +43,7 @@ pub(super) fn travel(
     };
     for hop in 0..hops {
         for _ in 0..75 {
-            game.app.step(
-                1.0 / 30.0,
-                Some(Controls {
-                    manual: true,
-                    ..Default::default()
-                }),
-            );
+            game.app.step(1.0 / 30.0, Some(Controls { ..controls }));
         }
         let world = game.world.clone();
         game.network.ensure(&world);

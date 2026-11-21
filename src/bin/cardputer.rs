@@ -212,11 +212,7 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
         }
 
         game.flight.set_demo(options.demo);
-        game.flight.weather = flight_club::content::weather::WeatherState::new(
-            options.weather,
-            game.world.kind,
-            game.world.seed,
-        );
+        game.set_weather(options.weather);
         game.flight.snap_view(view);
         for _ in 0..if game.mode == flight_club::gameplay::Mode::Free {
             60
@@ -554,11 +550,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         game.start();
         game.flight.set_demo(options.demo);
     }
-    game.flight.weather = flight_club::content::weather::WeatherState::new(
-        options.weather,
-        game.world.kind,
-        game.world.seed,
-    );
+    game.set_weather(options.weather);
     game.flight
         .snap_view(if options.demo { 1 } else { options.view });
     if let Some(scale) = options.hd {

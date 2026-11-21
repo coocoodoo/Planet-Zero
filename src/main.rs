@@ -65,9 +65,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
         if name == "boss" {
             app.mission.prepare_benchmark(true);
         }
-        for _ in 0..frames {
-            app.step(1.0 / 30.0, None);
-        }
+        app.advance(frames);
         app.draw();
         save_capture(app, &path.join(format!("{name}.png")));
     }
@@ -88,17 +86,10 @@ fn capture(app: &mut App, path: &std::path::Path) {
         let profile = flight_club::content::levels::operation(level);
         app.world = World::generate(profile.map, profile.map.seed()).into();
         app.mode = Mode::Combat;
-        app.flight.weather = flight_club::content::weather::WeatherState::new(
-            profile.weather,
-            app.world.kind,
-            app.world.seed,
-        );
+        app.set_weather(profile.weather);
         app.start();
-        app.flight.view = 1;
-        app.flight.weights = [0.0, 1.0, 0.0];
-        for _ in 0..240 {
-            app.step(1.0 / 30.0, None);
-        }
+        app.flight.snap_view(1);
+        app.advance(240);
         app.draw();
         save_capture(app, &path.join(format!("stage-{level}.png")));
     }
@@ -106,11 +97,8 @@ fn capture(app: &mut App, path: &std::path::Path) {
         app.mode = Mode::Free;
         app.flight.vehicle = vehicle;
         app.start();
-        app.flight.view = 0;
-        app.flight.weights = [1.0, 0.0, 0.0];
-        for _ in 0..60 {
-            app.step(1.0 / 30.0, None);
-        }
+        app.flight.snap_view(0);
+        app.advance(60);
         app.draw();
         save_capture(app, &path.join(format!("vehicle-{}.png", vehicle.name())));
     }

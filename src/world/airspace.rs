@@ -43,12 +43,14 @@ impl Airspace {
         let mut structures = (0.0, 0);
         for object in &world.scenery {
             use super::celestial::Structure;
-            let height = match object.kind {
-                Structure::House => 16.0,
-                Structure::Warehouse => 20.0,
-                Structure::Building => 91.0,
-                _ => continue,
-            } * object.scale;
+            // 只统计普通房屋与楼宇，地标和自然构件不代表街区高度
+            if !matches!(
+                object.kind,
+                Structure::House | Structure::Warehouse | Structure::Building
+            ) {
+                continue;
+            }
+            let height = object.kind.footprint().map_or(0.0, |size| size.z) * object.scale;
             if height <= 48.0 {
                 structures.0 += height;
                 structures.1 += 1;

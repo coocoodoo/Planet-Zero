@@ -205,6 +205,17 @@ impl App {
             run_key: String::new(),
         }
     }
+    /// 立即切换到指定天气，不经过渐变（截图、基准测试与场景脚本用）
+    pub fn set_weather(&mut self, weather: crate::content::weather::Weather) {
+        self.flight.weather =
+            crate::content::weather::WeatherState::new(weather, self.world.kind, self.world.seed);
+    }
+    /// 以固定的 1/30 秒步长推进若干帧
+    pub fn advance(&mut self, frames: usize) {
+        for _ in 0..frames {
+            self.step(1.0 / 30.0, None);
+        }
+    }
     pub fn start(&mut self) {
         self.orbit = orbit::Orbit::default();
         self.navigation = navigation::Navigation::default();

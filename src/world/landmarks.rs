@@ -87,23 +87,11 @@ impl World {
         }
     }
     pub(super) fn place_landmark(&mut self, object: Scenery) {
-        let (rx, ry, height) = match object.kind {
-            Structure::Building => (11.0, 14.0, 91.0),
-            Structure::House => (10.0, 12.0, 16.0),
-            Structure::Warehouse => (20.0, 28.0, 20.0),
-            Structure::IceSpire => (10.0, 10.0, 45.0),
-            Structure::Boulder => (9.0, 7.0, 10.0),
-            Structure::Windmill => (3.0, 3.0, 70.0),
-            Structure::Lighthouse => (6.0, 6.0, 36.0),
-            Structure::RockStack => (10.0, 10.0, 50.0),
-            _ => match object.kind.landmark_size() {
-                Some(size) => (size.x, size.y, size.z),
-                None => {
-                    self.scenery.push(object);
-                    return;
-                }
-            },
+        let Some(size) = object.kind.footprint() else {
+            self.scenery.push(object);
+            return;
         };
+        let (rx, ry, height) = (size.x, size.y, size.z);
         if self.obstacles.is_empty() {
             self.obstacles = vec![0; 256 * 256];
         }

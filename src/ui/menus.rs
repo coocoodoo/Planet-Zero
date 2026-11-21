@@ -137,330 +137,351 @@ fn help_page(mode: Mode, index: usize, device: bool) -> [&'static str; 8] {
 }
 
 pub fn draw(app: &mut App) {
-    let settings_row_height = app.settings_row_height() as i32;
+    // 画布暂时取走屏幕缓冲，各页面函数只读 App
+    let mut screen = std::mem::take(&mut app.screen);
+    let mut c = Canvas {
+        pixels: &mut screen,
+    };
+    match app.page {
+        Page::Loading => loading(&mut c, app),
+        Page::Menu => main_menu(&mut c, app),
+        Page::Help => help(&mut c, app),
+        Page::Settings => settings(&mut c, app),
+        Page::Paused => paused(&mut c, app),
+        Page::Results => results(&mut c, app),
+        _ => {}
+    }
+    app.screen = screen;
+}
+
+/// 加载与虫洞连接提示
+fn loading(c: &mut Canvas, app: &App) {
+    c.shade(30, 48, 260, 72);
+    let heading = if app.travel.is_some() {
+        "WORMHOLE / CONNECTING".into()
+    } else {
+        format!("STAGE {:02} / PREPARING", app.level)
+    };
+    c.text(46, 57, &heading, GOLD);
+    c.text(
+        46,
+        78,
+        app.travel.map_or_else(
+            || {
+                crate::gameplay::progression::operation(app.level)
+                    .name
+                    .as_str()
+            },
+            |route| route.target.kind.name(),
+        ),
+        WHITE,
+    );
+    c.text(46, 100, "ESC MAIN MENU", MUTED);
+}
+
+/// 主菜单：模式、机型、地图等选项
+fn main_menu(c: &mut Canvas, app: &App) {
+    let f = &app.flight;
     let menu_map = app.menu_map();
     let menu_weather = app.menu_weather().name();
-    let mut c = Canvas {
-        pixels: &mut app.screen,
-    };
-    let m = &app.mission;
-    let f = &app.flight;
-    if app.page == Page::Loading {
-        c.shade(30, 48, 260, 72);
-        let heading = if app.travel.is_some() {
-            "WORMHOLE / CONNECTING".into()
-        } else {
-            format!("STAGE {:02} / PREPARING", app.level)
-        };
-        c.text(46, 57, &heading, GOLD);
-        c.text(
-            46,
-            78,
-            app.travel.map_or_else(
-                || {
-                    crate::gameplay::progression::operation(app.level)
-                        .name
-                        .as_str()
-                },
-                |route| route.target.kind.name(),
-            ),
-            WHITE,
-        );
-        c.text(46, 100, "ESC MAIN MENU", MUTED);
-        return;
-    }
-    if app.page == Page::Menu {
-        c.shade(0, 0, 320, 32);
-        c.text_scale(10, 7, "FLIGHT CLUB", WHITE, 2);
-        c.text(224, 8, "ARCADE", CYAN);
-        c.text(224, 20, concat!("V", env!("CARGO_PKG_VERSION")), MUTED);
-        c.shade(8, 34, 304, 115);
-        c.rect(8, 34, 2, 115, CYAN);
-        let stage = format!(
-            "{:02} {}",
-            app.level,
-            crate::gameplay::progression::operation(app.level).name
-        );
-        let rows = [
-            ("MODE", app.mode.name()),
-            ("AIRCRAFT", f.vehicle.name()),
-            ("MAP", menu_map.name()),
-            (
-                "WEATHER",
-                if menu_map.vacuum() {
-                    "VACUUM"
-                } else {
-                    menu_weather
-                },
-            ),
-            ("SKILL", app.difficulty.name()),
-            ("STAGE", stage.as_str()),
-            (
-                "",
-                if app.loader.pending.is_some() {
-                    "START WHEN READY"
-                } else {
-                    "START FLIGHT"
-                },
-            ),
-            ("", "SETTINGS"),
-            (
-                "",
-                if app.device_controls {
-                    "EXIT TO LAUNCHER"
-                } else {
-                    "EXIT TO DESKTOP"
-                },
-            ),
-        ];
-        for (i, (label, value)) in rows.iter().enumerate() {
-            let y = 37 + i as i32 * 12;
-            if i == app.selection {
-                c.rect(12, y - 1, 296, 11, [36, 73, 86]);
-                c.text(16, y, ">", GOLD);
-            }
-            c.text(30, y, label, MUTED);
-            c.text(112, y, value, if i == app.selection { GOLD } else { WHITE });
-            if i < crate::app::START_ROW && i == app.selection {
-                c.text(103, y, "<", CYAN);
-                c.text(298, y, ">", CYAN);
-            }
-        }
-        let description = if app.selection == 1 {
-            f.vehicle.description()
-        } else {
-            app.mode.description()
-        };
-        // 描述栏留出上下边距，第二行不再贴着屏幕底边
-        c.shade(0, 145, 320, 25);
-        c.text(8, 148, description, CYAN);
-        c.text(8, 159, "ENTER CONFIRM", MUTED);
-        return;
-    }
-    if app.page == Page::Help {
-        c.shade(6, 6, 308, 158);
-        c.rect(6, 6, 2, 158, CYAN);
-        let page = help_page(app.mode, app.help_page, app.device_controls);
-        c.text(14, 16, page[0], GOLD);
-        c.text(
-            266,
-            16,
-            &format!("{}/{}", app.help_page + 1, help_page_count(app.mode)),
-            GOLD,
-        );
-        for (i, line) in page[1..].iter().enumerate() {
-            c.text(14, 33 + i as i32 * 13, &control_label(line), WHITE);
-        }
-        c.rect(14, 123, 292, 1, MUTED);
-        c.text(14, 130, &control_label("LEFT PREVIOUS PAGE"), CYAN);
-        c.text(14, 141, &control_label("RIGHT NEXT PAGE"), CYAN);
-        c.text(14, 152, "ENTER RETURN", CYAN);
-        return;
-    }
-    if app.page == Page::Settings {
-        use crate::app::SettingsSection;
-        c.shade(24, 16, 272, 141);
-        c.rect(24, 16, 2, 141, CYAN);
-        let title = match app.settings_section {
-            None => "SETTINGS",
-            Some(SettingsSection::General) => "GENERAL",
-            Some(SettingsSection::Advanced) => "ADVANCED",
-        };
-        if app.settings_section.is_some() {
-            c.text(34, 28, "<", CYAN);
-        }
-        c.text_scale(52, 23, title, WHITE, 2);
-        c.rect(34, 44, 252, 1, MUTED);
-        let toggle = |value| if value { "ON" } else { "OFF" }.to_owned();
-        let rows = match app.settings_section {
-            None => vec![
-                ("GENERAL", ">".to_owned()),
-                ("ADVANCED", ">".to_owned()),
-                ("BACK", String::new()),
-            ],
-            Some(SettingsSection::General) => vec![
-                ("FLIGHT HUD", toggle(f.hud)),
-                ("PORTAL LABELS", toggle(app.portal_labels)),
-                ("SOUND", app.audio_settings.name().to_owned()),
-                ("VOLUME", format!("{}%", app.audio_settings.volume * 10)),
-                ("BACK", String::new()),
-            ],
-            Some(SettingsSection::Advanced) => vec![
-                ("FACETED TERRAIN", toggle(f.faceted)),
-                ("DYNAMIC CLOUDS", toggle(f.dynamic_clouds)),
-                ("CLOUD PIXEL TEXTURE", toggle(f.cloud_pixel_texture)),
-                ("DYNAMIC LIGHTING", toggle(f.dynamic_lighting)),
-                ("SMOOTH SKY GRADIENT", toggle(f.smooth_sky_gradient)),
-                ("PORTAL PREVIEW", toggle(f.portal_preview)),
-                ("BACK", String::new()),
-            ],
-        };
-        let row_height = settings_row_height;
-        for (i, (label, value)) in rows.iter().enumerate() {
-            let y = 52 + i as i32 * row_height;
-            if i == app.selection {
-                c.rect(32, y - 3, 256, row_height - 1, [36, 73, 86]);
-                c.text(34, y, ">", GOLD);
-            }
-            let color = if i == app.selection { GOLD } else { WHITE };
-            c.text(47, y, label, color);
-            if app.settings_section == Some(SettingsSection::General) && matches!(i, 2 | 3) {
-                c.text(192, y, "<", color);
-                c.text(232 - value.len() as i32 * 4, y, value, color);
-                c.text(272, y, ">", color);
+    c.shade(0, 0, 320, 32);
+    c.text_scale(10, 7, "FLIGHT CLUB", WHITE, 2);
+    c.text(224, 8, "ARCADE", CYAN);
+    c.text(224, 20, concat!("V", env!("CARGO_PKG_VERSION")), MUTED);
+    c.shade(8, 34, 304, 115);
+    c.rect(8, 34, 2, 115, CYAN);
+    let stage = format!(
+        "{:02} {}",
+        app.level,
+        crate::gameplay::progression::operation(app.level).name
+    );
+    let rows = [
+        ("MODE", app.mode.name()),
+        ("AIRCRAFT", f.vehicle.name()),
+        ("MAP", menu_map.name()),
+        (
+            "WEATHER",
+            if menu_map.vacuum() {
+                "VACUUM"
             } else {
-                c.text(280 - value.len() as i32 * 8, y, value, color);
-            }
-            if app.settings_section.is_none() && i < 2 {
-                c.text(
-                    47,
-                    y + 11,
-                    ["HUD, LABELS AND AUDIO", "VISUALS AND PERFORMANCE"][i],
-                    MUTED,
-                );
-            }
-        }
-        let hint = if app.selection == rows.len() - 1 {
-            "ENTER BACK"
-        } else {
-            match (app.settings_section, app.selection) {
-                (None, _) => "ENTER OPEN",
-                (Some(SettingsSection::Advanced), 1) => "OFF: SIMPLE CLOUDS / FASTER",
-                (Some(SettingsSection::Advanced), 2) => "ON: DOTTED CLOUD SHADING",
-                (Some(SettingsSection::Advanced), 3) => "OFF: FREEZE SUN POSITION",
-                (Some(SettingsSection::Advanced), 4) => "ON: CONTINUOUS SKY COLORS",
-                (Some(SettingsSection::Advanced), 5) => "OFF: ENERGY FIELD / FASTER",
-                (Some(SettingsSection::General), 2 | 3) => "LEFT / RIGHT ADJUST",
-                _ => "ENTER TOGGLE",
-            }
-        };
-        c.text(34, 132, hint, CYAN);
-        c.text(34, 149, "ESC BACK", MUTED);
-        return;
-    }
-    if app.page == Page::Paused {
-        c.shade(35, 16, 250, 140);
-        c.rect(35, 16, 2, 140, CYAN);
-        c.text_scale(56, 23, "PAUSED", WHITE, 2);
-        let rows = [
-            "RESUME FLIGHT",
-            "RETRY MISSION",
-            if f.hud { "HIDE UI / U" } else { "SHOW UI / U" },
-            "SETTINGS / F2",
-            "MAIN MENU",
+                menu_weather
+            },
+        ),
+        ("SKILL", app.difficulty.name()),
+        ("STAGE", stage.as_str()),
+        (
+            "",
+            if app.loader.pending.is_some() {
+                "START WHEN READY"
+            } else {
+                "START FLIGHT"
+            },
+        ),
+        ("", "SETTINGS"),
+        (
+            "",
             if app.device_controls {
                 "EXIT TO LAUNCHER"
             } else {
                 "EXIT TO DESKTOP"
             },
-        ];
-        for (i, line) in rows.iter().enumerate() {
-            let y = 48 + i as i32 * 16;
-            if i == app.selection {
-                c.rect(45, y - 2, 230, 13, [36, 73, 86]);
-                c.text(48, y, ">", GOLD);
-            }
-            c.text(64, y, line, if i == app.selection { GOLD } else { WHITE });
+        ),
+    ];
+    for (i, (label, value)) in rows.iter().enumerate() {
+        let y = 37 + i as i32 * 12;
+        if i == app.selection {
+            c.rect(12, y - 1, 296, 11, [36, 73, 86]);
+            c.text(16, y, ">", GOLD);
         }
-        c.text(
-            45,
-            145,
-            &format!(
-                "F10 {}  VOL {}%",
-                app.audio_settings.name(),
-                app.audio_settings.volume * 10
-            ),
-            MUTED,
-        );
-        return;
+        c.text(30, y, label, MUTED);
+        c.text(112, y, value, if i == app.selection { GOLD } else { WHITE });
+        if i < crate::app::START_ROW && i == app.selection {
+            c.text(103, y, "<", CYAN);
+            c.text(298, y, ">", CYAN);
+        }
     }
-    if app.page == Page::Results {
-        let won = m.outcome == Some(true);
-        c.shade(12, 12, 296, 146);
-        c.rect(12, 12, 296, 2, if won { CYAN } else { RED });
-        c.text_scale(
-            28,
-            22,
-            if won { "MISSION CLEAR" } else { "FLIGHT ENDED" },
-            if won { CYAN } else { RED },
-            2,
-        );
-        c.text(
-            28,
-            46,
-            &format!(
-                "STAGE {:02}  {}",
-                app.level,
-                if won { "CLEARED" } else { m.message }
-            ),
-            GOLD,
-        );
-        c.text(
-            28,
-            62,
-            &format!("SCORE {:07}  TIME {:03.0}", m.score, m.elapsed),
-            WHITE,
-        );
-        let detail = match m.mode {
-            Mode::Race => format!(
-                "GATES {}/{}  PERFECT {}",
-                m.gate_index,
-                m.gates.len(),
-                m.perfect
-            ),
-            Mode::Coins => format!("COINS {}  CHAIN X{}", m.collected, m.best_combo),
-            Mode::Combat => format!("KILLS {}  GRAZE {}", m.kills, m.grazes),
-            Mode::Free => String::new(),
-        };
-        c.text(28, 78, &detail, WHITE);
-        c.text(
-            28,
-            94,
-            &format!(
-                "RUN {:07} BEST {:07}",
-                app.run_score + if won { m.score } else { 0 },
-                app.best_score
-            ),
-            CYAN,
-        );
-        if app.new_record {
-            c.icon(289, 94, '+', GOLD);
+    let description = if app.selection == 1 {
+        f.vehicle.description()
+    } else {
+        app.mode.description()
+    };
+    // 描述栏留出上下边距，第二行不再贴着屏幕底边
+    c.shade(0, 145, 320, 25);
+    c.text(8, 148, description, CYAN);
+    c.text(8, 159, "ENTER CONFIRM", MUTED);
+}
+
+/// 分页操作说明
+fn help(c: &mut Canvas, app: &App) {
+    c.shade(6, 6, 308, 158);
+    c.rect(6, 6, 2, 158, CYAN);
+    let page = help_page(app.mode, app.help_page, app.device_controls);
+    c.text(14, 16, page[0], GOLD);
+    c.text(
+        266,
+        16,
+        &format!("{}/{}", app.help_page + 1, help_page_count(app.mode)),
+        GOLD,
+    );
+    for (i, line) in page[1..].iter().enumerate() {
+        c.text(14, 33 + i as i32 * 13, &control_label(line), WHITE);
+    }
+    c.rect(14, 123, 292, 1, MUTED);
+    c.text(14, 130, &control_label("LEFT PREVIOUS PAGE"), CYAN);
+    c.text(14, 141, &control_label("RIGHT NEXT PAGE"), CYAN);
+    c.text(14, 152, "ENTER RETURN", CYAN);
+}
+
+/// 设置页及其常规、高级子页
+fn settings(c: &mut Canvas, app: &App) {
+    let f = &app.flight;
+    let settings_row_height = app.settings_row_height() as i32;
+    use crate::app::SettingsSection;
+    c.shade(24, 16, 272, 141);
+    c.rect(24, 16, 2, 141, CYAN);
+    let title = match app.settings_section {
+        None => "SETTINGS",
+        Some(SettingsSection::General) => "GENERAL",
+        Some(SettingsSection::Advanced) => "ADVANCED",
+    };
+    if app.settings_section.is_some() {
+        c.text(34, 28, "<", CYAN);
+    }
+    c.text_scale(52, 23, title, WHITE, 2);
+    c.rect(34, 44, 252, 1, MUTED);
+    let toggle = |value| if value { "ON" } else { "OFF" }.to_owned();
+    let rows = match app.settings_section {
+        None => vec![
+            ("GENERAL", ">".to_owned()),
+            ("ADVANCED", ">".to_owned()),
+            ("BACK", String::new()),
+        ],
+        Some(SettingsSection::General) => vec![
+            ("FLIGHT HUD", toggle(f.hud)),
+            ("PORTAL LABELS", toggle(app.portal_labels)),
+            ("SOUND", app.audio_settings.name().to_owned()),
+            ("VOLUME", format!("{}%", app.audio_settings.volume * 10)),
+            ("BACK", String::new()),
+        ],
+        Some(SettingsSection::Advanced) => vec![
+            ("FACETED TERRAIN", toggle(f.faceted)),
+            ("DYNAMIC CLOUDS", toggle(f.dynamic_clouds)),
+            ("CLOUD PIXEL TEXTURE", toggle(f.cloud_pixel_texture)),
+            ("DYNAMIC LIGHTING", toggle(f.dynamic_lighting)),
+            ("SMOOTH SKY GRADIENT", toggle(f.smooth_sky_gradient)),
+            ("PORTAL PREVIEW", toggle(f.portal_preview)),
+            ("BACK", String::new()),
+        ],
+    };
+    let row_height = settings_row_height;
+    for (i, (label, value)) in rows.iter().enumerate() {
+        let y = 52 + i as i32 * row_height;
+        if i == app.selection {
+            c.rect(32, y - 3, 256, row_height - 1, [36, 73, 86]);
+            c.text(34, y, ">", GOLD);
         }
-        if won && m.mode == Mode::Combat {
-            c.text(
-                28,
-                110,
-                &format!(
-                    "REWARD {}",
-                    crate::gameplay::progression::Upgrade::ALL[app.reward].name()
-                ),
-                GOLD,
-            );
+        let color = if i == app.selection { GOLD } else { WHITE };
+        c.text(47, y, label, color);
+        if app.settings_section == Some(SettingsSection::General) && matches!(i, 2 | 3) {
+            c.text(192, y, "<", color);
+            c.text(232 - value.len() as i32 * 4, y, value, color);
+            c.text(272, y, ">", color);
         } else {
+            c.text(280 - value.len() as i32 * 8, y, value, color);
+        }
+        if app.settings_section.is_none() && i < 2 {
             c.text(
-                28,
-                110,
-                if app.record_error {
-                    "SCORE SAVE FAILED"
-                } else if won {
-                    "NEW ROUTE IN THE NEXT REGION"
-                } else {
-                    "R REPLAY / ESC MAIN MENU"
-                },
+                47,
+                y + 11,
+                ["HUD, LABELS AND AUDIO", "VISUALS AND PERFORMANCE"][i],
                 MUTED,
             );
         }
-        c.text(28, 123, "R REPLAY    ESC MAIN MENU", MUTED);
-        c.rect(24, 135, 272, 17, [36, 73, 86]);
+    }
+    let hint = if app.selection == rows.len() - 1 {
+        "ENTER BACK"
+    } else {
+        match (app.settings_section, app.selection) {
+            (None, _) => "ENTER OPEN",
+            (Some(SettingsSection::Advanced), 1) => "OFF: SIMPLE CLOUDS / FASTER",
+            (Some(SettingsSection::Advanced), 2) => "ON: DOTTED CLOUD SHADING",
+            (Some(SettingsSection::Advanced), 3) => "OFF: FREEZE SUN POSITION",
+            (Some(SettingsSection::Advanced), 4) => "ON: CONTINUOUS SKY COLORS",
+            (Some(SettingsSection::Advanced), 5) => "OFF: ENERGY FIELD / FASTER",
+            (Some(SettingsSection::General), 2 | 3) => "LEFT / RIGHT ADJUST",
+            _ => "ENTER TOGGLE",
+        }
+    };
+    c.text(34, 132, hint, CYAN);
+    c.text(34, 149, "ESC BACK", MUTED);
+}
+
+/// 暂停菜单
+fn paused(c: &mut Canvas, app: &App) {
+    let f = &app.flight;
+    c.shade(35, 16, 250, 140);
+    c.rect(35, 16, 2, 140, CYAN);
+    c.text_scale(56, 23, "PAUSED", WHITE, 2);
+    let rows = [
+        "RESUME FLIGHT",
+        "RETRY MISSION",
+        if f.hud { "HIDE UI / U" } else { "SHOW UI / U" },
+        "SETTINGS / F2",
+        "MAIN MENU",
+        if app.device_controls {
+            "EXIT TO LAUNCHER"
+        } else {
+            "EXIT TO DESKTOP"
+        },
+    ];
+    for (i, line) in rows.iter().enumerate() {
+        let y = 48 + i as i32 * 16;
+        if i == app.selection {
+            c.rect(45, y - 2, 230, 13, [36, 73, 86]);
+            c.text(48, y, ">", GOLD);
+        }
+        c.text(64, y, line, if i == app.selection { GOLD } else { WHITE });
+    }
+    c.text(
+        45,
+        145,
+        &format!(
+            "F10 {}  VOL {}%",
+            app.audio_settings.name(),
+            app.audio_settings.volume * 10
+        ),
+        MUTED,
+    );
+}
+
+/// 结算页
+fn results(c: &mut Canvas, app: &App) {
+    let m = &app.mission;
+    let won = m.outcome == Some(true);
+    c.shade(12, 12, 296, 146);
+    c.rect(12, 12, 296, 2, if won { CYAN } else { RED });
+    c.text_scale(
+        28,
+        22,
+        if won { "MISSION CLEAR" } else { "FLIGHT ENDED" },
+        if won { CYAN } else { RED },
+        2,
+    );
+    c.text(
+        28,
+        46,
+        &format!(
+            "STAGE {:02}  {}",
+            app.level,
+            if won { "CLEARED" } else { m.message }
+        ),
+        GOLD,
+    );
+    c.text(
+        28,
+        62,
+        &format!("SCORE {:07}  TIME {:03.0}", m.score, m.elapsed),
+        WHITE,
+    );
+    let detail = match m.mode {
+        Mode::Race => format!(
+            "GATES {}/{}  PERFECT {}",
+            m.gate_index,
+            m.gates.len(),
+            m.perfect
+        ),
+        Mode::Coins => format!("COINS {}  CHAIN X{}", m.collected, m.best_combo),
+        Mode::Combat => format!("KILLS {}  GRAZE {}", m.kills, m.grazes),
+        Mode::Free => String::new(),
+    };
+    c.text(28, 78, &detail, WHITE);
+    c.text(
+        28,
+        94,
+        &format!(
+            "RUN {:07} BEST {:07}",
+            app.run_score + if won { m.score } else { 0 },
+            app.best_score
+        ),
+        CYAN,
+    );
+    if app.new_record {
+        c.icon(289, 94, '+', GOLD);
+    }
+    if won && m.mode == Mode::Combat {
         c.text(
-            32,
-            140,
-            if won {
-                "ENTER NEXT STAGE"
-            } else {
-                "ENTER RETRY"
-            },
+            28,
+            110,
+            &format!(
+                "REWARD {}",
+                crate::gameplay::progression::Upgrade::ALL[app.reward].name()
+            ),
             GOLD,
         );
+    } else {
+        c.text(
+            28,
+            110,
+            if app.record_error {
+                "SCORE SAVE FAILED"
+            } else if won {
+                "NEW ROUTE IN THE NEXT REGION"
+            } else {
+                "R REPLAY / ESC MAIN MENU"
+            },
+            MUTED,
+        );
     }
+    c.text(28, 123, "R REPLAY    ESC MAIN MENU", MUTED);
+    c.rect(24, 135, 272, 17, [36, 73, 86]);
+    c.text(
+        32,
+        140,
+        if won {
+            "ENTER NEXT STAGE"
+        } else {
+            "ENTER RETRY"
+        },
+        GOLD,
+    );
 }
