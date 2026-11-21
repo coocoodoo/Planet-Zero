@@ -551,13 +551,34 @@ impl Renderer {
         }
         self.speed_lines(flight, &camera);
         if rolled {
-            for (i, dest) in self.output.iter_mut().enumerate() {
-                *dest = if has_panel && self.cockpit.pixels[i] != 0 {
-                    self.cockpit.pixels[i]
-                } else {
-                    self.pixels[self.mapping[i]]
-                };
-            }
+            // 按映射从画布随机取像素，访存占主导，分段并行
+            let panel = has_panel.then_some(self.cockpit.pixels.as_slice());
+            let canvas = self.pixels.as_slice();
+            let chunk = self.output.len().div_ceil(4);
+            render_pool().in_place_scope(|scope| {
+                for (i, (output, mapping)) in self
+                    .output
+                    .chunks_mut(chunk)
+                    .zip(self.mapping.chunks(chunk))
+                    .enumerate()
+                    .rev()
+                {
+                    let mut compose = move || {
+                        let panel = panel.map(|panel| &panel[i * chunk..]);
+                        for (j, (dest, &source)) in output.iter_mut().zip(mapping).enumerate() {
+                            *dest = match panel {
+                                Some(panel) if panel[j] != 0 => panel[j],
+                                _ => canvas[source],
+                            };
+                        }
+                    };
+                    if i == 0 {
+                        compose();
+                    } else {
+                        scope.spawn(move |_| compose());
+                    }
+                }
+            });
         } else {
             for by in (0..height).step_by(16) {
                 for bx in (0..width).step_by(16) {

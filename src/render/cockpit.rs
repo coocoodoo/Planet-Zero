@@ -289,7 +289,10 @@ impl Cockpit {
             return;
         }
         self.hud.resize(320 * 170, 0);
-        self.hud.fill(0);
+        // 只读取准星区域（含一圈描边邻居），区域外的残留永远不会被用到
+        for row in self.hud[41 * 320..95 * 320].as_chunks_mut::<320>().0 {
+            row[113..208].fill(0);
+        }
         let mut p = Paint {
             pixels: &mut self.hud,
             occlusion: None,
