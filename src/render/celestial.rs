@@ -107,9 +107,10 @@ impl Renderer {
         camera: &Camera,
         opacity: f32,
         rotation: glam::Quat,
-        horizon: bool,
+        horizon: f32,
     ) {
-        // 大气层内升空时，地平线附近保留一圈蓝色大气，越往天顶越接近星空
+        // 大气层内升空时，地平线附近保留一圈蓝色大气，越往天顶越接近星空；
+        // `horizon` 为残余大气的强度，到达太空时为 0，与真空星空无缝衔接
         self.sky_texture(camera, starfield(), opacity, rotation, horizon);
     }
 
@@ -122,7 +123,7 @@ impl Renderer {
                 - weather.weight(Weather::Snow) * 0.65);
         let rotation = glam::Quat::from_rotation_z(flight.time * 0.006)
             * glam::Quat::from_rotation_x((flight.time * 0.035).sin() * 0.025);
-        self.sky_texture(camera, aurora_texture(), strength, rotation, false);
+        self.sky_texture(camera, aurora_texture(), strength, rotation, 0.0);
     }
 
     fn sky_texture(
@@ -131,7 +132,7 @@ impl Renderer {
         texture: &[u32],
         opacity: f32,
         rotation: glam::Quat,
-        horizon: bool,
+        horizon: f32,
     ) {
         let mut sky_camera = *camera;
         sky_camera.q = camera.q.max(0.004);
@@ -155,10 +156,10 @@ impl Renderer {
                     let ty = ((v + 1.0) * 63.5).clamp(0.0, 127.0) as usize;
                     let color = texture[face * 16384 + ty * 128 + tx];
                     let mut opacity = opacity * (color >> 24) as f32 / 255.0;
-                    if horizon {
+                    if horizon > 0.0 {
                         let elevation = level.z * level.length_recip();
                         let t = ((elevation + 0.02) / 0.34).clamp(0.0, 1.0);
-                        opacity *= t * t * (3.0 - 2.0 * t);
+                        opacity *= 1.0 - horizon * (1.0 - t * t * (3.0 - 2.0 * t));
                     }
                     self.pixels[at] = if opacity >= 1.0 {
                         color
@@ -172,7 +173,7 @@ impl Renderer {
         }
     }
     pub(super) fn cosmos(&mut self, world: &World, camera: &Camera, flight: &Flight) {
-        self.stars(camera, 1.0, flight.sky_rotation, false);
+        self.stars(camera, 1.0, flight.sky_rotation, 0.0);
         self.sun(camera, flight);
         self.orbital_bodies(world, camera, flight);
     }

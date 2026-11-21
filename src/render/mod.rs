@@ -642,7 +642,7 @@ impl Renderer {
             let thin_air = 1.0
                 - (1.0 - crate::world::orbit::thin_air(flight.position.z)) * (1.0 - bend).powi(2);
             if thin_air > 0.0 {
-                self.stars(camera, thin_air, flight.sky_rotation, true);
+                self.stars(camera, thin_air, flight.sky_rotation, 1.0 - thin_air);
             }
             self.orbital_bodies(world, camera, flight);
         }
