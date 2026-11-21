@@ -152,9 +152,13 @@ impl App {
                     PORTAL => {
                         let routes = self.network.routes(&self.world);
                         if !routes.is_empty() {
+                            // 已聚焦当前虫洞时才切到下一个，保证后台预加载的就是聚焦的目的地
+                            let current = routes[self.chart.selected % routes.len()];
+                            if self.chart.focus == Some(current.aperture.center.truncate()) {
+                                self.chart.selected = (self.chart.selected + 1) % routes.len();
+                            }
                             let route = routes[self.chart.selected % routes.len()];
                             self.chart.focus = Some(route.aperture.center.truncate());
-                            self.chart.selected = (self.chart.selected + 1) % routes.len();
                         }
                     }
                     VEHICLE => self.chart.focus = Some(self.flight.position.truncate()),

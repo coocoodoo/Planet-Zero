@@ -954,3 +954,25 @@ fn opening_settings_while_loading_is_not_interrupted() {
     app.close_settings();
     assert_eq!(app.page, Page::Playing);
 }
+
+#[test]
+fn chart_preloads_the_wormhole_it_focuses() {
+    let mut app = App::new(World::generate(crate::world::MapKind::City, 2049));
+    app.start();
+    app.key(crate::keys::CHART, 1);
+    app.key(crate::keys::CHART, 0);
+    assert_eq!(app.page, Page::Chart);
+    let routes = app.network.routes(&app.world);
+    assert!(routes.len() >= 2);
+    for expected in [0, 1] {
+        app.key(crate::keys::PORTAL, 1);
+        app.key(crate::keys::PORTAL, 0);
+        let focused = routes[app.chart.selected % routes.len()];
+        assert_eq!(app.chart.selected, expected);
+        assert_eq!(
+            app.chart.focus,
+            Some(focused.aperture.center.truncate()),
+            "预加载的路线应与聚焦的虫洞一致"
+        );
+    }
+}
