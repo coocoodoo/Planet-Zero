@@ -23,6 +23,9 @@ pub enum Sound {
     Laser,
     Plasma,
     Orb,
+    Flak,
+    Rail,
+    Swarm,
     Impact,
     Explosion(bool),
     Damage,
@@ -96,10 +99,13 @@ impl Sound {
             Sound::Wave => (37, 2.0),
             Sound::Destroyed => (38, 2.0),
             Sound::Thunder => (39, 1.2),
+            Sound::Flak => (40, 0.12),
+            Sound::Rail => (41, 0.3),
+            Sound::Swarm => (42, 0.16),
         }
     }
 }
-pub(crate) const THROTTLE_SLOTS: usize = 40;
+pub(crate) const THROTTLE_SLOTS: usize = 43;
 
 /// 实时输出的选曲种子，每次启动随机
 #[allow(dead_code)]

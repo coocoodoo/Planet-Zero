@@ -95,13 +95,7 @@ impl Renderer {
             if pickup.kind != PickupKind::Coin {
                 use font8x8::UnicodeFonts;
                 let label = match pickup.kind {
-                    PickupKind::Upgrade(w) => match w {
-                        Weapon::Gun => 'G',
-                        Weapon::Missile => 'M',
-                        Weapon::Laser => 'L',
-                        Weapon::Plasma => 'P',
-                        Weapon::Orb => 'O',
-                    },
+                    PickupKind::Upgrade(w) => w.letter(),
                     PickupKind::Shield => 'S',
                     PickupKind::Energy => 'A',
                     PickupKind::Bomb => 'B',
@@ -365,7 +359,8 @@ impl Renderer {
                 let c = shot.weapon.color();
                 rgb(c[0], c[1], c[2])
             };
-            if shot.weapon == Weapon::Laser && !shot.hostile {
+            let spec = shot.weapon.spec();
+            if spec.speed == 0.0 && !shot.hostile {
                 self.world_line(camera, shot.previous, shot.position, color);
                 self.world_line(
                     camera,
@@ -375,7 +370,7 @@ impl Renderer {
                 );
             } else if let Some((p, d, s)) = camera.project(shot.position) {
                 let radius = (shot.radius * s).round().clamp(1.0, 8.0) as i32;
-                let tracer = !shot.hostile && matches!(shot.weapon, Weapon::Gun | Weapon::Missile);
+                let tracer = !shot.hostile && spec.tracer;
                 let tail = camera.project(shot.position - shot.velocity * 0.03);
                 if let (true, Some((tail, _, _))) = (tracer, tail) {
                     // 曳光弹：沿飞行方向的武器色外沿与亮芯，区别于方形拾取物

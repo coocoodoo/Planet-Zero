@@ -24,14 +24,8 @@ pub(super) fn combat_hud(
     c.icon(3, 37, 'A', [103, 196, 255]);
     c.small(14, 38, &format!("{:03.0}", m.energy), WHITE);
     c.bar(3, 47, 23, m.energy / 100.0, [103, 196, 255]);
-    let letter = match m.weapon {
-        crate::gameplay::Weapon::Gun => "G",
-        crate::gameplay::Weapon::Missile => "M",
-        crate::gameplay::Weapon::Laser => "L",
-        crate::gameplay::Weapon::Plasma => "P",
-        crate::gameplay::Weapon::Orb => "O",
-    };
-    c.text(3, 57, letter, m.weapon.color());
+    let letter = m.weapon.letter().to_string();
+    c.text(3, 57, &letter, m.weapon.color());
     c.small(15, 59, &format!("{}", m.levels[m.weapon as usize]), WHITE);
     for i in 0..m.levels[m.weapon as usize] {
         c.rect(3 + i as i32 * 8, 69, 6, 2, m.weapon.color());

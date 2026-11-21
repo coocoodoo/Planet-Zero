@@ -50,7 +50,7 @@ impl Upgrade {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Loadout {
-    pub levels: [u8; 5],
+    pub levels: [u8; Weapon::COUNT],
     pub weapon: Weapon,
     pub bombs: u8,
     pub upgrades: [u8; 3],
@@ -59,7 +59,7 @@ pub struct Loadout {
 impl Default for Loadout {
     fn default() -> Self {
         Self {
-            levels: [1; 5],
+            levels: [1; Weapon::COUNT],
             weapon: Weapon::Gun,
             bombs: 2,
             upgrades: [0; 3],

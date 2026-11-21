@@ -1,7 +1,7 @@
 use super::*;
 use crate::app::chart::CHART_SIZE;
 use crate::flight::Flight;
-use crate::gameplay::{Mission, PickupKind, Weapon};
+use crate::gameplay::{Mission, PickupKind};
 use crate::world::SIZE;
 use glam::{Vec2, Vec3, vec2};
 
@@ -304,13 +304,7 @@ fn combat(c: &mut Canvas<'_>, m: &Mission, full: bool) {
     c.icon(energy, values_y, 'A', CYAN);
     c.osd(energy + 11, values_y, &format!("{:.0}", m.energy), WHITE);
     c.bar(energy + 33, values_y + 2, 16, m.energy / 100.0, CYAN);
-    let weapon = match m.weapon {
-        Weapon::Gun => 'G',
-        Weapon::Missile => 'M',
-        Weapon::Laser => 'L',
-        Weapon::Plasma => 'P',
-        Weapon::Orb => 'O',
-    };
+    let weapon = m.weapon.letter();
     c.osd(
         weapon_x,
         values_y,

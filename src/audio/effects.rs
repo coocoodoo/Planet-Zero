@@ -103,6 +103,23 @@ pub fn tones(sound: Sound, mut emit: impl FnMut(Tone)) {
             put(blip(Wave::Fm, 140.0, 420.0, 0.21, 0.30, 0.0));
             put(blip(Wave::Triangle, 280.0, 840.0, 0.10, 0.25, 0.045));
         }
+        Sound::Flak => {
+            // 低沉的散射爆裂
+            put(blip(Wave::Noise, 420.0, 120.0, 0.20, 0.09, 0.0).shape(0.5));
+            put(blip(Wave::Pulse, 140.0, 60.0, 0.12, 0.07, 0.0));
+        }
+        Sound::Rail => {
+            // 充能上扫后瞬间放电
+            put(blip(Wave::Sine, 400.0, 2400.0, 0.08, 0.10, 0.0).attack(0.08));
+            put(blip(Wave::Saw, 2600.0, 90.0, 0.18, 0.20, 0.10));
+            put(blip(Wave::Noise, 1600.0, 300.0, 0.10, 0.16, 0.10));
+        }
+        Sound::Swarm => {
+            for i in 0..3 {
+                put(blip(Wave::Noise, 900.0, 400.0, 0.08, 0.08, i as f32 * 0.04));
+            }
+            put(blip(Wave::Triangle, 500.0, 900.0, 0.07, 0.14, 0.0));
+        }
         Sound::Impact => put(blip(Wave::Noise, 1000.0, 1000.0, 0.09, 0.045, 0.0)),
         Sound::Explosion(big) => {
             put(blip(
@@ -272,7 +289,7 @@ pub fn tones(sound: Sound, mut emit: impl FnMut(Tone)) {
             put(blip(Wave::Saw, 240.0, 120.0, 0.045, 0.5, 0.05).attack(0.1));
         }
         Sound::WeaponSwitch(weapon) => {
-            let note = [64, 67, 71, 74, 76][weapon as usize % 5];
+            let note = [64, 67, 71, 74, 76, 79, 83, 86][weapon as usize % 8];
             put(blip(Wave::Noise, 0.0, 0.0, 0.10, 0.02, 0.0).shape(0.7));
             put(blip(
                 Wave::Pulse,

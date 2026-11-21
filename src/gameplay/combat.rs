@@ -199,11 +199,12 @@ impl Mission {
         let mut damage = 0.0_f32;
         for shot in &mut self.shots {
             shot.life -= dt;
-            if shot.life <= 0.0 || shot.weapon == Weapon::Laser {
+            let spec = shot.weapon.spec();
+            if shot.life <= 0.0 || spec.speed == 0.0 {
                 continue;
             }
             shot.previous = shot.position;
-            if !shot.hostile && (shot.weapon == Weapon::Missile || shot.weapon == Weapon::Orb) {
+            if !shot.hostile && spec.homing > 0.0 {
                 let target = shot
                     .target
                     .and_then(|id| self.enemies.iter().find(|e| e.id == id && e.health > 0.0));
@@ -211,12 +212,7 @@ impl Mission {
                     let speed = shot.velocity.length();
                     shot.velocity = shot.velocity.lerp(
                         (target.position - shot.position).normalize_or_zero() * speed,
-                        (dt * if shot.weapon == Weapon::Missile {
-                            5.0
-                        } else {
-                            1.8
-                        })
-                        .min(1.0),
+                        (dt * spec.homing).min(1.0),
                     );
                 }
             }
@@ -253,17 +249,22 @@ impl Mission {
                 }
             } else {
                 for enemy in &mut self.enemies {
+                    // 穿透弹用 target 记录上一个命中目标，避免同一目标连续两帧重复结算
                     if enemy.health > 0.0
+                        && !(spec.pierce && shot.target == Some(enemy.id))
                         && segment_distance(enemy.position, shot.previous, shot.position)
                             < enemy.radius() + shot.radius
                     {
                         enemy.health -= shot.damage;
                         enemy.hit = 0.16;
-                        shot.life = 0.0;
                         self.hits += 1;
                         self.overdrive = (self.overdrive + 0.35).min(100.0);
                         explosions.push((enemy.position, shot.weapon, shot.damage, enemy.id));
-                        break;
+                        if !spec.pierce {
+                            shot.life = 0.0;
+                            break;
+                        }
+                        shot.target = Some(enemy.id);
                     }
                 }
             }
@@ -278,12 +279,7 @@ impl Mission {
             self.sounds.push(crate::audio::Sound::Impact);
         }
         for (position, weapon, damage, id) in explosions {
-            let radius = match weapon {
-                Weapon::Plasma => 32.0,
-                Weapon::Orb => 60.0,
-                Weapon::Missile => 18.0,
-                _ => 5.0,
-            };
+            let radius = weapon.spec().splash;
             if radius > 10.0 {
                 for enemy in &mut self.enemies {
                     if enemy.id != id && enemy.position.distance(position) < radius {
@@ -326,9 +322,13 @@ impl Mission {
                 if (3..=5).contains(&kind) { 90.0 } else { 23.0 },
                 [255, 160, 66],
             );
-            let choice = (self.random() * 10.0) as usize;
+            let roll = self.random() * 10.0;
+            let choice = roll as usize;
             let kind = match choice {
-                0..=4 => PickupKind::Upgrade(Weapon::ALL[choice]),
+                // 一半概率掉落武器升级，在全部弹药中均匀抽取
+                0..=4 => {
+                    PickupKind::Upgrade(Weapon::ALL[(roll / 5.0 * Weapon::COUNT as f32) as usize])
+                }
                 5 => PickupKind::Energy,
                 6 => PickupKind::Shield,
                 7 => PickupKind::Bomb,

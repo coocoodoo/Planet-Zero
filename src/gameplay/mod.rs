@@ -105,7 +105,7 @@ pub struct Mission {
     pub max_health: f32,
     pub energy: f32,
     pub weapon: Weapon,
-    pub levels: [u8; 5],
+    pub levels: [u8; Weapon::COUNT],
     pub bombs: u8,
     pub support: f32,
     pub invulnerable: f32,
@@ -200,7 +200,7 @@ impl Mission {
             max_health: flight.vehicle.shield(),
             energy: 100.0,
             weapon: Weapon::Gun,
-            levels: [1; 5],
+            levels: [1; Weapon::COUNT],
             bombs: if flight.vehicle == crate::content::vehicles::Vehicle::Atlas {
                 3
             } else {

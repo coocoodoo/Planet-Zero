@@ -338,3 +338,69 @@ fn jammers_do_not_revive_destroyed_enemies() {
     assert_eq!(m.kills, kills + 1);
     assert!(m.enemies.iter().all(|e| e.id != destroyed));
 }
+
+#[test]
+fn new_ammo_types_pierce_spread_and_split_targets() {
+    let world = world();
+    let setup = |weapon| {
+        let mut f = Flight::new(world);
+        let mut m = Mission::new(Mode::Combat, Difficulty::Cadet, &mut f, world);
+        m.countdown = 0.0;
+        m.wave = 4;
+        m.phase_index = 2;
+        m.spawn_wave(&f, world);
+        m.phase_started = true;
+        m.weapon = weapon;
+        m.energy = 100.0;
+        (f, m)
+    };
+    // 轨道炮贯穿：同一直线上的两个目标都受伤，且每个只结算一次
+    let (mut f, mut m) = setup(Weapon::Rail);
+    m.enemies.truncate(2);
+    let forward = f.axes()[1];
+    for enemy in &mut m.enemies {
+        enemy.health = 1000.0;
+        enemy.max_health = 1000.0;
+    }
+    m.fire(&f);
+    for _ in 0..10 {
+        // 每帧把两个目标钉在机头正前方的同一直线上
+        for (i, enemy) in m.enemies.iter_mut().take(2).enumerate() {
+            enemy.position = f.position + forward * (120.0 + i as f32 * 60.0);
+            enemy.cooldown = 99.0;
+        }
+        let p = f.position;
+        m.step(1.0 / 30.0, &mut f, world, p, false);
+    }
+    let lost: Vec<f32> = m
+        .enemies
+        .iter()
+        .take(2)
+        .map(|e| 1000.0 - e.health)
+        .collect();
+    assert!(lost.iter().all(|&d| d > 0.0), "rail must pierce: {lost:?}");
+    assert!(
+        lost.iter().all(|&d| d < 200.0),
+        "rail hits once per target: {lost:?}"
+    );
+    // 蜂群：多枚导弹分别锁定不同目标
+    let (f, mut m) = setup(Weapon::Swarm);
+    assert!(m.enemies.len() >= 2);
+    for (i, enemy) in m.enemies.iter_mut().enumerate() {
+        enemy.position = f.position + f.axes()[1] * 150.0 + Vec3::X * (i as f32 * 30.0);
+    }
+    m.fire(&f);
+    let targets: std::collections::BTreeSet<_> = m
+        .shots
+        .iter()
+        .filter(|s| !s.hostile)
+        .filter_map(|s| s.target)
+        .collect();
+    assert!(targets.len() >= 2, "swarm must split targets");
+    // 霰弹：多颗弹丸、射程短
+    let (f, mut m) = setup(Weapon::Flak);
+    m.fire(&f);
+    let pellets: Vec<_> = m.shots.iter().filter(|s| !s.hostile).collect();
+    assert_eq!(pellets.len(), 5);
+    assert!(pellets.iter().all(|s| s.velocity.length() * s.life < 320.0));
+}
