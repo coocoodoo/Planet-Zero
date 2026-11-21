@@ -5,8 +5,14 @@ impl Random {
         self.0 = self.0.wrapping_add(0x6d2b79f5);
         let mut t = (self.0 ^ (self.0 >> 15)).wrapping_mul(1 | self.0);
         t ^= t.wrapping_add((t ^ (t >> 7)).wrapping_mul(61 | t));
-        ((t ^ (t >> 14)) as f64 / 4294967296.0) as f32
+        unit(((t ^ (t >> 14)) as f64 / 4294967296.0) as f32)
     }
+}
+
+/// 小于 1 的最大 f32；随机数转换时可能舍入到 1.0，用作下标会越界
+const BELOW_ONE: f32 = 1.0 - f32::EPSILON / 2.0;
+pub(crate) fn unit(value: f32) -> f32 {
+    value.min(BELOW_ONE)
 }
 
 pub fn hash(n: u32) -> u8 {

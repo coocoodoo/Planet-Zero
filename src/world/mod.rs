@@ -1,4 +1,5 @@
 pub mod airspace;
+pub(crate) use noise::unit;
 pub use noise::{hash, index};
 pub mod celestial;
 mod city;

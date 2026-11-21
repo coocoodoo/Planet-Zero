@@ -130,3 +130,13 @@ fn cloud_layer_has_thickness_holes_and_continuous_tile_edges() {
         }
     }
 }
+
+#[test]
+fn random_fractions_never_reach_one() {
+    // u32::MAX / u32::MAX 与接近 2^32 的值转成 f32 时都会舍入为 1.0
+    assert!(super::unit(u32::MAX as f32 / u32::MAX as f32) < 1.0);
+    assert!(super::unit(((u32::MAX as f64) / 4294967296.0) as f32) < 1.0);
+    let len = 11;
+    assert_eq!((super::unit(1.0) * len as f32) as usize, len - 1);
+    assert_eq!(super::unit(0.25), 0.25);
+}

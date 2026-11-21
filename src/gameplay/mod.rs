@@ -293,7 +293,7 @@ impl Mission {
         self.random ^= self.random << 13;
         self.random ^= self.random >> 17;
         self.random ^= self.random << 5;
-        self.random as f32 / u32::MAX as f32
+        crate::world::unit(self.random as f32 / u32::MAX as f32)
     }
     pub fn announce(&mut self, message: &'static str) {
         self.message = message;
