@@ -185,9 +185,7 @@ impl Renderer {
                 let mut last_y = 0;
                 for y in y0..y1 {
                     let at = x as usize * self.h + y as usize;
-                    if self.occluded.get(at).copied().unwrap_or(false)
-                        || (expansion == 0.0 && depth > self.depth[at] + 0.01)
-                    {
+                    if self.occluded(at) || (expansion == 0.0 && depth > self.depth[at] + 0.01) {
                         continue;
                     }
                     let ny = (y as f32 - center.y) * inverse_radius;
@@ -496,7 +494,10 @@ mod tests {
                             .collect();
                         renderer.depth = vec![f32::INFINITY; w * h];
                         renderer.visible = vec![(8, h as i32 - 8); w];
-                        renderer.occluded = (0..w * h).map(|at| at % 11 == 0).collect();
+                        renderer.reveal = (0..w * h)
+                            .map(|at| std::sync::atomic::AtomicU8::new(u8::from(at % 11 != 0)))
+                            .collect();
+                        renderer.reveal_stamp = 1;
                         renderer.portals(&world, &flight, &camera, None, 0, None);
                         assert!(renderer.portal_samples.len() > 1200);
                     }

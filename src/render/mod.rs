@@ -19,6 +19,7 @@ mod tilted;
 mod weather;
 use crate::gameplay::{Mission, Mode, PickupKind, Weapon};
 use glam::{Vec2, Vec3, vec2, vec3};
+use std::sync::atomic::{AtomicU8, Ordering::Relaxed};
 
 use crate::content::weather::Weather;
 use crate::flight::{Camera, Flight, MODEL_SCALE};
@@ -113,8 +114,11 @@ pub struct Renderer {
     /// 座舱画布尺寸与是否旋转；变化时才整张重置遮挡与深度
     canvas: Option<(usize, usize, bool)>,
     /// 上次映射中由遮挡变为可见的画布位置
-    unoccluded: Vec<u32>,
-    occluded: Vec<bool>,
+    /// 画布像素的揭开印记，等于 `reveal_stamp` 表示可见；并行映射时各线程直接写入
+    reveal: Vec<AtomicU8>,
+    reveal_stamp: u8,
+    previous_visible: Vec<(i32, i32)>,
+    remap_bands: Vec<RemapBand>,
     pub stages: [f64; 3],
     pub triangles: u32,
     x_origin: usize,
@@ -179,6 +183,73 @@ fn render_pool() -> &'static rayon_core::ThreadPool {
     })
 }
 
+/// 座舱翻滚时屏幕到外围画布的旋转映射参数
+#[derive(Clone, Copy)]
+struct Rotation {
+    screen: (usize, usize),
+    canvas: (usize, usize),
+    pivot: Vec2,
+    offset: Vec2,
+    sin_cos: (f32, f32),
+}
+
+/// 一段屏幕行的旋转映射：给未被座舱遮挡的画布像素打上本次印记，并记录各画布列的可见区间
+#[derive(Default)]
+struct RemapBand {
+    visible: Vec<(i32, i32)>,
+}
+
+impl Renderer {
+    /// 画布像素是否被座舱遮挡（不在本次旋转映射的可见集合中）
+    fn occluded(&self, at: usize) -> bool {
+        self.reveal
+            .get(at)
+            .is_some_and(|r| r.load(Relaxed) != self.reveal_stamp)
+    }
+}
+
+impl RemapBand {
+    fn remap(
+        &mut self,
+        rotation: &Rotation,
+        cockpit: Option<&cockpit::Cockpit>,
+        (reveal, stamp): (&[AtomicU8], u8),
+        first_row: usize,
+        mapping: &mut [usize],
+    ) {
+        let (width, height) = rotation.screen;
+        let (canvas_w, canvas_h) = rotation.canvas;
+        let (s, c) = rotation.sin_cos;
+        let pivot = rotation.pivot;
+        self.visible.clear();
+        self.visible.resize(canvas_w, (canvas_h as i32, 0));
+        for (row, mapping) in mapping.chunks_mut(width).enumerate() {
+            let y = first_row + row;
+            let py = y as f32 - pivot.y;
+            let mut q =
+                vec2(-pivot.x * c - py * s, -pivot.x * s + py * c) + pivot + rotation.offset;
+            for (x, target) in mapping.iter_mut().enumerate() {
+                let sx = (q.x.round() as usize).min(canvas_w - 1);
+                let sy = (q.y.round() as usize).min(canvas_h - 1);
+                *target = sx * canvas_h + sy;
+                if cockpit.is_none_or(|cockpit| {
+                    !cockpit.opaque(
+                        if width == 320 { x } else { x * 320 / width },
+                        if height == 170 { y } else { y * 170 / height },
+                    )
+                }) {
+                    reveal[*target].store(stamp, Relaxed);
+                    let column = &mut self.visible[sx];
+                    column.0 = column.0.min(sy as i32);
+                    column.1 = column.1.max(sy as i32 + 1);
+                }
+                q.x += c;
+                q.y += s;
+            }
+        }
+    }
+}
+
 impl Default for Renderer {
     fn default() -> Self {
         Self::new()
@@ -237,8 +308,10 @@ impl Renderer {
             mapping: vec![],
             mapping_key: None,
             canvas: None,
-            unoccluded: Vec::new(),
-            occluded: vec![],
+            reveal: Vec::new(),
+            reveal_stamp: 0,
+            previous_visible: Vec::new(),
+            remap_bands: Vec::new(),
             stages: [0.0; 3],
             triangles: 0,
             x_origin: 0,
@@ -333,21 +406,28 @@ impl Renderer {
         );
         if self.mapping_key != Some(mapping_key) {
             let canvas = (self.w, self.h, rolled);
-            if self.canvas != Some(canvas) || self.occluded.len() != self.pixels.len() {
-                self.occluded.clear();
-                self.occluded.resize(self.pixels.len(), rolled);
+            self.previous_visible.clear();
+            if self.canvas != Some(canvas) || self.reveal.len() != self.pixels.len() {
+                self.reveal.clear();
+                self.reveal
+                    .resize_with(self.pixels.len(), || AtomicU8::new(0));
+                // 未翻滚的画布全部可见：印记 0 与清零后的像素一致
+                self.reveal_stamp = 0;
                 if rolled {
                     self.depth.fill(f32::NEG_INFINITY);
                 }
-                self.unoccluded.clear();
                 self.canvas = Some(canvas);
-            } else {
-                // 只把上次映射到的可见像素恢复为遮挡，不必整张画布重置
-                for &at in &self.unoccluded {
-                    self.occluded[at as usize] = true;
-                    self.depth[at as usize] = f32::NEG_INFINITY;
+            } else if rolled {
+                // 旧可见区间里新区间之外的部分恢复为不可绘制
+                self.previous_visible.extend_from_slice(&self.visible);
+            }
+            if rolled {
+                // 换一个印记即可让上次揭开的像素全部重新被遮挡；回绕时整体清零
+                self.reveal_stamp = self.reveal_stamp.wrapping_add(1);
+                if self.reveal_stamp == 0 {
+                    self.reveal.iter().for_each(|r| r.store(0, Relaxed));
+                    self.reveal_stamp = 1;
                 }
-                self.unoccluded.clear();
             }
             self.visible.fill((self.h as i32, 0));
             if !rolled {
@@ -358,30 +438,48 @@ impl Renderer {
                     }
                 }
             } else {
-                for y in 0..height {
-                    let py = y as f32 - pivot.y;
-                    let mut q = vec2(-pivot.x * c - py * s, -pivot.x * s + py * c) + pivot + offset;
-                    for x in 0..width {
-                        let sx = (q.x.round() as usize).min(self.w - 1);
-                        let sy = (q.y.round() as usize).min(self.h - 1);
-                        self.mapping[y * width + x] = sx * self.h + sy;
-                        if !has_panel
-                            || !self.cockpit.opaque(
-                                if width == 320 { x } else { x * 320 / width },
-                                if height == 170 { y } else { y * 170 / height },
-                            )
-                        {
-                            let at = sx * self.h + sy;
-                            if self.occluded[at] {
-                                self.occluded[at] = false;
-                                self.unoccluded.push(at as u32);
-                            }
-                            self.visible[sx].0 = self.visible[sx].0.min(sy as i32);
-                            self.visible[sx].1 = self.visible[sx].1.max(sy as i32 + 1);
+                // 旋转映射按行分段并行计算，各段直接给可见像素打印记，再合并各段的可见列区间
+                let rotation = Rotation {
+                    screen: (width, height),
+                    canvas: (self.w, self.h),
+                    pivot,
+                    offset,
+                    sin_cos: (s, c),
+                };
+                let cockpit = has_panel.then_some(&self.cockpit);
+                let reveal = (self.reveal.as_slice(), self.reveal_stamp);
+                let bands = &mut self.remap_bands;
+                bands.resize_with(4, Default::default);
+                let rows = height.div_ceil(bands.len());
+                render_pool().in_place_scope(|scope| {
+                    for (i, (band, mapping)) in bands
+                        .iter_mut()
+                        .zip(self.mapping.chunks_mut(rows * width))
+                        .enumerate()
+                        .rev()
+                    {
+                        let mut remap =
+                            move || band.remap(&rotation, cockpit, reveal, i * rows, mapping);
+                        if i == 0 {
+                            remap();
+                        } else {
+                            scope.spawn(move |_| remap());
                         }
-                        q.x += c;
-                        q.y += s;
                     }
+                });
+                for band in &self.remap_bands[..height.div_ceil(rows)] {
+                    for (merged, &(top, bottom)) in self.visible.iter_mut().zip(&band.visible) {
+                        merged.0 = merged.0.min(top);
+                        merged.1 = merged.1.max(bottom);
+                    }
+                }
+                let h = self.h;
+                for (x, (&old, &new)) in self.previous_visible.iter().zip(&self.visible).enumerate()
+                {
+                    let (old, new) = (span(old.0, old.1, h), span(new.0, new.1, h));
+                    let column = &mut self.depth[x * h..(x + 1) * h];
+                    column[old.start..new.start.clamp(old.start, old.end)].fill(f32::NEG_INFINITY);
+                    column[new.end.clamp(old.start, old.end)..old.end].fill(f32::NEG_INFINITY);
                 }
             }
             self.mapping_key = Some(mapping_key);
@@ -392,14 +490,14 @@ impl Renderer {
             for (x, &(top, bottom)) in self.visible.iter().enumerate() {
                 let rows = span(top, bottom, h);
                 let column = x * h;
-                for (depth, &occluded) in self.depth[column + rows.start..column + rows.end]
+                for (depth, reveal) in self.depth[column + rows.start..column + rows.end]
                     .iter_mut()
-                    .zip(&self.occluded[column + rows.start..column + rows.end])
+                    .zip(&self.reveal[column + rows.start..column + rows.end])
                 {
-                    *depth = if occluded {
-                        f32::NEG_INFINITY
-                    } else {
+                    *depth = if reveal.load(Relaxed) == self.reveal_stamp {
                         f32::INFINITY
+                    } else {
+                        f32::NEG_INFINITY
                     };
                 }
             }
