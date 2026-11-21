@@ -135,15 +135,18 @@ impl Score {
     }
 }
 
-const SOURCES: [&str; 24] = [
+const SOURCES: [&str; 27] = [
     include_str!("../../content/music/menu.toml"),
     include_str!("../../content/music/hangar-lights.toml"),
-    include_str!("../../content/music/flight.toml"),
-    include_str!("../../content/music/tailwind.toml"),
-    include_str!("../../content/music/green-lowlands.toml"),
     include_str!("../../content/music/glacier-drift.toml"),
+    include_str!("../../content/music/torii-festival.toml"),
+    include_str!("../../content/music/fuji-morning.toml"),
+    include_str!("../../content/music/red-mesa.toml"),
+    include_str!("../../content/music/lotus-pavilion.toml"),
+    include_str!("../../content/music/rue-de-lumiere.toml"),
+    include_str!("../../content/music/lighthouse-keeper.toml"),
+    include_str!("../../content/music/windmill-reel.toml"),
     include_str!("../../content/music/mirage-dunes.toml"),
-    include_str!("../../content/music/neon-avenue.toml"),
     include_str!("../../content/music/magma-core.toml"),
     include_str!("../../content/music/sea-of-tranquility.toml"),
     include_str!("../../content/music/orbital-silence.toml"),
@@ -223,6 +226,129 @@ fn wave(name: &str) -> Wave {
     }
 }
 
+/// 民族与原声乐器的合成参数：拨弦类快速衰减，吹奏与拉弦类带颤音和气声
+#[derive(Clone, Copy)]
+struct Instrument {
+    wave: Wave,
+    shape: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+    vibrato: f32,
+    gain: f32,
+    send: f32,
+    /// 第二个略微失谐的簧片，手风琴的颤音感
+    detune: f32,
+    /// 起音时的气声噪音
+    breath: f32,
+}
+impl Instrument {
+    fn apply(self, t: &mut Tone) {
+        t.wave = self.wave;
+        t.shape = self.shape;
+        t.attack = self.attack;
+        t.decay = self.decay;
+        t.sustain = self.sustain;
+        t.release = self.release;
+        t.vibrato = self.vibrato;
+        t.gain = self.gain;
+        t.send = self.send;
+    }
+    /// 推入主音及失谐簧片、气声等附属声部
+    fn push(self, t: Tone, slot: &mut Vec<Tone>) {
+        slot.push(t);
+        if self.detune > 0.0 {
+            let mut twin = t;
+            twin.hz *= 1.0 + self.detune;
+            twin.end_hz = twin.hz;
+            twin.gain *= 0.6;
+            twin.pan = -t.pan;
+            slot.push(twin);
+        }
+        if self.breath > 0.0 {
+            let mut air = Tone::new(Wave::Noise, 1000.0, self.breath, t.hold.min(0.12));
+            air.shape = 0.35;
+            air.attack = 0.01;
+            air.decay = 0.08;
+            air.sustain = 0.0;
+            air.pan = t.pan;
+            air.layer = t.layer;
+            slot.push(air);
+        }
+    }
+}
+fn instrument(name: &str) -> Option<Instrument> {
+    let pluck = |wave, shape, decay, gain| Instrument {
+        wave,
+        shape,
+        attack: 0.002,
+        decay,
+        sustain: 0.05,
+        release: 0.12,
+        vibrato: 0.0,
+        gain,
+        send: 0.25,
+        detune: 0.0,
+        breath: 0.0,
+    };
+    let blown = |wave, vibrato, gain, breath| Instrument {
+        wave,
+        shape: 0.5,
+        attack: 0.04,
+        decay: 0.1,
+        sustain: 0.8,
+        release: 0.09,
+        vibrato,
+        gain,
+        send: 0.3,
+        detune: 0.0,
+        breath,
+    };
+    Some(match name {
+        "koto" => pluck(Wave::Pulse, 0.18, 0.28, 0.2),
+        "harp" => pluck(Wave::Triangle, 0.5, 0.5, 0.26),
+        "oud" => pluck(Wave::Saw, 0.5, 0.22, 0.12),
+        "guitar" => Instrument {
+            sustain: 0.12,
+            vibrato: 0.003,
+            send: 0.18,
+            ..pluck(Wave::Pulse, 0.35, 0.35, 0.2)
+        },
+        "flute" => blown(Wave::Sine, 0.009, 0.26, 0.05),
+        "whistle" => blown(Wave::Triangle, 0.006, 0.22, 0.04),
+        "fiddle" => Instrument {
+            attack: 0.06,
+            send: 0.25,
+            ..blown(Wave::Saw, 0.011, 0.14, 0.0)
+        },
+        "erhu" => Instrument {
+            attack: 0.05,
+            send: 0.28,
+            ..blown(Wave::Saw, 0.016, 0.13, 0.0)
+        },
+        "accordion" => Instrument {
+            shape: 0.3,
+            attack: 0.02,
+            decay: 0.05,
+            sustain: 0.85,
+            release: 0.06,
+            send: 0.15,
+            detune: 0.007,
+            ..blown(Wave::Pulse, 0.0, 0.1, 0.0)
+        },
+        "bell" => Instrument {
+            shape: 0.9,
+            decay: 0.6,
+            sustain: 0.1,
+            release: 0.5,
+            send: 0.35,
+            ..pluck(Wave::Fm, 0.9, 0.6, 0.14)
+        },
+        _ => return None,
+    })
+}
+
 /// 鼓组每小节十六步的位掩码
 struct Groove {
     kick: u16,
@@ -233,6 +359,10 @@ struct Groove {
     open: u16,
     low_tom: u16,
     high_tom: u16,
+    /// 木鱼、梆子等短促的木质敲击
+    block: u16,
+    /// 沙锤与刷子
+    shaker: u16,
 }
 const fn mask(steps: &[u8]) -> u16 {
     let mut m = 0;
@@ -255,6 +385,8 @@ fn groove(name: &str) -> Option<Groove> {
         open: 0,
         low_tom: 0,
         high_tom: 0,
+        block: 0,
+        shaker: 0,
     };
     Some(match name {
         "drive" => Groove {
@@ -315,6 +447,59 @@ fn groove(name: &str) -> Option<Groove> {
             hat: mask(&[0, 3, 4, 7, 8, 11, 12, 15]),
             ..none
         },
+        // 太鼓：低音大鼓与高音缔太鼓交替，木梆点缀
+        "taiko" => Groove {
+            low_tom: mask(&[0, 8, 11]),
+            high_tom: mask(&[4, 6, 12, 14]),
+            block: mask(&[2, 10]),
+            ..none
+        },
+        // 禅意：一声太鼓与零星木鱼
+        "zen" => Groove {
+            low_tom: mask(&[0]),
+            block: mask(&[8, 14]),
+            ..none
+        },
+        // 埃及 Maqsum：咚、哒、哒、咚、哒，沙锤补空拍
+        "maqsum" => Groove {
+            low_tom: mask(&[0, 8]),
+            high_tom: mask(&[2, 6, 12]),
+            shaker: mask(&[4, 10, 14]),
+            ..none
+        },
+        // 西部火车节奏：刷子连续十六分，小鼓重拍
+        "train" => Groove {
+            kick: mask(&[0, 8]),
+            snare: mask(&[4, 12]),
+            shaker: 0xffff,
+            ..none
+        },
+        // 凯尔特里尔舞：宝思兰鼓
+        "reel" => Groove {
+            low_tom: mask(&[0, 8]),
+            high_tom: mask(&[3, 6, 11, 14]),
+            shaker: OFFBEATS,
+            ..none
+        },
+        // 巴黎缪塞特：低音与刷子的嘭恰
+        "musette" => Groove {
+            kick: mask(&[0, 8]),
+            snare: mask(&[4, 12]),
+            shaker: mask(&[2, 6, 10, 14]),
+            ..none
+        },
+        // 中式庙会：堂鼓与梆子
+        "temple" => Groove {
+            low_tom: mask(&[0, 8, 10]),
+            block: mask(&[4, 12, 14]),
+            ..none
+        },
+        // 北欧：缓慢的框鼓心跳
+        "nordic" => Groove {
+            low_tom: mask(&[0, 3]),
+            shaker: mask(&[8]),
+            ..none
+        },
         "none" => return None,
         _ => panic!("未知鼓组 {name}"),
     })
@@ -353,6 +538,7 @@ fn bass_line(name: &str) -> &'static [(usize, u8)] {
             (15, 7),
         ],
         "walk" => &[(0, 0), (4, 7), (8, 12), (12, 7)],
+        "oompah" => &[(0, 0), (4, 7), (8, 0), (12, 7)],
         "long" => &[(0, 0), (8, 7)],
         "pedal" => &[(0, 0)],
         _ => panic!("未知低音型 {name}"),
@@ -380,7 +566,11 @@ fn compile(d: Definition) -> Score {
     let fierce = d.style == "combat" || d.style == "boss";
     let quick = fierce || d.style == "race";
     let soft = matches!(d.style.as_str(), "flight" | "defeat" | "ambient");
-    let lead_wave = d.lead.as_deref().map(wave).unwrap_or(if d.style == "boss" {
+    let lead_instrument = d.lead.as_deref().and_then(instrument);
+    let counter_instrument = d.counter_wave.as_deref().and_then(instrument);
+    let arp_instrument = d.arp_wave.as_deref().and_then(instrument);
+    let raw = |name: Option<&str>| name.filter(|n| instrument(n).is_none()).map(wave);
+    let lead_wave = raw(d.lead.as_deref()).unwrap_or(if d.style == "boss" {
         Wave::Fm
     } else if soft {
         Wave::Triangle
@@ -416,11 +606,8 @@ fn compile(d: Definition) -> Score {
         "classic"
     }));
     let arp_wave =
-        d.arp_wave
-            .as_deref()
-            .map(wave)
-            .unwrap_or(if fierce { Wave::Saw } else { Wave::Pulse });
-    let counter_wave = d.counter_wave.as_deref().map_or(Wave::Triangle, wave);
+        raw(d.arp_wave.as_deref()).unwrap_or(if fierce { Wave::Saw } else { Wave::Pulse });
+    let counter_wave = raw(d.counter_wave.as_deref()).unwrap_or(Wave::Triangle);
     let cues: Vec<Cue> = d.cues.iter().map(|c| Cue::parse(c)).collect();
     let maps: Vec<MapKind> = d.maps.iter().map(|m| parse_map(m)).collect();
     let phrases = d.melody.len() / 8;
@@ -482,7 +669,12 @@ fn compile(d: Definition) -> Score {
                 t.vibrato = if length >= 4 { 0.006 } else { 0.004 };
                 t.send = if soft { 0.3 } else { 0.22 };
                 t.layer = LEAD;
-                steps[base + at].push(t);
+                if let Some(i) = lead_instrument {
+                    i.apply(&mut t);
+                    i.push(t, &mut steps[base + at]);
+                } else {
+                    steps[base + at].push(t);
+                }
                 if energy > 0.9 && length >= 3 {
                     let mut harmony = t;
                     harmony.hz *= 0.5;
@@ -511,7 +703,14 @@ fn compile(d: Definition) -> Score {
                     t.release = 0.08;
                     t.send = 0.25;
                     t.layer = COUNTER;
-                    steps[base + at].push(t);
+                    if let Some(i) = counter_instrument {
+                        i.apply(&mut t);
+                        t.gain *= 0.55;
+                        t.pan = 0.38;
+                        i.push(t, &mut steps[base + at]);
+                    } else {
+                        steps[base + at].push(t);
+                    }
                 }
             }
             for step in 0..16 {
@@ -579,6 +778,12 @@ fn compile(d: Definition) -> Score {
                     tone.release = if slow { 0.2 } else { 0.045 };
                     tone.send = if slow { 0.3 } else { 0.18 };
                     tone.layer = ARP;
+                    if let Some(i) = arp_instrument {
+                        // 拨弦琶音沿用乐器包络，音量按乐器响度折算
+                        let gain = tone.gain * i.gain / 0.16;
+                        i.apply(&mut tone);
+                        tone.gain = gain;
+                    }
                     slot.push(tone);
                 }
                 let Some(g) = &drums else {
@@ -639,6 +844,28 @@ fn compile(d: Definition) -> Score {
                         tom.layer = DRUMS;
                         slot.push(tom);
                     }
+                }
+                if on(g.block, step) {
+                    let mut block = Tone::new(Wave::Triangle, 1400.0, 0.13, 0.025);
+                    block.end_hz = 1250.0;
+                    block.attack = 0.001;
+                    block.decay = 0.02;
+                    block.sustain = 0.0;
+                    block.release = 0.02;
+                    block.pan = 0.2;
+                    block.layer = DRUMS;
+                    slot.push(block);
+                }
+                if on(g.shaker, step) {
+                    let mut shake = Tone::new(Wave::Noise, 5000.0, 0.022, 0.03);
+                    shake.shape = 0.4;
+                    shake.attack = 0.004;
+                    shake.decay = 0.025;
+                    shake.sustain = 0.0;
+                    shake.release = 0.02;
+                    shake.pan = -0.3;
+                    shake.layer = HATS;
+                    slot.push(shake);
                 }
                 let dense = on(g.dense, step) && energy >= 0.8;
                 if on(g.hat, step) || dense {

@@ -1,0 +1,78 @@
+title = "Lotus Pavilion"
+bpm = 96
+style = "cruise"
+cues = ["flight"]
+maps = ["wetlands"]
+loop_start = 0
+lead = "erhu"
+counter_wave = "koto"
+groove = "temple"
+bass_line = "long"
+arp = "up"
+arp_wave = "koto"
+
+sections = [
+  { phrase = 0, energy = 0.6, lead = true },
+  { phrase = 0, energy = 0.75, lead = true },
+  { phrase = 1, energy = 0.85, lead = true },
+  { phrase = 0, energy = 0.8, lead = true },
+  { phrase = 1, energy = 0.9, lead = true },
+  { phrase = 0, energy = 0.65, lead = true },
+]
+
+melody = [
+  "A5:4 F#5:2 E5:2 D5:4 E5:4",
+  "F#5:6 A5:2 B5:8",
+  "A5:4 B5:2 A5:2 E5:8",
+  "E5:2 F#5:2 A5:4 B5:2 A5:2 E5:4",
+  "D6:4 B5:2 A5:2 F#5:4 A5:4",
+  "B5:6 A5:2 F#5:8",
+  "E5:2 F#5:2 A5:2 B5:2 A5:4 E5:4",
+  "D5:16",
+  "B5:4 D6:4 E6:8",
+  "D6:4 B5:2 A5:2 B5:8",
+  "F#6:6 E6:2 D6:8",
+  "E6:4 D6:2 B5:2 A5:8",
+  "F#5:2 A5:2 B5:4 A5:2 F#5:2 E5:4",
+  "D5:2 E5:2 F#5:4 A5:8",
+  "B5:4 A5:4 E5:4 F#5:4",
+  "D6:16",
+]
+
+harmony = [
+  "D3 F#3 A3 E4",
+  "B2 D3 F#3 A3",
+  "E3 A3 B3 D4",
+  "A2 E3 A3 B3",
+  "D3 F#3 A3 E4",
+  "B2 D3 F#3 A3",
+  "E3 A3 B3 D4",
+  "D3 F#3 A3 E4",
+  "B2 D3 F#3 A3",
+  "E3 A3 B3 D4",
+  "D3 F#3 A3 E4",
+  "A2 E3 A3 B3",
+  "B2 D3 F#3 A3",
+  "D3 F#3 A3 E4",
+  "E3 A3 B3 D4",
+  "D3 F#3 A3 E4",
+]
+
+counter = [
+  "D5:4 A4:4 D5:4 F#5:4",
+  "B4:4 F#4:4 B4:8",
+  "E4:4 A4:4 B4:8",
+  "A4:4 E4:4 A4:8",
+  "D5:4 A4:4 F#4:8",
+  "F#4:4 B4:4 D5:8",
+  "B4:4 A4:4 E4:8",
+  "A4:4 F#4:4 D4:8",
+  "F#4:4 B4:4 D5:8",
+  "A4:4 E5:4 B4:8",
+  "A4:4 D5:4 F#5:8",
+  "E5:4 A4:4 E4:8",
+  "D5:4 B4:4 F#4:8",
+  "A4:4 F#4:4 D4:8",
+  "E4:4 B4:4 A4:8",
+  "D4:4 A4:4 D5:8",
+]

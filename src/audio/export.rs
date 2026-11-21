@@ -156,6 +156,30 @@ pub fn soundtrack(directory: &Path) -> io::Result<()> {
             last_effect += 1;
         }
     })?;
+    // 分层演示：同一首群岛主题依次经过白天、黄昏、夜晚、下雪、雷暴与升空
+    let torii = scores()
+        .iter()
+        .position(|s| s.title == "Torii Festival")
+        .unwrap_or(0);
+    wav(&directory.join("layers.wav"), 96.0, torii, |t, f| {
+        f.cue = Cue::Flight;
+        f.map = MapKind::Islands;
+        f.engine = 1.0;
+        let fade = |from: f32, to: f32| ((t - from) / (to - from)).clamp(0.0, 1.0);
+        f.twilight = fade(16.0, 22.0) * (1.0 - fade(28.0, 34.0));
+        f.night = fade(28.0, 34.0) * (1.0 - fade(46.0, 50.0));
+        f.snow = fade(50.0, 54.0) * (1.0 - fade(62.0, 64.0));
+        f.haze = f.snow * 0.4;
+        f.storm = fade(64.0, 66.0) * (1.0 - fade(76.0, 78.0));
+        f.rain = f.storm;
+        f.wind = f.storm * 0.6;
+        f.riser = f32::from((80.0..94.0).contains(&t));
+        f.ascent = f.riser;
+        f.altitude = fade(80.0, 94.0);
+        if (64.0..78.0).contains(&t) && (t % 11.0) < 0.06 {
+            f.events.push(Sound::Thunder);
+        }
+    })?;
     let all = [
         Sound::Navigate,
         Sound::Confirm,

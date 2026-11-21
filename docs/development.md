@@ -10,7 +10,7 @@ content/
     05-marsh-rescue.toml
     06-caldera.toml
   maps/                   # 十二类地图及特色地标、虫洞布局
-  music/                  # 24 首分层编配的配乐，带场景与地图标签
+  music/                  # 27 首分层编配的配乐，每张地图一首专属主题
 assets/
   cockpit/                # 座舱四层索引色美术
   vehicles/               # 战机体素切片

@@ -2,16 +2,21 @@
 
 声音由 Rust 实时合成，使用方波、锯齿波、三角波、正弦波、FM 音色和噪声发生器。乐谱中的主旋律、和声与段落分别编写，低音、琶音、鼓组和过门按乐谱编排。输出为 48 kHz 立体声，设备使用 16 位 PCM，保留芯片音乐的音色并提供干净的动态范围
 
-配乐按“场景 + 地图”选曲，共 24 首原创曲目。每个场景有自己的曲库，自由飞行时播放当前地图的专属曲目；一首完整播完后在同一曲库里随机换下一首，不重复当前曲目。每次启动用时间播种，开场曲目也不固定
+配乐按“场景 + 地图”选曲，共 27 首原创曲目。每张地图有一首与地标和地区风格呼应的专属主题，时间段与天气通过分层编配表达；其他场景各有自己的曲库，一首完整播完后在同一曲库里随机换下一首，不重复当前曲目。每次启动用时间播种，开场曲目也不固定
 
 | 场景 | 曲目 |
 | --- | --- |
 | 主菜单 | Horizon Signal（144 BPM）、Hangar Lights（100 BPM，钟琴音色） |
-| 群岛、湿地、高地 | Cloud Atlas、Tailwind、Green Lowlands（108 BPM，摇摆节奏） |
-| 峡湾、冰山、高山 | Cloud Atlas、Glacier Drift（92 BPM，空灵钟声），高山另有 Tailwind |
-| 沙漠、峡谷 | Tailwind、Mirage Dunes（112 BPM，弗里吉亚属音阶与部落鼓） |
-| 火山 | Mirage Dunes、Magma Core（126 BPM，奔马低音） |
-| 城市 | Tailwind、Neon Avenue（118 BPM，合成器浪潮四拍） |
+| 群岛（鸟居） | Torii Festival（120 BPM，日本阳音阶，篠笛、筝与太鼓） |
+| 高山（富士山） | Fuji Morning（84 BPM，日本阴音阶，尺八与筝，木鱼点缀） |
+| 沙漠（金字塔） | Mirage Dunes（112 BPM，弗里吉亚属音阶，奈伊笛、乌德琴与 Maqsum 手鼓） |
+| 峡谷（岩柱） | Red Mesa（116 BPM，美国西部，拨弦吉他、嘭恰低音与火车节奏） |
+| 湿地（凉亭） | Lotus Pavilion（96 BPM，中国五声音阶，二胡、古筝、堂鼓与梆子） |
+| 城市（埃菲尔铁塔） | Rue de Lumiere（132 BPM，巴黎缪塞特，手风琴、吉他与摇摆节奏） |
+| 峡湾（灯塔） | Lighthouse Keeper（92 BPM，北欧多利亚，提琴、竖琴与框鼓） |
+| 高地（风车） | Windmill Reel（108 BPM，凯尔特里尔舞，锡口笛、提琴与宝思兰鼓） |
+| 冰山（极地站） | Glacier Drift（92 BPM，空灵钟声） |
+| 火山（裂隙之门） | Magma Core（126 BPM，奔马低音） |
 | 月球 | Sea of Tranquility（84 BPM，利底亚氛围）、Orbital Silence |
 | 太空 | Orbital Silence（76 BPM，无鼓氛围）、Starlane Cruise（104 BPM） |
 | 竞速 | Slipstream Circuit、Checkpoint Fever（156 BPM，碎拍）、Coin Cascade |

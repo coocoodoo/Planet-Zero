@@ -23,13 +23,13 @@ fn every_scene_and_map_has_matching_music() {
     for cue in Cue::ALL {
         let list = playlist(cue, MapKind::Islands);
         assert!(!list.is_empty(), "{cue:?}");
-        if cue.rotates() {
+        if cue.rotates() && cue != Cue::Flight {
             assert!(list.len() >= 2, "{cue:?} 至少需要两首轮换");
         }
     }
     for map in MapKind::ALL {
         let list = playlist(Cue::Flight, map);
-        assert!(list.len() >= 2, "{map:?} 需要至少两首地图配乐");
+        assert!(!list.is_empty(), "{map:?} 需要地图主题");
         assert!(list.iter().all(|i| scores()[*i].maps.contains(&map)));
     }
     // 太空与地表的巡航曲互不混用
@@ -465,5 +465,17 @@ fn seconds(m: &mut Mixer, seconds: f32) {
     let mut block = vec![0.0; 1600];
     for _ in 0..(seconds * 10.0).round() as usize {
         m.render(&mut block);
+    }
+}
+
+#[test]
+fn every_surface_map_has_its_own_theme() {
+    use crate::world::MapKind;
+    for map in MapKind::ALL.into_iter().filter(|m| !m.vacuum()) {
+        let list = playlist(Cue::Flight, map);
+        assert!(
+            list.iter().all(|i| scores()[*i].maps == [map]),
+            "{map:?} 的主题应为该地图独有"
+        );
     }
 }

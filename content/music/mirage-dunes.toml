@@ -2,14 +2,13 @@ title = "Mirage Dunes"
 bpm = 112
 style = "cruise"
 cues = ["flight"]
-maps = ["desert", "canyon", "volcanic"]
+maps = ["desert"]
 loop_start = 8
-lead = "fm"
-lead_duty = 0.9
-groove = "tribal"
+lead = "flute"
+groove = "maqsum"
 bass_line = "long"
 arp = "up"
-arp_wave = "triangle"
+arp_wave = "oud"
 
 sections = [
   { phrase = 0, energy = 0.4, lead = false },
