@@ -249,11 +249,11 @@ impl Mixer {
     /// 旧曲在原有节拍上继续演奏并淡出，新曲从主题段淡入
     fn crossfade(&mut self, next: Cue) {
         let (fade_out, fade_in) = if next.urgent() {
-            (0.9, 0.25)
+            (0.6, 0.2)
         } else if next == self.cue {
-            (1.6, 1.2)
+            (0.8, 0.6)
         } else {
-            (1.8, 1.0)
+            (1.0, 0.6)
         };
         let old = self.live;
         let new = 1 - old;
