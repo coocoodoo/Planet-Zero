@@ -102,6 +102,8 @@ pub struct Tone {
     pub delay: f32,
     pub priority: u8,
     pub send: f32,
+    /// 配乐声部所属的编配层，混音器按场景调节各层音量
+    pub layer: u8,
 }
 impl Tone {
     pub fn new(wave: Wave, hz: f32, gain: f32, hold: f32) -> Self {
@@ -121,6 +123,7 @@ impl Tone {
             delay: 0.0,
             priority: 1,
             send: 0.0,
+            layer: 0,
         }
     }
 }

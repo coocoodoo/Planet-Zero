@@ -124,6 +124,12 @@ pub struct Renderer {
     pub detail: [f64; 4],
 }
 
+/// 当前光照对应的黄昏与夜晚程度，供配乐按时间段调整
+pub fn time_of_day(flight: &Flight, theme: usize) -> (f32, f32) {
+    let light = lighting::Lighting::new(flight, theme);
+    (light.twilight(), light.night())
+}
+
 /// 列的可见行区间，裁剪到画布高度
 fn span(top: i32, bottom: i32, h: usize) -> std::ops::Range<usize> {
     let top = top.clamp(0, h as i32) as usize;

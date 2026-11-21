@@ -39,11 +39,6 @@ fn wav(
             .first()
             .copied()
             .unwrap_or(crate::world::MapKind::Islands),
-        weather: score
-            .weathers
-            .first()
-            .copied()
-            .unwrap_or(crate::content::weather::Weather::Clear),
         ..Frame::default()
     };
     mixer.update(frame);
@@ -99,7 +94,7 @@ pub fn soundtrack(directory: &Path) -> io::Result<()> {
     let timeline = [
         (0.0, Cue::Menu, MapKind::Islands),
         (8.0, Cue::Flight, MapKind::Desert),
-        (20.0, Cue::Ascent, MapKind::Desert),
+        (20.0, Cue::Flight, MapKind::Desert),
         (30.0, Cue::Flight, MapKind::Space),
         (40.0, Cue::Race, MapKind::City),
         (52.0, Cue::Combat, MapKind::Canyon),
@@ -150,6 +145,7 @@ pub fn soundtrack(directory: &Path) -> io::Result<()> {
         f.engine = f32::from((8.0..90.0).contains(&t));
         f.boost = if (12.0..16.0).contains(&t) { 1.0 } else { 0.0 };
         f.ascent = if (20.0..30.0).contains(&t) { 1.0 } else { 0.0 };
+        f.riser = f.ascent;
         f.altitude = ((t - 18.0) / 12.0).clamp(0.0, 1.0);
         f.vacuum = (28.0..40.0).contains(&t);
         f.vehicle = if t < 40.0 { 0 } else { 2 };

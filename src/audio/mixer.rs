@@ -1,8 +1,39 @@
 use super::{
-    Cue, Frame, Sound, THROTTLE_SLOTS, effects,
+    Cue, Frame, LAYERS, Sound, THROTTLE_SLOTS, effects,
     oscillator::{Oscillator, Tables, Tone, Voice, Wave, frequency},
-    playlist, scores,
+    playlist, score, scores,
 };
+
+fn ramp(value: f32, from: f32, to: f32) -> f32 {
+    ((value - from) / (to - from)).clamp(0.0, 1.0)
+}
+
+/// 各编配层的目标音量：探索随时间段与天气变化，竞速和战斗随激烈程度逐层加入
+pub(super) fn layer_targets(cue: Cue, frame: &Frame) -> [f32; LAYERS] {
+    let mut g = [1.0; LAYERS];
+    match cue {
+        Cue::Flight => {
+            let (dusk, night) = (frame.twilight, frame.night);
+            g[score::DRUMS as usize] = (1.0 - 0.45 * dusk - 0.9 * night) * (1.0 - 0.7 * frame.snow);
+            g[score::HATS as usize] = (1.0 - 0.3 * dusk - 0.55 * night) * (1.0 - 0.4 * frame.snow);
+            g[score::ARP as usize] = 1.0 - 0.2 * dusk - 0.6 * night;
+            g[score::LEAD as usize] = (1.0 - 0.35 * night) * (1.0 - 0.25 * frame.haze);
+            g[score::BASS as usize] = 1.0 - 0.25 * night;
+            g[score::PAD as usize] = 1.0 + 0.35 * night + 0.25 * frame.rain;
+        }
+        Cue::Race | Cue::Coins | Cue::Combat | Cue::Boss => {
+            let i = frame.intensity;
+            g[score::BASS as usize] = 0.6 + 0.4 * ramp(i, 0.0, 0.2);
+            g[score::HATS as usize] = 0.5 + 0.5 * ramp(i, 0.05, 0.3);
+            g[score::DRUMS as usize] = 0.3 + 0.7 * ramp(i, 0.25, 0.5);
+            g[score::ARP as usize] = 0.15 + 0.85 * ramp(i, 0.4, 0.65);
+            g[score::LEAD as usize] = ramp(i, 0.55, 0.8);
+            g[score::COUNTER as usize] = ramp(i, 0.7, 0.95);
+        }
+        _ => {}
+    }
+    g
+}
 
 /// 机型引擎音色：基频、锯齿、三角、风噪、噪声亮度
 const ENGINES: [(f32, f32, f32, f32, f32); 5] = [
@@ -73,6 +104,8 @@ pub struct Mixer {
     rain: f32,
     wind: f32,
     haze: f32,
+    night: f32,
+    layers: [f32; LAYERS],
     engine_gain: f32,
     boost: f32,
     ascent: f32,
@@ -92,11 +125,7 @@ impl Mixer {
             cue: Cue::Menu,
             decks: [
                 Deck::new(
-                    playlist(
-                        Cue::Menu,
-                        crate::world::MapKind::Islands,
-                        crate::content::weather::Weather::Clear,
-                    )[0],
+                    playlist(Cue::Menu, crate::world::MapKind::Islands)[0],
                     0,
                     0.0,
                 ),
@@ -136,6 +165,8 @@ impl Mixer {
             rain: 0.0,
             wind: 0.0,
             haze: 0.0,
+            night: 0.0,
+            layers: [1.0; LAYERS],
             engine_gain: 0.0,
             boost: 0.0,
             ascent: 0.0,
@@ -167,7 +198,7 @@ impl Mixer {
     }
     /// 从场景曲库随机选曲，曲库多于一首时避开正在播放的曲目
     fn choose(&mut self, cue: Cue, exclude: Option<usize>) -> usize {
-        let mut list = playlist(cue, self.frame.map, self.frame.weather);
+        let mut list = playlist(cue, self.frame.map);
         if list.len() > 1
             && let Some(current) = exclude
         {
@@ -179,8 +210,7 @@ impl Mixer {
         self.decks[self.live].step
     }
     pub fn update(&mut self, frame: Frame) {
-        let fits = frame.cue == self.cue
-            && playlist(frame.cue, frame.map, frame.weather).contains(&self.track());
+        let fits = frame.cue == self.cue && playlist(frame.cue, frame.map).contains(&self.track());
         self.pending = if fits {
             self.unfit_since = None;
             None
@@ -317,10 +347,7 @@ impl Mixer {
         let live = d == self.live;
         if self.decks[d].step >= scores()[self.decks[d].track].steps.len() {
             // 整首播完后换一首同场景曲目，结算曲循环尾段
-            if live
-                && self.cue.rotates()
-                && playlist(self.cue, self.frame.map, self.frame.weather).len() > 1
-            {
+            if live && self.cue.rotates() && playlist(self.cue, self.frame.map).len() > 1 {
                 let track = self.choose(self.cue, Some(self.decks[d].track));
                 self.decks[d].track = track;
                 self.decks[d].started = self.clock;
@@ -335,26 +362,111 @@ impl Mixer {
         for tone in &score.steps[step] {
             self.add_to(*tone, d);
         }
-        if live && matches!(self.cue, Cue::Combat | Cue::Boss) {
-            if self.frame.overdrive && step % 2 == 1 {
-                let chord = score.chords[step / 16];
-                let mut tone =
-                    Tone::new(Wave::Pulse, frequency(chord[step % 4] + 24), 0.045, 0.065);
-                tone.pan = if step % 4 == 1 { -0.6 } else { 0.6 };
-                tone.shape = 0.125;
-                self.add_to(tone, d);
-            }
-            if self.frame.danger > 0.2 && (step % 16 == 2 || step % 16 == 10) {
-                let mut tone = Tone::new(Wave::Fm, 140.0, self.frame.danger * 0.12, 0.16);
-                tone.end_hz = 65.0;
-                tone.decay = 0.12;
-                tone.sustain = 0.0;
-                self.add_to(tone, d);
-            }
+        if live {
+            self.overlays(d, step, score.chords[step / 16]);
         }
         self.decks[d].step += 1;
         self.decks[d].until += self.rate as f64 * 15.0 / score.bpm as f64;
         self.peak_voices = self.peak_voices.max(self.voices.iter().flatten().count());
+    }
+    fn overlay(&mut self, mut tone: Tone, d: usize) {
+        tone.layer = score::OVERLAY;
+        self.add_to(tone, d);
+    }
+    /// 实时点缀声部：超载琶音、危险节奏、升空上行、雪天钟声、雷暴定音鼓与竞速冲刺
+    fn overlays(&mut self, d: usize, step: usize, chord: [u8; 4]) {
+        let f = self.frame;
+        let beat = step % 16;
+        if matches!(self.cue, Cue::Combat | Cue::Boss) {
+            if f.overdrive && step % 2 == 1 {
+                let mut tone =
+                    Tone::new(Wave::Pulse, frequency(chord[step % 4] + 24), 0.045, 0.065);
+                tone.pan = if step % 4 == 1 { -0.6 } else { 0.6 };
+                tone.shape = 0.125;
+                self.overlay(tone, d);
+            }
+            if f.danger > 0.2 && (beat == 2 || beat == 10) {
+                let mut tone = Tone::new(Wave::Fm, 140.0, f.danger * 0.12, 0.16);
+                tone.end_hz = 65.0;
+                tone.decay = 0.12;
+                tone.sustain = 0.0;
+                self.overlay(tone, d);
+            }
+        }
+        // 升空：鼓点加密，琶音随高度逐级升高，接近入轨时小鼓滚奏
+        if f.riser > 0.01 && self.cue == Cue::Flight {
+            let level = f.riser;
+            let height = f.altitude.clamp(0.0, 1.0);
+            let mut hat = Tone::new(Wave::Noise, 8000.0, 0.03 * level, 0.02);
+            hat.shape = -0.2;
+            hat.sustain = 0.0;
+            hat.decay = 0.02;
+            hat.pan = 0.3;
+            self.overlay(hat, d);
+            if step % 4 == 0 {
+                let mut kick = Tone::new(Wave::Sine, 150.0, 0.34 * level, 0.12);
+                kick.end_hz = 44.0;
+                kick.decay = 0.1;
+                kick.sustain = 0.05;
+                self.overlay(kick, d);
+            }
+            if step % 2 == 0 {
+                let octave = 12 * (1 + (height * 3.0) as u8).min(3);
+                let note = chord[(step / 2) % 4] + octave;
+                let mut arp = Tone::new(Wave::Saw, frequency(note), 0.035 * level, 0.09);
+                arp.pan = if step % 4 == 0 { -0.5 } else { 0.5 };
+                arp.sustain = 0.2;
+                arp.send = 0.2;
+                self.overlay(arp, d);
+            }
+            if height > 0.8 && step % 2 == 1 {
+                let mut roll = Tone::new(Wave::Noise, 1200.0, 0.06 * level * height, 0.05);
+                roll.shape = 0.55;
+                roll.sustain = 0.0;
+                self.overlay(roll, d);
+            }
+        }
+        // 雪天：高音钟声零星落下
+        if f.snow > 0.05 && self.cue == Cue::Flight && (beat == 0 || beat == 11) {
+            let note = chord[(step / 16 + beat) % 4] + 36;
+            let mut bell = Tone::new(Wave::Fm, frequency(note), 0.07 * f.snow, 0.5);
+            bell.shape = 0.9;
+            bell.decay = 0.4;
+            bell.sustain = 0.1;
+            bell.release = 0.4;
+            bell.send = 0.4;
+            bell.pan = if beat == 0 { -0.4 } else { 0.4 };
+            self.overlay(bell, d);
+        }
+        // 雷暴：隔小节一声低沉的定音鼓
+        if f.storm > 0.05 && self.cue == Cue::Flight && step % 32 == 0 {
+            let mut drum = Tone::new(Wave::Sine, 82.0, 0.3 * f.storm, 0.6);
+            drum.end_hz = 52.0;
+            drum.attack = 0.004;
+            drum.decay = 0.5;
+            drum.sustain = 0.1;
+            drum.release = 0.3;
+            self.overlay(drum, d);
+        }
+        // 竞速冲刺与金币倒计时：十六分镲片与高八度琶音
+        if f.finale > 0.01 && matches!(self.cue, Cue::Race | Cue::Coins) {
+            let mut hat = Tone::new(Wave::Noise, 8000.0, 0.03 * f.finale, 0.02);
+            hat.shape = -0.2;
+            hat.sustain = 0.0;
+            hat.decay = 0.02;
+            self.overlay(hat, d);
+            if step % 2 == 1 {
+                let mut arp = Tone::new(
+                    Wave::Pulse,
+                    frequency(chord[step % 4] + 36),
+                    0.03 * f.finale,
+                    0.06,
+                );
+                arp.shape = 0.125;
+                arp.pan = if step % 4 == 1 { -0.6 } else { 0.6 };
+                self.overlay(arp, d);
+            }
+        }
     }
     pub fn render(&mut self, destination: &mut [f32]) {
         for stereo in destination.chunks_exact_mut(2) {
@@ -372,6 +484,13 @@ impl Mixer {
             }
         }
         let dt = 1.0 / self.rate;
+        // 时间段与天气缓慢过渡，战斗强度变化更快
+        let targets = layer_targets(self.cue, &self.frame);
+        let speed = if self.cue == Cue::Flight { 0.5 } else { 1.6 };
+        for (layer, target) in self.layers.iter_mut().zip(targets) {
+            *layer += (target - *layer) * (dt * speed).min(1.0);
+        }
+        self.night += (self.frame.night - self.night) * dt * 0.5;
         let mut gains = [0.0; 2];
         for d in 0..2 {
             let deck = &mut self.decks[d];
@@ -406,7 +525,8 @@ impl Mixer {
             if let Some(voice) = slot {
                 let mut value = voice.sample(dt, &self.tables);
                 if voice.tone.priority == 1 {
-                    let gain = gains[voice.deck as usize & 1];
+                    let gain = gains[voice.deck as usize & 1]
+                        * self.layers[voice.tone.layer as usize % LAYERS];
                     value = [value[0] * gain, value[1] * gain];
                 }
                 let bus = if voice.tone.priority == 1 {
@@ -428,8 +548,8 @@ impl Mixer {
         self.delay_index = (self.delay_index + 1) % self.delay.len();
         let room = self.reverb[self.reverb_index];
         self.reverb[self.reverb_index] = [
-            music[0] * 0.055 + room[1] * 0.48,
-            music[1] * 0.055 + room[0] * 0.48,
+            music[0] * (0.055 + 0.04 * self.night) + room[1] * 0.48,
+            music[1] * (0.055 + 0.04 * self.night) + room[0] * 0.48,
         ];
         self.reverb_index = (self.reverb_index + 1) % self.reverb.len();
         self.engine_gain += (self.frame.engine - self.engine_gain) * dt * 6.0;
@@ -479,7 +599,7 @@ impl Mixer {
                     0.055
                 } else {
                     // 真空与雾、雪、沙尘让配乐更暗更闷
-                    0.65 - self.vacuum * 0.3 - self.haze * 0.22
+                    0.65 - self.vacuum * 0.3 - self.haze * 0.22 - self.night * 0.12
                 };
             let mixed = self.filtered[channel] * self.music_gain * (1.0 - self.duck)
                 + (fx[channel] + engine) * self.effects_gain;

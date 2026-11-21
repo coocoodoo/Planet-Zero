@@ -1,5 +1,4 @@
 use super::*;
-use crate::content::weather::Weather;
 
 #[test]
 fn scores_have_full_arrangements_and_valid_loop_points() {
@@ -22,21 +21,21 @@ fn scores_have_full_arrangements_and_valid_loop_points() {
 fn every_scene_and_map_has_matching_music() {
     use crate::world::MapKind;
     for cue in Cue::ALL {
-        let list = playlist(cue, MapKind::Islands, Weather::Clear);
+        let list = playlist(cue, MapKind::Islands);
         assert!(!list.is_empty(), "{cue:?}");
-        if cue.rotates() && cue != Cue::Ascent {
+        if cue.rotates() {
             assert!(list.len() >= 2, "{cue:?} 至少需要两首轮换");
         }
     }
     for map in MapKind::ALL {
-        let list = playlist(Cue::Flight, map, Weather::Clear);
+        let list = playlist(Cue::Flight, map);
         assert!(list.len() >= 2, "{map:?} 需要至少两首地图配乐");
         assert!(list.iter().all(|i| scores()[*i].maps.contains(&map)));
     }
     // 太空与地表的巡航曲互不混用
-    let space = playlist(Cue::Flight, MapKind::Space, Weather::Clear);
+    let space = playlist(Cue::Flight, MapKind::Space);
     assert!(
-        playlist(Cue::Flight, MapKind::Desert, Weather::Clear)
+        playlist(Cue::Flight, MapKind::Desert)
             .iter()
             .all(|i| !space.contains(i))
     );
@@ -126,12 +125,13 @@ fn application_routes_results_pause_and_events_to_audio() {
     app.flight.orbital_thrust = 0.9;
     app.flight.position.z = 400.0;
     let f = app.audio_frame();
-    assert_eq!(f.cue, Cue::Flight, "常规飞行高度不切升空配乐");
+    assert_eq!(f.cue, Cue::Flight, "常规飞行高度不叠加升空声部");
     assert_eq!(f.ascent, 0.0);
+    assert_eq!(f.riser, 0.0);
     app.flight.position.z = crate::app::ASCENT_MUSIC_ALTITUDE + 50.0;
     let f = app.audio_frame();
-    assert_eq!(f.cue, Cue::Ascent);
-    assert!(f.ascent > 0.8);
+    assert_eq!(f.cue, Cue::Flight, "升空在探索配乐上叠加声部，不换曲");
+    assert!(f.ascent > 0.8 && f.riser > 0.9);
     assert_eq!(f.map, app.world.kind);
     app.flight.orbital_thrust = 0.0;
     assert_eq!(app.audio_frame().cue, Cue::Flight);
@@ -268,35 +268,6 @@ fn every_effect_renders_bounded_audio() {
 }
 
 #[test]
-fn ascent_layer_and_vacuum_stay_bounded() {
-    let mut m = Mixer::new(24000);
-    m.start_cue(Cue::Ascent);
-    let mut f = Frame {
-        cue: Cue::Ascent,
-        engine: 1.0,
-        boost: 1.0,
-        ascent: 1.0,
-        vehicle: 2,
-        ..Frame::default()
-    };
-    let mut buffer = vec![0.0; 4800];
-    for i in 0..40 {
-        f.altitude = i as f32 / 40.0;
-        f.vacuum = i > 30;
-        m.update(f);
-        m.render(&mut buffer);
-        assert!(buffer.iter().all(|v| v.is_finite() && v.abs() <= 0.881));
-    }
-}
-
-fn seconds(m: &mut Mixer, seconds: f32) {
-    let mut block = vec![0.0; 1600];
-    for _ in 0..(seconds * 10.0).round() as usize {
-        m.render(&mut block);
-    }
-}
-
-#[test]
 fn scene_changes_crossfade_on_the_beat() {
     let mut m = Mixer::new(8000);
     m.start_cue(Cue::Menu);
@@ -352,7 +323,7 @@ fn map_music_waits_for_the_new_map_to_settle() {
         m.update(frame);
     }
     seconds(&mut m, 1.0);
-    assert!(playlist(Cue::Flight, MapKind::Space, Weather::Clear).contains(&m.track()));
+    assert!(playlist(Cue::Flight, MapKind::Space).contains(&m.track()));
     assert_eq!(m.cue(), Cue::Flight);
 }
 
@@ -373,69 +344,126 @@ fn entry_points_skip_quiet_intros() {
 }
 
 #[test]
-fn weather_brings_its_own_music_on_planets_with_air() {
-    use crate::world::MapKind;
-    for (weather, title) in [
-        (Weather::Storm, "Storm Front"),
-        (Weather::Rain, "Storm Front"),
-        (Weather::Snow, "Snowfall"),
-        (Weather::Fog, "Haze"),
-        (Weather::Sandstorm, "Haze"),
-    ] {
-        let list = playlist(Cue::Flight, MapKind::Alpine, weather);
-        assert!(
-            list.iter()
-                .all(|i| scores()[*i].weathers.contains(&weather))
-        );
-        assert!(
-            list.iter().any(|i| scores()[*i].title == title),
-            "{weather:?}"
-        );
-    }
-    // 晴天、多云与彩虹沿用地图配乐，真空与非巡航场景不受天气影响
-    for weather in [Weather::Clear, Weather::Cloudy, Weather::Rainbow] {
-        assert_eq!(
-            playlist(Cue::Flight, MapKind::Alpine, weather),
-            playlist(Cue::Flight, MapKind::Alpine, Weather::Clear)
-        );
-    }
-    assert_eq!(
-        playlist(Cue::Flight, MapKind::Space, Weather::Storm),
-        playlist(Cue::Flight, MapKind::Space, Weather::Clear)
+fn night_and_weather_thin_out_exploration_layers() {
+    use super::mixer::layer_targets;
+    use super::score::{ARP, DRUMS, LEAD, PAD};
+    let day = layer_targets(Cue::Flight, &Frame::default());
+    assert!(day.iter().all(|g| (*g - 1.0).abs() < 0.001));
+    let night = layer_targets(
+        Cue::Flight,
+        &Frame {
+            night: 1.0,
+            ..Frame::default()
+        },
     );
-    assert_eq!(
-        playlist(Cue::Combat, MapKind::Alpine, Weather::Storm),
-        playlist(Cue::Combat, MapKind::Alpine, Weather::Clear)
+    assert!(night[DRUMS as usize] < 0.15 && night[ARP as usize] < 0.5);
+    assert!(night[LEAD as usize] < 0.7 && night[PAD as usize] > 1.2);
+    let snow = layer_targets(
+        Cue::Flight,
+        &Frame {
+            snow: 1.0,
+            ..Frame::default()
+        },
     );
+    assert!(snow[DRUMS as usize] < 0.35);
+    // 战斗按强度逐层加入：巡逻只有律动，交火时全编制
+    let calm = layer_targets(
+        Cue::Combat,
+        &Frame {
+            intensity: 0.1,
+            ..Frame::default()
+        },
+    );
+    let fight = layer_targets(
+        Cue::Combat,
+        &Frame {
+            intensity: 1.0,
+            ..Frame::default()
+        },
+    );
+    assert!(calm[LEAD as usize] == 0.0 && calm[DRUMS as usize] < 0.5);
+    assert!(fight.iter().all(|g| *g >= 0.999));
 }
 
 #[test]
-fn settled_weather_switches_music_and_adds_ambience() {
-    use crate::world::MapKind;
-    let mut m = Mixer::new(8000);
-    let mut frame = Frame {
-        cue: Cue::Flight,
-        map: MapKind::Alpine,
-        settings: Settings {
-            profile: 0,
-            volume: 10,
-        },
-        ..Frame::default()
-    };
-    m.update(frame);
-    m.start_cue(Cue::Flight);
-    seconds(&mut m, 26.0);
-    frame.weather = Weather::Storm;
-    frame.rain = 1.0;
-    frame.wind = 0.6;
-    frame.events.push(Sound::Thunder);
-    m.update(frame);
-    frame.events = Events::default();
-    let mut block = vec![0.0; 1600];
-    for _ in 0..100 {
-        m.render(&mut block);
-        assert!(block.iter().all(|v| v.is_finite() && v.abs() <= 0.881));
-        m.update(frame);
+fn overlays_for_ascent_snow_storm_and_finale_stay_bounded() {
+    for (cue, f) in [
+        (
+            Cue::Flight,
+            Frame {
+                riser: 1.0,
+                altitude: 0.9,
+                ascent: 1.0,
+                engine: 1.0,
+                ..Frame::default()
+            },
+        ),
+        (
+            Cue::Flight,
+            Frame {
+                snow: 1.0,
+                storm: 1.0,
+                rain: 1.0,
+                wind: 1.0,
+                night: 1.0,
+                ..Frame::default()
+            },
+        ),
+        (
+            Cue::Race,
+            Frame {
+                finale: 1.0,
+                intensity: 1.0,
+                ..Frame::default()
+            },
+        ),
+    ] {
+        let mut m = Mixer::new(24000);
+        let f = Frame { cue, ..f };
+        m.update(f);
+        m.start_cue(cue);
+        let mut buffer = vec![0.0; 4800];
+        for _ in 0..40 {
+            m.update(f);
+            m.render(&mut buffer);
+            assert!(buffer.iter().all(|v| v.is_finite() && v.abs() <= 0.881));
+        }
+        assert!(m.peak_voices <= 64);
     }
-    assert_eq!(scores()[m.track()].title, "Storm Front");
+}
+
+#[test]
+fn combat_intensity_rises_when_enemies_close_in_and_guns_fire() {
+    use crate::{app::App, gameplay::Mode, world::World};
+    let mut app = App::new(World::new(7));
+    app.mode = Mode::Combat;
+    app.start();
+    app.mission.countdown = 0.0;
+    app.mission.enemies.clear();
+    app.mission.shots.clear();
+    let calm = app.audio_frame().intensity;
+    for id in 0..3 {
+        app.mission.enemies.push(crate::gameplay::Enemy {
+            id,
+            position: app.flight.position + glam::Vec3::X * (100.0 + id as f32 * 30.0),
+            yaw: 0.0,
+            health: 40.0,
+            max_health: 40.0,
+            kind: 0,
+            phase: 0.0,
+            cooldown: 2.0,
+            hit: 0.0,
+            aim_point: app.flight.position,
+        });
+    }
+    app.keys.insert(crate::keys::FIRE);
+    let heated = app.audio_frame().intensity;
+    assert!(calm < 0.35 && heated > 0.8, "{calm} {heated}");
+}
+
+fn seconds(m: &mut Mixer, seconds: f32) {
+    let mut block = vec![0.0; 1600];
+    for _ in 0..(seconds * 10.0).round() as usize {
+        m.render(&mut block);
+    }
 }

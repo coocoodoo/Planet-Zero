@@ -1,5 +1,4 @@
 use super::oscillator::{Tone, Wave, frequency};
-use crate::content::weather::Weather;
 use crate::world::MapKind;
 use std::sync::OnceLock;
 
@@ -13,10 +12,9 @@ pub enum Cue {
     Boss,
     Victory,
     Defeat,
-    Ascent,
 }
 impl Cue {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 8] = [
         Self::Menu,
         Self::Flight,
         Self::Race,
@@ -25,11 +23,10 @@ impl Cue {
         Self::Boss,
         Self::Victory,
         Self::Defeat,
-        Self::Ascent,
     ];
     pub fn name(self) -> &'static str {
         [
-            "menu", "flight", "race", "coins", "combat", "boss", "victory", "defeat", "ascent",
+            "menu", "flight", "race", "coins", "combat", "boss", "victory", "defeat",
         ][self as usize]
     }
     fn parse(name: &str) -> Self {
@@ -42,11 +39,23 @@ impl Cue {
     pub fn rotates(self) -> bool {
         !matches!(self, Self::Victory | Self::Defeat)
     }
-    /// 结算与升空在下一拍切入，其余场景等下一小节
+    /// 结算曲快速切入
     pub fn urgent(self) -> bool {
-        matches!(self, Self::Victory | Self::Defeat | Self::Ascent)
+        matches!(self, Self::Victory | Self::Defeat)
     }
 }
+
+/// 编配层：混音器按时间段、天气与战斗强度分别调节音量
+pub const LEAD: u8 = 0;
+pub const COUNTER: u8 = 1;
+pub const PAD: u8 = 2;
+pub const BASS: u8 = 3;
+pub const ARP: u8 = 4;
+pub const DRUMS: u8 = 5;
+pub const HATS: u8 = 6;
+/// 混音器实时生成的点缀声部，不受编配层调节
+pub const OVERLAY: u8 = 7;
+pub const LAYERS: usize = 8;
 
 const MAP_NAMES: [&str; 12] = [
     "islands",
@@ -62,23 +71,6 @@ const MAP_NAMES: [&str; 12] = [
     "city",
     "highlands",
 ];
-const WEATHER_NAMES: [&str; 8] = [
-    "clear",
-    "rain",
-    "snow",
-    "storm",
-    "fog",
-    "sandstorm",
-    "cloudy",
-    "rainbow",
-];
-fn parse_weather(name: &str) -> Weather {
-    WEATHER_NAMES
-        .iter()
-        .position(|n| *n == name)
-        .map(|i| Weather::ALL[i])
-        .unwrap_or_else(|| panic!("未知天气 {name}"))
-}
 fn parse_map(name: &str) -> MapKind {
     MAP_NAMES
         .iter()
@@ -103,8 +95,6 @@ struct Definition {
     cues: Vec<String>,
     #[serde(default)]
     maps: Vec<String>,
-    #[serde(default)]
-    weathers: Vec<String>,
     loop_start: usize,
     lead: Option<String>,
     lead_duty: Option<f32>,
@@ -138,7 +128,6 @@ pub struct Score {
     pub chords: Vec<[u8; 4]>,
     pub cues: Vec<Cue>,
     pub maps: Vec<MapKind>,
-    pub weathers: Vec<Weather>,
 }
 impl Score {
     pub fn seconds(&self) -> f32 {
@@ -146,7 +135,7 @@ impl Score {
     }
 }
 
-const SOURCES: [&str; 28] = [
+const SOURCES: [&str; 24] = [
     include_str!("../../content/music/menu.toml"),
     include_str!("../../content/music/hangar-lights.toml"),
     include_str!("../../content/music/flight.toml"),
@@ -159,10 +148,6 @@ const SOURCES: [&str; 28] = [
     include_str!("../../content/music/sea-of-tranquility.toml"),
     include_str!("../../content/music/orbital-silence.toml"),
     include_str!("../../content/music/starlane.toml"),
-    include_str!("../../content/music/storm-front.toml"),
-    include_str!("../../content/music/snowfall.toml"),
-    include_str!("../../content/music/haze.toml"),
-    include_str!("../../content/music/escape-velocity.toml"),
     include_str!("../../content/music/race.toml"),
     include_str!("../../content/music/checkpoint-fever.toml"),
     include_str!("../../content/music/coin-cascade.toml"),
@@ -187,29 +172,20 @@ pub fn scores() -> &'static [Score] {
     })
 }
 
-/// 场景曲库：有大气的地图遇到雨雪雾等天气时播放天气曲目，其次是地图专属曲目，最后是通用曲目
-pub fn playlist(cue: Cue, map: MapKind, weather: Weather) -> Vec<usize> {
+/// 场景曲库：地图专属曲目优先，没有专属时使用通用曲目
+pub fn playlist(cue: Cue, map: MapKind) -> Vec<usize> {
     let tracks = scores();
     let of_cue = |i: &usize| tracks[*i].cues.contains(&cue);
-    if !map.vacuum() {
-        let weathered: Vec<usize> = (0..tracks.len())
-            .filter(of_cue)
-            .filter(|i| tracks[*i].weathers.contains(&weather))
-            .collect();
-        if !weathered.is_empty() {
-            return weathered;
-        }
-    }
     let specific: Vec<usize> = (0..tracks.len())
         .filter(of_cue)
-        .filter(|i| tracks[*i].weathers.is_empty() && tracks[*i].maps.contains(&map))
+        .filter(|i| tracks[*i].maps.contains(&map))
         .collect();
     if !specific.is_empty() {
         return specific;
     }
     let generic: Vec<usize> = (0..tracks.len())
         .filter(of_cue)
-        .filter(|i| tracks[*i].weathers.is_empty() && tracks[*i].maps.is_empty())
+        .filter(|i| tracks[*i].maps.is_empty())
         .collect();
     if !generic.is_empty() {
         return generic;
@@ -447,7 +423,6 @@ fn compile(d: Definition) -> Score {
     let counter_wave = d.counter_wave.as_deref().map_or(Wave::Triangle, wave);
     let cues: Vec<Cue> = d.cues.iter().map(|c| Cue::parse(c)).collect();
     let maps: Vec<MapKind> = d.maps.iter().map(|m| parse_map(m)).collect();
-    let weathers: Vec<Weather> = d.weathers.iter().map(|w| parse_weather(w)).collect();
     let phrases = d.melody.len() / 8;
     assert!(
         d.melody.len().is_multiple_of(8) && d.harmony.len() == d.melody.len(),
@@ -506,6 +481,7 @@ fn compile(d: Definition) -> Score {
                 t.release = if soft { 0.09 } else { 0.055 };
                 t.vibrato = if length >= 4 { 0.006 } else { 0.004 };
                 t.send = if soft { 0.3 } else { 0.22 };
+                t.layer = LEAD;
                 steps[base + at].push(t);
                 if energy > 0.9 && length >= 3 {
                     let mut harmony = t;
@@ -513,6 +489,7 @@ fn compile(d: Definition) -> Score {
                     harmony.end_hz = harmony.hz;
                     harmony.gain *= 0.32;
                     harmony.pan = 0.35;
+                    harmony.layer = LEAD;
                     steps[base + at].push(harmony);
                 }
             }
@@ -533,6 +510,7 @@ fn compile(d: Definition) -> Score {
                     t.sustain = 0.6;
                     t.release = 0.08;
                     t.send = 0.25;
+                    t.layer = COUNTER;
                     steps[base + at].push(t);
                 }
             }
@@ -559,6 +537,7 @@ fn compile(d: Definition) -> Score {
                     bass.attack = if long { 0.02 } else { 0.003 };
                     bass.sustain = if long { 0.7 } else { 0.55 };
                     bass.release = if long { 0.12 } else { 0.035 };
+                    bass.layer = BASS;
                     slot.push(bass);
                 }
                 if step == 0 && d.pad > 0.0 {
@@ -575,6 +554,7 @@ fn compile(d: Definition) -> Score {
                         pad.sustain = 0.7;
                         pad.pan = [-0.6, 0.55, 0.0][i % 3];
                         pad.send = if soft { 0.12 } else { 0.0 };
+                        pad.layer = PAD;
                         slot.push(pad);
                     }
                 }
@@ -598,6 +578,7 @@ fn compile(d: Definition) -> Score {
                     tone.sustain = if slow { 0.4 } else { 0.15 };
                     tone.release = if slow { 0.2 } else { 0.045 };
                     tone.send = if slow { 0.3 } else { 0.18 };
+                    tone.layer = ARP;
                     slot.push(tone);
                 }
                 let Some(g) = &drums else {
@@ -613,12 +594,14 @@ fn compile(d: Definition) -> Score {
                     t.decay = 0.10;
                     t.sustain = 0.06;
                     t.release = 0.04;
+                    t.layer = DRUMS;
                     slot.push(t);
                     let mut click = Tone::new(Wave::Noise, 1000.0, 0.045, 0.014);
                     click.attack = 0.001;
                     click.shape = 0.65;
                     click.sustain = 0.0;
                     click.decay = 0.014;
+                    click.layer = DRUMS;
                     slot.push(click);
                 }
                 let snare = on(g.snare, step);
@@ -632,11 +615,13 @@ fn compile(d: Definition) -> Score {
                     t.sustain = 0.12;
                     t.release = 0.055;
                     t.pan = -0.08;
+                    t.layer = DRUMS;
                     slot.push(t);
                     let mut body = Tone::new(Wave::Triangle, 185.0, gain * 0.55, 0.045);
                     body.end_hz = 130.0;
                     body.decay = 0.045;
                     body.sustain = 0.0;
+                    body.layer = DRUMS;
                     slot.push(body);
                 }
                 for (bits, from, to, pan) in [
@@ -651,6 +636,7 @@ fn compile(d: Definition) -> Score {
                         tom.sustain = 0.05;
                         tom.release = 0.06;
                         tom.pan = pan;
+                        tom.layer = DRUMS;
                         slot.push(tom);
                     }
                 }
@@ -670,6 +656,7 @@ fn compile(d: Definition) -> Score {
                     t.release = if open { 0.07 } else { 0.012 };
                     t.pan = 0.35;
                     t.delay = if step % 2 == 1 { 0.004 } else { 0.0 };
+                    t.layer = HATS;
                     slot.push(t);
                 }
                 if bar == 0 && step == 0 && section_index > 0 {
@@ -680,6 +667,7 @@ fn compile(d: Definition) -> Score {
                     crash.release = 0.25;
                     crash.pan = 0.45;
                     crash.shape = -0.12;
+                    crash.layer = DRUMS;
                     slot.push(crash);
                 }
             }
@@ -710,6 +698,5 @@ fn compile(d: Definition) -> Score {
         chords,
         cues,
         maps,
-        weathers,
     }
 }

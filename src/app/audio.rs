@@ -3,7 +3,7 @@ use crate::audio::{Cue, Frame, Sound};
 use crate::content::weather::Weather;
 use crate::world::{MapKind, orbit::Body};
 
-/// 升空配乐切入高度：冲出低空、接近大气层边缘时才进入升空段落
+/// 升空声部切入高度：冲出低空、接近大气层边缘时才叠加上升段落
 pub const ASCENT_MUSIC_ALTITUDE: f32 = 1000.0;
 /// 火箭轰鸣从这一高度开始逐渐增强
 const ASCENT_RUMBLE_ALTITUDE: f32 = 600.0;
@@ -17,6 +17,45 @@ pub(super) struct SoundState {
 }
 
 impl App {
+    /// 竞速、金币与战斗的激烈程度，以及冲刺段强度
+    fn intensity(&self) -> (f32, f32) {
+        let m = &self.mission;
+        if m.countdown > 0.0 {
+            return (0.2, 0.0);
+        }
+        match self.mode {
+            Mode::Race => {
+                let progress = m.gate_index as f32 / m.gates.len().max(1) as f32;
+                let finale = ((progress - 0.75) / 0.1).clamp(0.0, 1.0);
+                (0.35 + 0.65 * progress + 0.1 * self.flight.boost, finale)
+            }
+            Mode::Coins => {
+                let finale = ((15.0 - m.remaining) / 3.0).clamp(0.0, 1.0);
+                (0.4 + m.combo as f32 * 0.06, finale)
+            }
+            Mode::Combat => {
+                if m.phase() == campaign::Phase::Boss {
+                    return (1.0, 0.0);
+                }
+                // 巡逻时只保留律动，敌机逼近、弹幕密集或开火时逐层加满
+                let near = m
+                    .enemies
+                    .iter()
+                    .filter(|e| e.position.distance(self.flight.position) < 420.0)
+                    .count() as f32;
+                let fire = m.shots.iter().filter(|s| s.hostile).count() as f32;
+                // 自动开火默认开启，只有附近有敌机时才算交火
+                let firing =
+                    f32::from(near > 0.0 && (self.keys.contains(&crate::keys::FIRE) || m.autofire));
+                let danger = 1.0 - m.health / m.max_health.max(1.0);
+                (
+                    0.2 + near * 0.14 + fire * 0.012 + firing * 0.2 + danger * 0.3,
+                    0.0,
+                )
+            }
+            Mode::Free => (1.0, 0.0),
+        }
+    }
     /// 大气层内的轨道推进强度，太空中的加速不算升空
     fn ascent(&self) -> f32 {
         if self.mode != Mode::Free || self.world.kind == MapKind::Space {
@@ -77,7 +116,6 @@ impl App {
                 }
             }
             _ => match self.mode {
-                Mode::Free if ascending => Cue::Ascent,
                 Mode::Free => Cue::Flight,
                 Mode::Race => Cue::Race,
                 Mode::Coins => Cue::Coins,
@@ -113,6 +151,12 @@ impl App {
         let weather = self.flight.weather;
         let w = |kind| weather.weight(kind).min(1.0);
         let air = f32::from(!self.world.kind.vacuum() && !descending);
+        let (twilight, night) = if air > 0.0 {
+            crate::render::time_of_day(&self.flight, self.theme)
+        } else {
+            (0.0, 0.0)
+        };
+        let (intensity, finale) = self.intensity();
         let altitude = if self.world.kind == MapKind::Space {
             1.0
         } else {
@@ -149,6 +193,13 @@ impl App {
             rain: air * (w(Weather::Rain) + w(Weather::Storm)),
             wind: air * (w(Weather::Sandstorm) + w(Weather::Storm) * 0.6 + w(Weather::Snow) * 0.3),
             haze: air * (w(Weather::Fog) + w(Weather::Sandstorm) * 0.6 + w(Weather::Snow) * 0.4),
+            snow: air * w(Weather::Snow),
+            storm: air * w(Weather::Storm),
+            twilight,
+            night,
+            intensity: intensity.clamp(0.0, 1.0),
+            finale,
+            riser: f32::from(ascending) * f32::from(flying),
         }
     }
 }
