@@ -906,3 +906,27 @@ fn lightning_in_a_storm_brings_thunder_and_storm_ambience() {
     assert_eq!(frame.weather, Weather::Storm);
     assert!(frame.rain > 0.9 && frame.wind > 0.5);
 }
+
+#[test]
+fn sound_volume_and_hud_survive_a_restart() {
+    let dir = std::env::temp_dir().join(format!("flight-club-settings-{}", std::process::id()));
+    let path = dir.join("settings-v1.toml");
+    let mut app = App::new(World::new(7));
+    app.settings_path = Some(path.clone());
+    app.key(crate::keys::SOUND, 1);
+    app.key(crate::keys::SOUND, 0);
+    app.key(crate::keys::HUD, 1);
+    app.key(crate::keys::HUD, 0);
+    app.settings_section = Some(SettingsSection::General);
+    app.selection = 3;
+    app.adjust_setting(-1);
+    app.adjust_setting(-1);
+    let saved = settings::Settings::load(Some(&path));
+    assert_eq!(saved.audio().profile, 1);
+    assert_eq!(saved.audio().volume, 5);
+    assert!(!saved.hud);
+    assert_eq!(saved.portal_labels, app.portal_labels);
+    // 原子写入后不留下临时文件
+    assert!(!path.with_extension("tmp").exists());
+    std::fs::remove_dir_all(dir).ok();
+}

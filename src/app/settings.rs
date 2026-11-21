@@ -16,6 +16,9 @@ pub(super) struct Settings {
     pub dynamic_lighting: bool,
     pub smooth_sky_gradient: bool,
     pub portal_preview: bool,
+    pub hud: bool,
+    pub volume: u8,
+    pub sound_profile: u8,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -27,6 +30,9 @@ impl Default for Settings {
             dynamic_lighting: true,
             smooth_sky_gradient: true,
             portal_preview: true,
+            hud: true,
+            volume: crate::audio::Settings::default().volume,
+            sound_profile: 0,
         }
     }
 }
@@ -35,6 +41,12 @@ impl Settings {
         path.and_then(|path| std::fs::read_to_string(path).ok())
             .and_then(|text| toml::from_str(&text).ok())
             .unwrap_or_default()
+    }
+    pub fn audio(&self) -> crate::audio::Settings {
+        crate::audio::Settings {
+            profile: self.sound_profile % 4,
+            volume: self.volume.min(10),
+        }
     }
 }
 impl App {
@@ -112,30 +124,36 @@ impl App {
             }
             _ => return,
         }
-        if (self.settings_section == Some(SettingsSection::Advanced) || self.selection == 1)
-            && let Some(path) = &self.settings_path
-        {
-            let result = (|| -> std::io::Result<()> {
-                if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::write(
-                    path,
-                    format!(
-                        "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ncloud_pixel_texture = {}\ndynamic_lighting = {}\nsmooth_sky_gradient = {}\nportal_preview = {}\n",
-                        self.flight.faceted,
-                        self.portal_labels,
-                        self.flight.dynamic_clouds,
-                        self.flight.cloud_pixel_texture,
-                        self.flight.dynamic_lighting,
-                        self.flight.smooth_sky_gradient,
-                        self.flight.portal_preview
-                    ),
-                )
-            })();
-            if let Err(error) = result {
-                eprintln!("保存显示设置失败：{error}");
+        self.save_settings();
+    }
+    /// 保存全部设置；先写临时文件再改名，断电时不会留下损坏的设置文件
+    pub(super) fn save_settings(&self) {
+        let Some(path) = &self.settings_path else {
+            return;
+        };
+        let data = format!(
+            "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ncloud_pixel_texture = {}\ndynamic_lighting = {}\nsmooth_sky_gradient = {}\nportal_preview = {}\nhud = {}\nvolume = {}\nsound_profile = {}\n",
+            self.flight.faceted,
+            self.portal_labels,
+            self.flight.dynamic_clouds,
+            self.flight.cloud_pixel_texture,
+            self.flight.dynamic_lighting,
+            self.flight.smooth_sky_gradient,
+            self.flight.portal_preview,
+            self.flight.hud,
+            self.audio_settings.volume,
+            self.audio_settings.profile,
+        );
+        let result = (|| -> std::io::Result<()> {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
             }
+            let temp = path.with_extension("tmp");
+            std::fs::write(&temp, data)?;
+            std::fs::rename(temp, path)
+        })();
+        if let Err(error) = result {
+            eprintln!("保存设置失败：{error}");
         }
     }
 }

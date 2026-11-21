@@ -92,9 +92,9 @@ pub struct App {
     pub perf: PerfStats,
     escape_since: Option<Instant>,
     sound_state: audio::SoundState,
-    /// 菜单演示穿越虫洞前玩家所选的地图与天气，开始任务时恢复
     /// 任务开始时的成绩键，途中穿越虫洞不影响成绩归属
     run_key: String,
+    /// 菜单演示穿越虫洞前玩家所选的地图与天气，开始任务时恢复
     menu_home: Option<(
         crate::world::network::MapKey,
         crate::content::weather::WeatherState,
@@ -106,9 +106,13 @@ impl App {
         let mut flight = Flight::new(&world);
         let mission = Mission::new(Mode::Free, Difficulty::Cadet, &mut flight, &world);
         flight.set_demo(true);
+        // 测试不读写用户目录，避免改动真实的成绩与设置
         let record_path = std::env::var_os("FLIGHT_CLUB_RECORDS")
             .map(PathBuf::from)
             .or_else(|| {
+                if cfg!(test) {
+                    return None;
+                }
                 std::env::var_os("XDG_DATA_HOME")
                     .map(PathBuf::from)
                     .or_else(|| {
@@ -142,6 +146,7 @@ impl App {
         flight.dynamic_lighting = settings.dynamic_lighting;
         flight.smooth_sky_gradient = settings.smooth_sky_gradient;
         flight.portal_preview = settings.portal_preview;
+        flight.hud = settings.hud;
         Self {
             orbit: orbit::Orbit::default(),
             navigation: navigation::Navigation::default(),
@@ -156,7 +161,7 @@ impl App {
             settings_return: (Page::Menu, 0),
             settings_section: None,
             director: director::Director::default(),
-            audio_settings: crate::audio::Settings::default(),
+            audio_settings: settings.audio(),
             sounds: crate::audio::Events::default(),
             level: 1,
             reward: 0,

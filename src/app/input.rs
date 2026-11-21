@@ -95,6 +95,7 @@ impl App {
             }
             HUD => {
                 self.flight.hud = !self.flight.hud;
+                self.save_settings();
                 return;
             }
             HELP if self.page != Page::Help => {
@@ -128,6 +129,7 @@ impl App {
             }
             SOUND => {
                 self.audio_settings.profile = (self.audio_settings.profile + 1) % 4;
+                self.save_settings();
                 return;
             }
             _ => {}
