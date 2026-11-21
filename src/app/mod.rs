@@ -91,6 +91,11 @@ pub struct App {
     pub perf: PerfStats,
     escape_since: Option<Instant>,
     sound_state: audio::SoundState,
+    /// 菜单演示穿越虫洞前玩家所选的地图与天气，开始任务时恢复
+    menu_home: Option<(
+        crate::world::network::MapKey,
+        crate::content::weather::WeatherState,
+    )>,
 }
 
 impl App {
@@ -188,6 +193,7 @@ impl App {
             perf: PerfStats::default(),
             escape_since: None,
             sound_state: Default::default(),
+            menu_home: None,
         }
     }
     pub fn start(&mut self) {
@@ -196,6 +202,7 @@ impl App {
         self.pitch_gesture = Default::default();
         self.director = director::Director::default();
         if self.page == Page::Menu {
+            self.restore_menu_home();
             self.loadout = Loadout::default();
             if self.flight.vehicle == Vehicle::Atlas {
                 self.loadout.bombs = 3;

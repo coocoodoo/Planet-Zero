@@ -802,3 +802,28 @@ fn first_portal_preview_loads_alongside_orbital_resources() {
         assert!(!app.network.loading());
     }
 }
+
+#[test]
+fn menu_demo_travel_keeps_the_players_map_and_weather() {
+    use crate::content::weather::{Weather, WeatherState};
+    use crate::world::{MapKind, network::MapKey};
+    let mut app = App::new(World::generate(MapKind::Desert, MapKind::Desert.seed()));
+    app.home();
+    let chosen = MapKey::of(&app.world);
+    app.flight.weather = WeatherState::new(Weather::Storm, chosen.kind, chosen.seed);
+    app.network.ensure(&app.world);
+    let route = app.network.routes(&app.world)[0];
+    app.network
+        .remember(World::generate(route.target.kind, route.target.seed).into());
+    assert!(app.arrive(route));
+    assert_eq!(app.world.kind, route.target.kind);
+    // 菜单仍显示玩家的选择，演示所到地图不影响任务
+    assert_eq!(app.menu_map(), chosen.kind);
+    assert_eq!(app.menu_weather().target, Weather::Storm);
+    app.selection = START_ROW;
+    app.key(crate::keys::ENTER, 1);
+    app.key(crate::keys::ENTER, 0);
+    assert_eq!(MapKey::of(&app.world), chosen);
+    assert_eq!(app.flight.weather.target, Weather::Storm);
+    assert_eq!(app.page, Page::Playing);
+}

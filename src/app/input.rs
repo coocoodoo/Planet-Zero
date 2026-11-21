@@ -399,19 +399,19 @@ impl App {
                     Vehicle::ALL[next(self.flight.vehicle as usize, Vehicle::ALL.len())]
             }
             2 => {
-                let current = self.loader.pending.unwrap_or(self.world.kind);
+                let current = self.menu_map();
                 let kind = crate::world::MapKind::ALL
                     [next(current as usize, crate::world::MapKind::ALL.len())];
+                self.forget_menu_home();
                 self.loader.start(kind, kind.seed());
             }
             3 => {
-                self.flight
-                    .weather
-                    .cycle(self.loader.pending.unwrap_or(self.world.kind), direction);
+                self.cycle_menu_weather(direction);
             }
             4 => self.difficulty = Difficulty::ALL[next(self.difficulty as usize, 3)],
             5 => {
                 self.level = next((self.level - 1) as usize, 12) as u32 + 1;
+                self.forget_menu_home();
                 self.load_operation();
             }
             _ => {}

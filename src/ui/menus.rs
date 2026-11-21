@@ -138,6 +138,8 @@ fn help_page(mode: Mode, index: usize, device: bool) -> [&'static str; 8] {
 
 pub fn draw(app: &mut App) {
     let settings_row_height = app.settings_row_height() as i32;
+    let menu_map = app.menu_map();
+    let menu_weather = app.menu_weather().name();
     let mut c = Canvas {
         pixels: &mut app.screen,
     };
@@ -182,13 +184,13 @@ pub fn draw(app: &mut App) {
         let rows = [
             ("MODE", app.mode.name()),
             ("AIRCRAFT", f.vehicle.name()),
-            ("MAP", app.loader.pending.unwrap_or(app.world.kind).name()),
+            ("MAP", menu_map.name()),
             (
                 "WEATHER",
-                if app.loader.pending.unwrap_or(app.world.kind).vacuum() {
+                if menu_map.vacuum() {
                     "VACUUM"
                 } else {
-                    f.weather.name()
+                    menu_weather
                 },
             ),
             ("SKILL", app.difficulty.name()),
