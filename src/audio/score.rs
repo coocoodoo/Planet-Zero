@@ -316,6 +316,23 @@ fn instrument(name: &str) -> Option<Instrument> {
             ..pluck(Wave::Pulse, 0.35, 0.35, 0.2)
         },
         "flute" => blown(Wave::Sine, 0.009, 0.26, 0.05),
+        // 口琴：窄脉冲簧片带颤音和气声，西部旋律的主奏
+        "harmonica" => Instrument {
+            shape: 0.18,
+            attack: 0.03,
+            sustain: 0.8,
+            detune: 0.004,
+            send: 0.28,
+            ..blown(Wave::Pulse, 0.012, 0.11, 0.03)
+        },
+        // 低音区拨弦吉他：延音更长、轻微颤音与弹簧混响感
+        "twang" => Instrument {
+            sustain: 0.35,
+            release: 0.25,
+            vibrato: 0.006,
+            send: 0.35,
+            ..pluck(Wave::Pulse, 0.3, 0.5, 0.2)
+        },
         "whistle" => blown(Wave::Triangle, 0.006, 0.22, 0.04),
         "fiddle" => Instrument {
             attack: 0.06,
