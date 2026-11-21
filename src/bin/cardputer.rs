@@ -338,7 +338,7 @@ fn capture_landmarks(game: &mut Game, path: &Path) -> Result<(), Box<dyn Error>>
 
 #[cfg(target_os = "linux")]
 fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
-    use flight_club::cardputer::linux::{Display, Keyboard, install_signals, stopped};
+    use flight_club::cardputer::linux::{Display, Keyboard, Presenter, install_signals, stopped};
     install_signals()?;
     let sensor = match flight_club::cardputer::imu::Sensor::open() {
         Ok(sensor) => {
@@ -356,7 +356,7 @@ fn run(options: &Options, game: &mut Game) -> Result<(), Box<dyn Error>> {
     }
     let telemetry = flight_club::cardputer::telemetry::Sensor::start();
     let mut keyboard = Keyboard::open()?;
-    let mut display = Display::open()?;
+    let mut display = Presenter::start(Display::open()?);
     let audio = if options.audio {
         flight_club::audio::Output::start()
             .map_err(|error| eprintln!("音频暂不可用：{error}"))

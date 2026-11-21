@@ -173,6 +173,42 @@ impl Display {
     }
 }
 
+/// 在独立线程提交画面：颜色转换、写入映射与同步刷屏和下一帧的逻辑、绘制并行
+pub struct Presenter {
+    frames: std::sync::mpsc::SyncSender<Vec<u8>>,
+    recycled: std::sync::mpsc::Receiver<Vec<u8>>,
+}
+
+impl Presenter {
+    pub fn start(mut display: Display) -> Self {
+        // 最多积压一帧，显示线程未完成时主线程等待，避免延迟累积
+        let (frames, pending) = std::sync::mpsc::sync_channel::<Vec<u8>>(1);
+        let (recycle, recycled) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("present".into())
+            .spawn(move || {
+                while let Ok(frame) = pending.recv() {
+                    if let Err(error) = display.present(&frame) {
+                        eprintln!("提交画面失败：{error}");
+                        break;
+                    }
+                    let _ = recycle.send(frame);
+                }
+            })
+            .expect("创建显示线程失败");
+        Self { frames, recycled }
+    }
+
+    pub fn present(&mut self, rgba: &[u8]) -> io::Result<()> {
+        let mut frame = self.recycled.try_recv().unwrap_or_default();
+        frame.clear();
+        frame.extend_from_slice(rgba);
+        self.frames
+            .send(frame)
+            .map_err(|_| io::Error::other("显示线程已退出"))
+    }
+}
+
 pub struct Keyboard(File);
 
 impl Keyboard {
