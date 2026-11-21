@@ -64,7 +64,9 @@ impl Renderer {
                 PickupKind::Support => rgb(216, 174, 255),
                 PickupKind::Time => rgb(200, 255, 240),
             };
-            let radius = (scale * 6.0).round().clamp(2.0, 18.0) as i32;
+            // 近处不再放大成大色块：半径上限随分辨率缩放
+            let limit = 9.0 * self.full_width.max(320) as f32 / 320.0;
+            let radius = (scale * 6.0).round().clamp(2.0, limit) as i32;
             let rotate = (flight.time * 3.0).cos().abs() * 0.7 + 0.3;
             for y in -radius..=radius {
                 for x in -radius..=radius {
@@ -78,17 +80,15 @@ impl Renderer {
                     let ny = y as f32 / radius as f32;
                     let distance = nx * nx + ny * ny;
                     if distance < 1.0 {
-                        self.point(
-                            p + vec2(x as f32, y as f32),
-                            d,
-                            if distance > 0.55 {
-                                color
-                            } else {
-                                mix(color, rgb(30, 35, 62), 0.5)
-                            },
-                            0,
-                            1,
-                        );
+                        // 深色外缘、实色内部，左上角一点高光
+                        let shade = if distance > 0.62 {
+                            mix(color, rgb(30, 35, 62), 0.45)
+                        } else if nx < -0.12 && ny < -0.12 && distance < 0.3 {
+                            mix(color, rgb(255, 255, 240), 0.7)
+                        } else {
+                            color
+                        };
+                        self.point(p + vec2(x as f32, y as f32), d, shade, 0, 1);
                     }
                 }
             }

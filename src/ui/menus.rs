@@ -231,9 +231,10 @@ pub fn draw(app: &mut App) {
         } else {
             app.mode.description()
         };
-        c.shade(0, 151, 320, 19);
-        c.text(8, 152, description, CYAN);
-        c.text(8, 162, "ENTER CONFIRM", MUTED);
+        // 描述栏留出上下边距，第二行不再贴着屏幕底边
+        c.shade(0, 145, 320, 25);
+        c.text(8, 148, description, CYAN);
+        c.text(8, 159, "ENTER CONFIRM", MUTED);
         return;
     }
     if app.page == Page::Help {
