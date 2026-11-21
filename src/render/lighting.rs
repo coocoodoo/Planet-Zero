@@ -1,4 +1,5 @@
 use super::*;
+use crate::world::orbit::smooth;
 
 #[derive(Clone, Copy)]
 pub(super) struct Lighting {
@@ -88,11 +89,6 @@ fn cycle_phase(time: f32) -> f32 {
         let night = (time - 0.75) * 4.0;
         0.5 + night / 6.0 + smooth(night) / 3.0
     }
-}
-
-fn smooth(value: f32) -> f32 {
-    let value = value.clamp(0.0, 1.0);
-    value * value * (3.0 - 2.0 * value)
 }
 
 #[cfg(test)]

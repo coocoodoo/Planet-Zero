@@ -2,10 +2,7 @@ use super::*;
 use crate::world::celestial::{Scenery, Structure};
 impl Renderer {
     pub(super) fn settlement(&mut self, camera: &Camera, object: Scenery) {
-        let (s, c) = object.yaw.sin_cos();
-        let local = |p: Vec3| {
-            object.position + vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z) * object.scale
-        };
+        let local = object.to_world();
         let house = object.kind == Structure::House;
         let (w, l, h) = if house {
             (10.0, 12.0, 9.0)

@@ -4,9 +4,7 @@ use crate::world::celestial::{Scenery, Structure};
 impl Renderer {
     pub(super) fn landscape_structure(&mut self, camera: &Camera, object: Scenery, time: f32) {
         let (s, c) = object.yaw.sin_cos();
-        let local = |p: Vec3| {
-            object.position + vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z) * object.scale
-        };
+        let local = object.to_world();
         let steel = rgb(188, 204, 210);
         match object.kind {
             Structure::Building => {

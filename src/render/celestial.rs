@@ -158,8 +158,8 @@ impl Renderer {
                     let mut opacity = opacity * (color >> 24) as f32 / 255.0;
                     if horizon > 0.0 {
                         let elevation = level.z * level.length_recip();
-                        let t = ((elevation + 0.02) / 0.34).clamp(0.0, 1.0);
-                        opacity *= 1.0 - horizon * (1.0 - t * t * (3.0 - 2.0 * t));
+                        let air = 1.0 - crate::world::orbit::smooth((elevation + 0.02) / 0.34);
+                        opacity *= 1.0 - horizon * air;
                     }
                     self.pixels[at] = if opacity >= 1.0 {
                         color
@@ -285,10 +285,7 @@ impl Renderer {
     }
 
     fn structure(&mut self, camera: &Camera, object: Scenery, time: f32) {
-        let (s, c) = object.yaw.sin_cos();
-        let local = |p: Vec3| {
-            object.position + vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z) * object.scale
-        };
+        let local = object.to_world();
         let hull = rgb(169, 190, 208);
         let dark = rgb(48, 66, 89);
         let panel = rgb(37, 73, 137);

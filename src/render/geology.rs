@@ -33,10 +33,7 @@ impl Renderer {
         }
     }
     pub(super) fn geological_structure(&mut self, camera: &Camera, object: Scenery) {
-        let (s, c) = object.yaw.sin_cos();
-        let local = |p: Vec3| {
-            object.position + vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z) * object.scale
-        };
+        let local = object.to_world();
         match object.kind {
             Structure::Arch | Structure::Cave => {
                 let cave = object.kind == Structure::Cave;

@@ -3,10 +3,7 @@ use crate::world::celestial::{Scenery, Structure};
 
 impl Renderer {
     pub(super) fn monument(&mut self, camera: &Camera, object: Scenery) {
-        let (s, c) = object.yaw.sin_cos();
-        let local = |p: Vec3| {
-            object.position + vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z) * object.scale
-        };
+        let local = object.to_world();
         let stone = rgb(176, 165, 143);
         let red = rgb(186, 54, 38);
         let roof = rgb(42, 65, 70);

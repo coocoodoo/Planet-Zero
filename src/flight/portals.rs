@@ -14,8 +14,7 @@ impl PortalTransit {
     }
     pub fn expansion(&self) -> f32 {
         if self.overhead {
-            let t = (self.elapsed / 0.75).clamp(0.0, 1.0);
-            t * t * (3.0 - 2.0 * t)
+            crate::world::orbit::smooth(self.elapsed / 0.75)
         } else {
             0.0
         }

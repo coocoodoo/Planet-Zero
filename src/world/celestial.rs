@@ -60,6 +60,14 @@ pub struct Scenery {
     pub kind: Structure,
 }
 
+impl Scenery {
+    /// 构件局部坐标（按朝向旋转、按比例缩放）到世界坐标的变换
+    pub fn to_world(self) -> impl Fn(Vec3) -> Vec3 + Copy {
+        let (s, c) = self.yaw.sin_cos();
+        move |p: Vec3| self.position + vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z) * self.scale
+    }
+}
+
 impl World {
     pub(super) fn cosmic(kind: MapKind, seed: u32) -> Self {
         let profile = crate::content::maps::definition(kind);
