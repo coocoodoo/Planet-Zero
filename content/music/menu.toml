@@ -1,6 +1,7 @@
 title = "Horizon Signal"
 bpm = 144
 style = "menu"
+cues = ["menu"]
 loop_start = 0
 
 sections = [

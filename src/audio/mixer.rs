@@ -1,8 +1,17 @@
 use super::{
-    Cue, Frame, Sound, effects,
+    Cue, Frame, Sound, THROTTLE_SLOTS, effects,
     oscillator::{Oscillator, Tables, Tone, Voice, Wave, frequency},
-    scores,
+    playlist, scores,
 };
+
+/// 机型引擎音色：基频、锯齿、三角、风噪、噪声亮度
+const ENGINES: [(f32, f32, f32, f32, f32); 5] = [
+    (65.0, 0.012, 0.020, 0.018, 0.06),
+    (82.0, 0.016, 0.014, 0.016, 0.09),
+    (48.0, 0.010, 0.026, 0.022, 0.04),
+    (98.0, 0.019, 0.010, 0.014, 0.12),
+    (60.0, 0.002, 0.004, 0.030, 0.05),
+];
 
 pub struct Mixer {
     rate: f32,
@@ -10,11 +19,13 @@ pub struct Mixer {
     voices: [Option<Voice>; 64],
     frame: Frame,
     cue: Cue,
+    track: usize,
+    shuffle: u32,
     pending: Option<Cue>,
     step: usize,
     until_step: f64,
     clock: f64,
-    last_effect: [f64; 24],
+    last_effect: [f64; THROTTLE_SLOTS],
     seed: u32,
     delay: Vec<[f32; 2]>,
     delay_index: usize,
@@ -28,11 +39,14 @@ pub struct Mixer {
     filtered: [f32; 2],
     dc_input: [f32; 2],
     dc_output: [f32; 2],
-    engine: [Oscillator; 3],
+    engine: [Oscillator; 5],
     engine_gain: f32,
     boost: f32,
+    ascent: f32,
+    vacuum: f32,
     pub peak_voices: usize,
     pub transitions: u32,
+    pub rotations: u32,
 }
 impl Mixer {
     pub fn new(rate: u32) -> Self {
@@ -43,11 +57,13 @@ impl Mixer {
             voices: [None; 64],
             frame: Frame::default(),
             cue: Cue::Menu,
+            track: playlist(Cue::Menu, crate::world::MapKind::Islands)[0],
+            shuffle: 0x9e37_79b9,
             pending: None,
             step: 0,
             until_step: 0.0,
             clock: 0.0,
-            last_effect: [-10.0; 24],
+            last_effect: [-10.0; THROTTLE_SLOTS],
             seed: 173,
             delay: vec![[0.0; 2]; (rate as f32 * 0.3125) as usize],
             delay_index: 0,
@@ -65,25 +81,51 @@ impl Mixer {
                 Oscillator::new(37),
                 Oscillator::new(73),
                 Oscillator::new(317),
+                Oscillator::new(911),
+                Oscillator::new(1291),
             ],
             engine_gain: 0.0,
             boost: 0.0,
+            ascent: 0.0,
+            vacuum: 0.0,
             peak_voices: 0,
             transitions: 0,
+            rotations: 0,
         }
+    }
+    /// 设定选曲随机种子；实时输出用时间播种，测试与导出保持确定
+    pub fn reseed(&mut self, seed: u32) {
+        self.shuffle = seed | 1;
     }
     pub fn cue(&self) -> Cue {
         self.cue
+    }
+    pub fn track(&self) -> usize {
+        self.track
+    }
+    fn random(&mut self) -> u32 {
+        self.shuffle ^= self.shuffle << 13;
+        self.shuffle ^= self.shuffle >> 17;
+        self.shuffle ^= self.shuffle << 5;
+        self.shuffle
+    }
+    /// 从场景曲库随机选曲，曲库多于一首时避开正在播放的曲目
+    fn choose(&mut self, cue: Cue, exclude: Option<usize>) -> usize {
+        let mut list = playlist(cue, self.frame.map);
+        if list.len() > 1
+            && let Some(current) = exclude
+        {
+            list.retain(|i| *i != current);
+        }
+        list[self.random() as usize % list.len()]
     }
     pub fn step(&self) -> usize {
         self.step
     }
     pub fn update(&mut self, frame: Frame) {
-        if frame.cue != self.cue {
-            self.pending = Some(frame.cue);
-        } else {
-            self.pending = None;
-        }
+        // 场景变化或进入有专属配乐的地图时，在下一小节换曲
+        let fits = frame.cue == self.cue && playlist(frame.cue, frame.map).contains(&self.track);
+        self.pending = (!fits).then_some(frame.cue);
         if frame.settings.effects() {
             for event in frame.events.iter() {
                 self.play(event);
@@ -92,11 +134,18 @@ impl Mixer {
         self.frame = frame;
     }
     pub fn start_cue(&mut self, cue: Cue) {
+        self.track = self.choose(cue, None);
         self.cue = cue;
         self.pending = None;
         self.step = 0;
         self.until_step = 0.0;
         self.frame.cue = cue;
+    }
+    /// 直接播放指定曲目，用于导出与试听
+    pub fn start_track(&mut self, track: usize) {
+        let cue = scores()[track].cues[0];
+        self.start_cue(cue);
+        self.track = track;
     }
     fn add(&mut self, tone: Tone) {
         let slot = self.voices.iter().position(Option::is_none).or_else(|| {
@@ -120,38 +169,19 @@ impl Mixer {
         }
     }
     fn play(&mut self, sound: Sound) {
-        let (index, cooldown) = match sound {
-            Sound::Navigate => (0, 0.035),
-            Sound::Confirm => (1, 0.07),
-            Sound::Countdown(_) => (2, 0.12),
-            Sound::Roll => (3, 0.7),
-            Sound::Gun => (4, 0.065),
-            Sound::Missile => (5, 0.14),
-            Sound::Laser => (6, 0.10),
-            Sound::Plasma => (7, 0.10),
-            Sound::Orb => (8, 0.16),
-            Sound::Impact => (9, 0.10),
-            Sound::Explosion(false) => (10, 0.10),
-            Sound::Explosion(true) => (11, 0.5),
-            Sound::Damage => (12, 0.22),
-            Sound::Coin(_) => (13, 0.025),
-            Sound::Pickup => (14, 0.09),
-            Sound::Upgrade => (15, 0.12),
-            Sound::Support => (16, 0.2),
-            Sound::Gate(_) => (17, 0.12),
-            Sound::Nova => (18, 0.3),
-            Sound::Overdrive => (19, 0.5),
-            Sound::Phase => (20, 0.5),
-            Sound::Boss => (21, 1.5),
-            Sound::Warp => (22, 0.6),
-        };
+        let (index, cooldown) = sound.throttle();
         if self.clock - self.last_effect[index] < cooldown {
             return;
         }
         self.last_effect[index] = self.clock;
         if matches!(
             sound,
-            Sound::Nova | Sound::Boss | Sound::Explosion(true) | Sound::Damage
+            Sound::Nova
+                | Sound::Boss
+                | Sound::Explosion(true)
+                | Sound::Damage
+                | Sound::Breakthrough
+                | Sound::Destroyed
         ) {
             self.duck = 0.42;
         }
@@ -159,13 +189,15 @@ impl Mixer {
     }
     fn tick(&mut self) {
         if let Some(next) = self.pending {
-            let urgent = matches!(next, Cue::Victory | Cue::Defeat);
+            let urgent = next.urgent();
             if self.step.is_multiple_of(if urgent { 4 } else { 16 }) {
                 for voice in self.voices.iter_mut().flatten() {
                     if voice.tone.priority == 1 {
                         voice.fade(0.15);
                     }
                 }
+                let exclude = (next == self.cue).then_some(self.track);
+                self.track = self.choose(next, exclude);
                 self.cue = next;
                 self.pending = None;
                 self.step = 0;
@@ -180,10 +212,17 @@ impl Mixer {
                 }
             }
         }
-        let score = &scores()[self.cue as usize];
-        if self.step >= score.steps.len() {
-            self.step = score.loop_start;
+        if self.step >= scores()[self.track].steps.len() {
+            // 整首播完后换一首同场景曲目，结算曲循环尾段
+            if self.cue.rotates() && playlist(self.cue, self.frame.map).len() > 1 {
+                self.track = self.choose(self.cue, Some(self.track));
+                self.rotations += 1;
+                self.step = 0;
+            } else {
+                self.step = scores()[self.track].loop_start;
+            }
         }
+        let score = &scores()[self.track];
         for tone in &score.steps[self.step] {
             self.add(*tone);
         }
@@ -267,21 +306,44 @@ impl Mixer {
         self.reverb_index = (self.reverb_index + 1) % self.reverb.len();
         self.engine_gain += (self.frame.engine - self.engine_gain) * dt * 6.0;
         self.boost += (self.frame.boost - self.boost) * dt * 8.0;
-        let hz = 65.0 + self.engine_gain * 32.0 + self.boost * 85.0;
-        let turbine = self.engine[0].sample(Wave::Saw, hz * dt, 0.5, &self.tables) * 0.012
-            + self.engine[1].sample(Wave::Triangle, hz * 2.01 * dt, 0.5, &self.tables) * 0.020
+        self.ascent += (self.frame.ascent - self.ascent) * dt * 3.0;
+        self.vacuum += (f32::from(self.frame.vacuum) - self.vacuum) * dt * 1.5;
+        let (base, saw, triangle, wind, brightness) =
+            ENGINES[self.frame.vehicle as usize % ENGINES.len()];
+        let hz = base + self.engine_gain * base * 0.5 + self.boost * 85.0;
+        // 真空中没有风噪，只剩机体传导的低沉涡轮声
+        let air = 1.0 - self.vacuum * 0.9;
+        let turbine = self.engine[0].sample(Wave::Saw, hz * dt, 0.5, &self.tables) * saw
+            + self.engine[1].sample(Wave::Triangle, hz * 2.01 * dt, 0.5, &self.tables) * triangle
             + self.engine[2].sample(
                 Wave::Noise,
                 1000.0 * dt,
-                0.06 + self.boost * 0.25,
+                brightness + self.boost * 0.25,
                 &self.tables,
-            ) * (0.018 + self.boost * 0.065);
-        let engine = turbine * self.engine_gain;
+            ) * (wind + self.boost * 0.065)
+                * air;
+        // 轨道推进：火箭低频轰鸣，随高度升高的气流哨音
+        let rumble = self.engine[3].sample(Wave::Noise, 0.0, 0.035, &self.tables)
+            * self.ascent
+            * (0.16 - self.frame.altitude.clamp(0.0, 1.0) * 0.08);
+        let whistle = self.engine[4].sample(
+            Wave::Sine,
+            (220.0 + self.frame.altitude.clamp(0.0, 1.0) * 760.0) * dt,
+            0.5,
+            &self.tables,
+        ) * self.ascent
+            * 0.016
+            * air;
+        let engine = turbine * self.engine_gain + rumble + whistle;
         let mut result = [0.0; 2];
         for channel in 0..2 {
             let wet = music[channel] + echo[channel] + room[channel];
-            self.filtered[channel] +=
-                (wet - self.filtered[channel]) * if self.frame.paused { 0.055 } else { 0.65 };
+            self.filtered[channel] += (wet - self.filtered[channel])
+                * if self.frame.paused {
+                    0.055
+                } else {
+                    0.65 - self.vacuum * 0.3
+                };
             let mixed = self.filtered[channel] * self.music_gain * (1.0 - self.duck)
                 + (fx[channel] + engine) * self.effects_gain;
             let dc = mixed - self.dc_input[channel] + 0.997 * self.dc_output[channel];

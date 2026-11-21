@@ -241,7 +241,10 @@ impl App {
         }
         match code {
             OVERDRIVE if self.mode == Mode::Combat => self.mission.activate_overdrive(),
-            VIEW => self.flight.view = (self.flight.view + 1) % 3,
+            VIEW => {
+                self.flight.view = (self.flight.view + 1) % 3;
+                self.sounds.push(crate::audio::Sound::View);
+            }
             ROLL_LEFT | ROLL_RIGHT => {
                 let direction = if code == ROLL_LEFT { -1.0 } else { 1.0 };
                 if self.flight.roll_toward(direction) {
@@ -255,7 +258,8 @@ impl App {
                 self.navigation.arrived = false;
                 self.auto = false;
                 self.flight.set_demo(false);
-                self.sounds.push(crate::audio::Sound::Confirm);
+                self.sounds
+                    .push(crate::audio::Sound::Toggle(self.flight.hover));
             }
             PAUSE => {
                 self.pitch_gesture = Default::default();
@@ -265,7 +269,11 @@ impl App {
             RETRY => self.start(),
             WEAPON if self.mode == Mode::Combat => self.mission.cycle_weapon(),
             BOMB if self.mode == Mode::Combat => self.mission.bomb(),
-            AUTOFIRE if self.mode == Mode::Combat => self.mission.autofire = !self.mission.autofire,
+            AUTOFIRE if self.mode == Mode::Combat => {
+                self.mission.autofire = !self.mission.autofire;
+                self.sounds
+                    .push(crate::audio::Sound::Toggle(self.mission.autofire));
+            }
             UP | LEFT | DOWN | RIGHT => {
                 self.navigation.active = false;
                 self.navigation.arrived = false;

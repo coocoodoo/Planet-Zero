@@ -1,6 +1,8 @@
 title = "Cloud Atlas"
 bpm = 144
 style = "flight"
+cues = ["flight"]
+maps = ["islands", "wetlands", "highlands", "alpine", "fjords", "icebergs"]
 loop_start = 0
 
 sections = [

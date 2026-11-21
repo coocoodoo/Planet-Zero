@@ -1,4 +1,5 @@
 use super::oscillator::{Tone, Wave, frequency};
+use crate::world::MapKind;
 use std::sync::OnceLock;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -6,26 +7,66 @@ pub enum Cue {
     Menu,
     Flight,
     Race,
+    Coins,
     Combat,
     Boss,
     Victory,
     Defeat,
+    Ascent,
 }
 impl Cue {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::Menu,
         Self::Flight,
         Self::Race,
+        Self::Coins,
         Self::Combat,
         Self::Boss,
         Self::Victory,
         Self::Defeat,
+        Self::Ascent,
     ];
     pub fn name(self) -> &'static str {
         [
-            "menu", "flight", "race", "combat", "boss", "victory", "defeat",
+            "menu", "flight", "race", "coins", "combat", "boss", "victory", "defeat", "ascent",
         ][self as usize]
     }
+    fn parse(name: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|cue| cue.name() == name)
+            .unwrap_or_else(|| panic!("未知配乐场景 {name}"))
+    }
+    /// 结算曲播完后循环尾段，其余场景播完整首后随机换曲
+    pub fn rotates(self) -> bool {
+        !matches!(self, Self::Victory | Self::Defeat)
+    }
+    /// 结算与升空在下一拍切入，其余场景等下一小节
+    pub fn urgent(self) -> bool {
+        matches!(self, Self::Victory | Self::Defeat | Self::Ascent)
+    }
+}
+
+const MAP_NAMES: [&str; 12] = [
+    "islands",
+    "alpine",
+    "canyon",
+    "desert",
+    "wetlands",
+    "volcanic",
+    "moon",
+    "space",
+    "fjords",
+    "icebergs",
+    "city",
+    "highlands",
+];
+fn parse_map(name: &str) -> MapKind {
+    MAP_NAMES
+        .iter()
+        .position(|n| *n == name)
+        .map(|i| MapKind::ALL[i])
+        .unwrap_or_else(|| panic!("未知地图 {name}"))
 }
 
 #[derive(serde::Deserialize)]
@@ -41,10 +82,30 @@ struct Definition {
     title: String,
     bpm: u32,
     style: String,
+    cues: Vec<String>,
+    #[serde(default)]
+    maps: Vec<String>,
     loop_start: usize,
+    lead: Option<String>,
+    lead_duty: Option<f32>,
+    bass: Option<String>,
+    bass_line: Option<String>,
+    groove: Option<String>,
+    arp: Option<String>,
+    arp_wave: Option<String>,
+    #[serde(default)]
+    swing: f32,
+    #[serde(default = "one")]
+    pad: f32,
+    counter_wave: Option<String>,
     sections: Vec<Section>,
     melody: Vec<String>,
     harmony: Vec<String>,
+    #[serde(default)]
+    counter: Vec<String>,
+}
+fn one() -> f32 {
+    1.0
 }
 
 pub struct Score {
@@ -53,6 +114,8 @@ pub struct Score {
     pub loop_start: usize,
     pub steps: Vec<Vec<Tone>>,
     pub chords: Vec<[u8; 4]>,
+    pub cues: Vec<Cue>,
+    pub maps: Vec<MapKind>,
 }
 impl Score {
     pub fn seconds(&self) -> f32 {
@@ -60,20 +123,63 @@ impl Score {
     }
 }
 
-pub fn scores() -> &'static [Score; 7] {
-    static SCORES: OnceLock<[Score; 7]> = OnceLock::new();
+const SOURCES: [&str; 25] = [
+    include_str!("../../content/music/menu.toml"),
+    include_str!("../../content/music/hangar-lights.toml"),
+    include_str!("../../content/music/flight.toml"),
+    include_str!("../../content/music/tailwind.toml"),
+    include_str!("../../content/music/green-lowlands.toml"),
+    include_str!("../../content/music/glacier-drift.toml"),
+    include_str!("../../content/music/mirage-dunes.toml"),
+    include_str!("../../content/music/neon-avenue.toml"),
+    include_str!("../../content/music/magma-core.toml"),
+    include_str!("../../content/music/sea-of-tranquility.toml"),
+    include_str!("../../content/music/orbital-silence.toml"),
+    include_str!("../../content/music/starlane.toml"),
+    include_str!("../../content/music/escape-velocity.toml"),
+    include_str!("../../content/music/race.toml"),
+    include_str!("../../content/music/checkpoint-fever.toml"),
+    include_str!("../../content/music/coin-cascade.toml"),
+    include_str!("../../content/music/combat.toml"),
+    include_str!("../../content/music/steel-rain.toml"),
+    include_str!("../../content/music/crimson-horizon.toml"),
+    include_str!("../../content/music/boss.toml"),
+    include_str!("../../content/music/leviathan.toml"),
+    include_str!("../../content/music/victory.toml"),
+    include_str!("../../content/music/clear-skies.toml"),
+    include_str!("../../content/music/defeat.toml"),
+    include_str!("../../content/music/long-way-home.toml"),
+];
+
+pub fn scores() -> &'static [Score] {
+    static SCORES: OnceLock<Vec<Score>> = OnceLock::new();
     SCORES.get_or_init(|| {
-        [
-            include_str!("../../content/music/menu.toml"),
-            include_str!("../../content/music/flight.toml"),
-            include_str!("../../content/music/race.toml"),
-            include_str!("../../content/music/combat.toml"),
-            include_str!("../../content/music/boss.toml"),
-            include_str!("../../content/music/victory.toml"),
-            include_str!("../../content/music/defeat.toml"),
-        ]
-        .map(|source| compile(toml::from_str(source).expect("音乐乐谱格式错误")))
+        SOURCES
+            .iter()
+            .map(|source| compile(toml::from_str(source).expect("音乐乐谱格式错误")))
+            .collect()
     })
+}
+
+/// 场景曲库：地图专属曲目优先，没有专属时使用通用曲目
+pub fn playlist(cue: Cue, map: MapKind) -> Vec<usize> {
+    let tracks = scores();
+    let of_cue = |i: &usize| tracks[*i].cues.contains(&cue);
+    let specific: Vec<usize> = (0..tracks.len())
+        .filter(of_cue)
+        .filter(|i| tracks[*i].maps.contains(&map))
+        .collect();
+    if !specific.is_empty() {
+        return specific;
+    }
+    let generic: Vec<usize> = (0..tracks.len())
+        .filter(of_cue)
+        .filter(|i| tracks[*i].maps.is_empty())
+        .collect();
+    if !generic.is_empty() {
+        return generic;
+    }
+    (0..tracks.len()).filter(of_cue).collect()
 }
 
 fn midi(name: &str) -> u8 {
@@ -95,14 +201,248 @@ fn midi(name: &str) -> u8 {
     ((octave + 1) * 12 + semitone) as u8
 }
 
+fn wave(name: &str) -> Wave {
+    match name {
+        "pulse" => Wave::Pulse,
+        "saw" => Wave::Saw,
+        "triangle" => Wave::Triangle,
+        "sine" => Wave::Sine,
+        "fm" => Wave::Fm,
+        _ => panic!("未知音色 {name}"),
+    }
+}
+
+/// 鼓组每小节十六步的位掩码
+struct Groove {
+    kick: u16,
+    snare: u16,
+    ghost: u16,
+    hat: u16,
+    dense: u16,
+    open: u16,
+    low_tom: u16,
+    high_tom: u16,
+}
+const fn mask(steps: &[u8]) -> u16 {
+    let mut m = 0;
+    let mut i = 0;
+    while i < steps.len() {
+        m |= 1 << steps[i];
+        i += 1;
+    }
+    m
+}
+const EIGHTHS: u16 = mask(&[0, 2, 4, 6, 8, 10, 12, 14]);
+const OFFBEATS: u16 = mask(&[1, 3, 5, 7, 9, 11, 13, 15]);
+fn groove(name: &str) -> Option<Groove> {
+    let none = Groove {
+        kick: 0,
+        snare: 0,
+        ghost: 0,
+        hat: 0,
+        dense: 0,
+        open: 0,
+        low_tom: 0,
+        high_tom: 0,
+    };
+    Some(match name {
+        "drive" => Groove {
+            kick: mask(&[0, 6, 8, 10]),
+            snare: mask(&[4, 12]),
+            hat: EIGHTHS,
+            dense: OFFBEATS,
+            ..none
+        },
+        "steady" => Groove {
+            kick: mask(&[0, 8]),
+            snare: mask(&[12]),
+            hat: EIGHTHS,
+            ..none
+        },
+        "four" => Groove {
+            kick: mask(&[0, 4, 8, 12]),
+            snare: mask(&[4, 12]),
+            hat: mask(&[0, 4, 8, 12]),
+            dense: OFFBEATS,
+            open: mask(&[2, 6, 10, 14]),
+            ..none
+        },
+        "half" => Groove {
+            kick: mask(&[0, 10]),
+            snare: mask(&[8]),
+            hat: mask(&[0, 4, 8, 12]),
+            dense: mask(&[2, 6, 10, 14]),
+            ..none
+        },
+        "break" => Groove {
+            kick: mask(&[0, 7, 10]),
+            snare: mask(&[4, 12]),
+            ghost: mask(&[9, 15]),
+            hat: EIGHTHS,
+            dense: OFFBEATS,
+            ..none
+        },
+        "march" => Groove {
+            kick: mask(&[0, 3, 8, 11]),
+            snare: mask(&[4, 12]),
+            ghost: mask(&[14, 15]),
+            hat: EIGHTHS,
+            low_tom: mask(&[10]),
+            ..none
+        },
+        "tribal" => Groove {
+            kick: mask(&[0, 8]),
+            snare: mask(&[12]),
+            hat: OFFBEATS,
+            low_tom: mask(&[0, 3, 6]),
+            high_tom: mask(&[10, 11, 14]),
+            ..none
+        },
+        "shuffle" => Groove {
+            kick: mask(&[0, 10]),
+            snare: mask(&[4, 12]),
+            hat: mask(&[0, 3, 4, 7, 8, 11, 12, 15]),
+            ..none
+        },
+        "none" => return None,
+        _ => panic!("未知鼓组 {name}"),
+    })
+}
+fn on(bits: u16, step: usize) -> bool {
+    bits & (1 << step) != 0
+}
+
+/// 低音每小节的发声位置与相对根音的音程
+fn bass_line(name: &str) -> &'static [(usize, u8)] {
+    match name {
+        "drive" => &[(0, 0), (3, 0), (6, 12), (8, 0), (10, 7), (14, 12)],
+        "cruise" => &[(0, 0), (6, 12), (8, 0), (10, 7), (14, 12)],
+        "eighths" => &[
+            (0, 0),
+            (2, 0),
+            (4, 12),
+            (6, 0),
+            (8, 0),
+            (10, 0),
+            (12, 12),
+            (14, 7),
+        ],
+        "gallop" => &[
+            (0, 0),
+            (2, 0),
+            (3, 0),
+            (4, 0),
+            (6, 0),
+            (7, 0),
+            (8, 0),
+            (10, 0),
+            (11, 0),
+            (12, 7),
+            (14, 5),
+            (15, 7),
+        ],
+        "walk" => &[(0, 0), (4, 7), (8, 12), (12, 7)],
+        "long" => &[(0, 0), (8, 7)],
+        "pedal" => &[(0, 0)],
+        _ => panic!("未知低音型 {name}"),
+    }
+}
+
+/// 琶音的和弦音序与间隔步数
+fn arpeggio(name: &str) -> Option<(&'static [usize], usize)> {
+    Some(match name {
+        "classic" => (&[0, 2, 1, 3, 2, 1, 3, 1], 2),
+        "up" => (&[0, 1, 2, 3], 2),
+        "down" => (&[3, 2, 1, 0], 2),
+        "bounce" => (&[0, 1, 2, 3, 2, 1], 2),
+        "sixteenths" => (&[0, 1, 2, 3, 2, 1, 2, 3], 1),
+        "slow" => (&[0, 2, 1, 3], 4),
+        "none" => return None,
+        _ => panic!("未知琶音 {name}"),
+    })
+}
+
 fn compile(d: Definition) -> Score {
     let seconds = 15.0 / d.bpm as f32;
     let mut steps = vec![Vec::new(); d.sections.len() * 8 * 16];
     let mut chords = Vec::new();
     let fierce = d.style == "combat" || d.style == "boss";
     let quick = fierce || d.style == "race";
-    let soft = d.style == "flight" || d.style == "defeat";
+    let soft = matches!(d.style.as_str(), "flight" | "defeat" | "ambient");
+    let lead_wave = d.lead.as_deref().map(wave).unwrap_or(if d.style == "boss" {
+        Wave::Fm
+    } else if soft {
+        Wave::Triangle
+    } else {
+        Wave::Pulse
+    });
+    let lead_gain = match lead_wave {
+        Wave::Triangle | Wave::Sine => 0.24,
+        Wave::Fm => 0.16,
+        _ => 0.14,
+    };
+    let bass_wave =
+        d.bass
+            .as_deref()
+            .map(wave)
+            .unwrap_or(if fierce { Wave::Fm } else { Wave::Triangle });
+    let bass_notes =
+        bass_line(
+            d.bass_line
+                .as_deref()
+                .unwrap_or(if quick { "drive" } else { "cruise" }),
+        );
+    let drums = groove(d.groove.as_deref().unwrap_or(if d.style == "defeat" {
+        "none"
+    } else if quick {
+        "drive"
+    } else {
+        "steady"
+    }));
+    let arp = arpeggio(d.arp.as_deref().unwrap_or(if d.style == "defeat" {
+        "none"
+    } else {
+        "classic"
+    }));
+    let arp_wave =
+        d.arp_wave
+            .as_deref()
+            .map(wave)
+            .unwrap_or(if fierce { Wave::Saw } else { Wave::Pulse });
+    let counter_wave = d.counter_wave.as_deref().map_or(Wave::Triangle, wave);
+    let cues: Vec<Cue> = d.cues.iter().map(|c| Cue::parse(c)).collect();
+    let maps: Vec<MapKind> = d.maps.iter().map(|m| parse_map(m)).collect();
+    let phrases = d.melody.len() / 8;
+    assert!(
+        d.melody.len().is_multiple_of(8) && d.harmony.len() == d.melody.len(),
+        "{}: 旋律与和声需要按八小节成句",
+        d.title
+    );
+    assert!(
+        d.counter.is_empty() || d.counter.len() == d.melody.len(),
+        "{}: 副旋律需要与主旋律等长",
+        d.title
+    );
+    let line = |bar: &str, active: bool, slot: &mut Vec<(usize, u8, usize)>| {
+        let mut cursor = 0;
+        for token in bar.split_whitespace() {
+            let (pitch, duration) = token
+                .split_once(':')
+                .unwrap_or_else(|| panic!("{}: 音符需要时值 {token}", d.title));
+            let length = duration.parse::<usize>().expect("音符时值需要整数");
+            if pitch != "-" && active {
+                slot.push((cursor, midi(pitch), length));
+            }
+            cursor += length;
+        }
+        assert_eq!(cursor, 16, "{}: 每小节需要十六个时值：{bar}", d.title);
+    };
     for (section_index, section) in d.sections.iter().enumerate() {
+        assert!(
+            section.phrase < phrases,
+            "{}: 段落引用的乐句不存在",
+            d.title
+        );
         for bar in 0..8 {
             let index = section.phrase * 8 + bar;
             let base = (section_index * 8 + bar) * 16;
@@ -110,109 +450,127 @@ fn compile(d: Definition) -> Score {
             chords.push(chord.clone().try_into().expect("和弦需要四个音符"));
             let energy = section.energy;
             let lead_active = section.lead || (section_index == 0 && bar >= 4);
-            let mut cursor = 0;
-            for token in d.melody[index].split_whitespace() {
-                let (pitch, duration) = token.split_once(':').expect("音符需要时值");
-                let length = duration.parse::<usize>().expect("音符时值需要整数");
-                if pitch != "-" && lead_active {
-                    let wave = if d.style == "boss" {
-                        Wave::Fm
-                    } else if soft {
-                        Wave::Triangle
-                    } else {
-                        Wave::Pulse
-                    };
-                    let mut t = Tone::new(
-                        wave,
-                        frequency(midi(pitch)),
-                        if soft { 0.24 } else { 0.14 },
-                        seconds * length as f32 * 0.86,
-                    );
-                    t.pan = -0.14;
-                    t.shape = if d.style == "boss" { 1.3 } else { 0.25 };
-                    t.attack = if soft { 0.012 } else { 0.004 };
-                    t.decay = 0.07;
-                    t.sustain = 0.7;
-                    t.release = 0.055;
-                    t.vibrato = 0.004;
-                    t.send = 0.22;
-                    steps[base + cursor].push(t);
-                    if energy > 0.9 && length >= 3 {
-                        let mut harmony = t;
-                        harmony.hz *= 0.5;
-                        harmony.end_hz = harmony.hz;
-                        harmony.gain *= 0.32;
-                        harmony.pan = 0.35;
-                        steps[base + cursor].push(harmony);
-                    }
+            let mut notes = Vec::new();
+            line(&d.melody[index], lead_active, &mut notes);
+            for (at, note, length) in notes {
+                let mut t = Tone::new(
+                    lead_wave,
+                    frequency(note),
+                    lead_gain,
+                    seconds * length as f32 * 0.86,
+                );
+                t.pan = -0.14;
+                t.shape = d.lead_duty.unwrap_or(match lead_wave {
+                    Wave::Fm => 1.3,
+                    _ => 0.25,
+                });
+                t.attack = if soft { 0.012 } else { 0.004 };
+                t.decay = 0.07;
+                t.sustain = 0.7;
+                t.release = if soft { 0.09 } else { 0.055 };
+                t.vibrato = if length >= 4 { 0.006 } else { 0.004 };
+                t.send = if soft { 0.3 } else { 0.22 };
+                steps[base + at].push(t);
+                if energy > 0.9 && length >= 3 {
+                    let mut harmony = t;
+                    harmony.hz *= 0.5;
+                    harmony.end_hz = harmony.hz;
+                    harmony.gain *= 0.32;
+                    harmony.pan = 0.35;
+                    steps[base + at].push(harmony);
                 }
-                cursor += length;
             }
-            assert_eq!(cursor, 16, "每小节需要十六个时值");
+            if !d.counter.is_empty() {
+                let mut notes = Vec::new();
+                line(&d.counter[index], energy >= 0.5, &mut notes);
+                for (at, note, length) in notes {
+                    let mut t = Tone::new(
+                        counter_wave,
+                        frequency(note),
+                        0.10,
+                        seconds * length as f32 * 0.9,
+                    );
+                    t.pan = 0.38;
+                    t.shape = 0.4;
+                    t.attack = 0.02;
+                    t.decay = 0.12;
+                    t.sustain = 0.6;
+                    t.release = 0.08;
+                    t.send = 0.25;
+                    steps[base + at].push(t);
+                }
+            }
             for step in 0..16 {
                 let slot = &mut steps[base + step];
                 let fill = bar == 7 && step >= 12;
                 let root = chord[0].saturating_sub(if chord[0] >= 48 { 12 } else { 0 });
-                if [0, 3, 6, 8, 10, 14].contains(&step) && (quick || step % 2 == 0) {
-                    let bass_note = root
-                        + match step {
-                            6 | 14 => 12,
-                            10 => 7,
-                            _ => 0,
-                        };
+                if let Some((_, interval)) = bass_notes.iter().find(|(at, _)| *at == step) {
+                    let long = bass_notes.len() <= 2;
                     let mut bass = Tone::new(
-                        if fierce { Wave::Fm } else { Wave::Triangle },
-                        frequency(bass_note),
+                        bass_wave,
+                        frequency(root + interval),
                         0.22,
-                        seconds * if step == 0 || step == 8 { 2.6 } else { 1.5 },
+                        seconds
+                            * if long {
+                                7.0
+                            } else if step == 0 || step == 8 {
+                                2.6
+                            } else {
+                                1.5
+                            },
                     );
                     bass.shape = 0.65;
-                    bass.attack = 0.003;
-                    bass.sustain = 0.55;
-                    bass.release = 0.035;
+                    bass.attack = if long { 0.02 } else { 0.003 };
+                    bass.sustain = if long { 0.7 } else { 0.55 };
+                    bass.release = if long { 0.12 } else { 0.035 };
                     slot.push(bass);
                 }
-                if step == 0 {
+                if step == 0 && d.pad > 0.0 {
                     for (i, note) in chord.iter().skip(1).enumerate() {
-                        let mut pad =
-                            Tone::new(Wave::Triangle, frequency(*note + 12), 0.038, seconds * 13.0);
-                        pad.attack = 0.10;
+                        let mut pad = Tone::new(
+                            Wave::Triangle,
+                            frequency(*note + 12),
+                            0.038 * d.pad,
+                            seconds * 13.0,
+                        );
+                        pad.attack = if soft { 0.25 } else { 0.10 };
                         pad.decay = 0.20;
                         pad.release = seconds * 3.0;
                         pad.sustain = 0.7;
                         pad.pan = [-0.6, 0.55, 0.0][i % 3];
+                        pad.send = if soft { 0.12 } else { 0.0 };
                         slot.push(pad);
                     }
                 }
-                if step % 2 == 0 && d.style != "defeat" {
-                    let order = [0, 2, 1, 3, 2, 1, 3, 1];
-                    let note = chord[order[step / 2] % chord.len()] + 24;
-                    let mut arp = Tone::new(
-                        if fierce { Wave::Saw } else { Wave::Pulse },
+                if let Some((order, every)) = arp
+                    && step % every == 0
+                {
+                    let note = chord[order[(step / every) % order.len()] % chord.len()] + 24;
+                    let slow = every >= 4;
+                    let mut tone = Tone::new(
+                        arp_wave,
                         frequency(note),
-                        0.042 * (0.65 + energy * 0.35),
-                        seconds * 0.68,
+                        0.042 * (0.65 + energy * 0.35) * if slow { 1.3 } else { 1.0 },
+                        seconds * if slow { 2.4 } else { 0.68 * every as f32 },
                     );
-                    arp.pan = if (step / 2 + bar) % 2 == 0 {
+                    tone.pan = if (step / every + bar) % 2 == 0 {
                         -0.55
                     } else {
                         0.55
                     };
-                    arp.shape = 0.125;
-                    arp.sustain = 0.15;
-                    arp.release = 0.045;
-                    arp.send = 0.18;
-                    slot.push(arp);
+                    tone.shape = 0.125;
+                    tone.sustain = if slow { 0.4 } else { 0.15 };
+                    tone.release = if slow { 0.2 } else { 0.045 };
+                    tone.send = if slow { 0.3 } else { 0.18 };
+                    slot.push(tone);
                 }
-                if energy < 0.45 || d.style == "defeat" {
+                let Some(g) = &drums else {
+                    continue;
+                };
+                if energy < 0.45 {
                     continue;
                 }
-                let kick = if quick {
-                    [0, 6, 8, 10].contains(&step)
-                } else {
-                    step == 0 || step == 8
-                };
-                if kick {
+                if on(g.kick, step) {
                     let mut t = Tone::new(Wave::Sine, 150.0, 0.40, 0.12);
                     t.end_hz = 44.0;
                     t.attack = 0.001;
@@ -227,14 +585,11 @@ fn compile(d: Definition) -> Score {
                     click.decay = 0.014;
                     slot.push(click);
                 }
-                let snare = if quick {
-                    step == 4 || step == 12
-                } else {
-                    step == 12
-                };
-                if snare || (fill && energy > 0.7 && step % 2 == 1) {
-                    let mut t =
-                        Tone::new(Wave::Noise, 1200.0, if snare { 0.18 } else { 0.10 }, 0.09);
+                let snare = on(g.snare, step);
+                let ghost = on(g.ghost, step) && energy >= 0.6;
+                if snare || ghost || (fill && energy > 0.7 && step % 2 == 1) {
+                    let gain = if snare { 0.18 } else { 0.08 };
+                    let mut t = Tone::new(Wave::Noise, 1200.0, gain, 0.09);
                     t.shape = 0.55;
                     t.attack = 0.001;
                     t.decay = 0.07;
@@ -242,18 +597,34 @@ fn compile(d: Definition) -> Score {
                     t.release = 0.055;
                     t.pan = -0.08;
                     slot.push(t);
-                    let mut body = Tone::new(Wave::Triangle, 185.0, 0.10, 0.045);
+                    let mut body = Tone::new(Wave::Triangle, 185.0, gain * 0.55, 0.045);
                     body.end_hz = 130.0;
                     body.decay = 0.045;
                     body.sustain = 0.0;
                     slot.push(body);
                 }
-                if step % 2 == 0 || (quick && energy >= 0.8) {
-                    let open = step == 14 && bar % 2 == 1;
+                for (bits, from, to, pan) in [
+                    (g.low_tom, 120.0, 70.0, -0.3),
+                    (g.high_tom, 210.0, 140.0, 0.3),
+                ] {
+                    if on(bits, step) {
+                        let mut tom = Tone::new(Wave::Sine, from, 0.26, 0.14);
+                        tom.end_hz = to;
+                        tom.attack = 0.001;
+                        tom.decay = 0.12;
+                        tom.sustain = 0.05;
+                        tom.release = 0.06;
+                        tom.pan = pan;
+                        slot.push(tom);
+                    }
+                }
+                let dense = on(g.dense, step) && energy >= 0.8;
+                if on(g.hat, step) || dense {
+                    let open = on(g.open, step) || (step == 14 && bar % 2 == 1);
                     let mut t = Tone::new(
                         Wave::Noise,
                         8000.0,
-                        if step % 2 == 0 { 0.043 } else { 0.023 },
+                        if dense { 0.023 } else { 0.043 },
                         if open { 0.16 } else { 0.022 },
                     );
                     t.shape = -0.18;
@@ -278,11 +649,23 @@ fn compile(d: Definition) -> Score {
             }
         }
     }
+    // 摇摆律动：反拍整体后移
+    if d.swing > 0.0 {
+        for (i, slot) in steps.iter_mut().enumerate() {
+            if i % 2 == 1 {
+                for tone in slot {
+                    tone.delay += d.swing * seconds;
+                }
+            }
+        }
+    }
     Score {
         title: d.title,
         bpm: d.bpm,
         loop_start: d.loop_start * 16,
         steps,
         chords,
+        cues,
+        maps,
     }
 }

@@ -47,7 +47,8 @@ impl Mission {
     pub fn cycle_weapon(&mut self) {
         self.weapon = Weapon::ALL[(self.weapon as usize + 1) % 5];
         self.fire_timer = 0.0;
-        self.sounds.push(crate::audio::Sound::Navigate);
+        self.sounds
+            .push(crate::audio::Sound::WeaponSwitch(self.weapon as u8));
     }
     pub fn activate_overdrive(&mut self) {
         if self.mode == Mode::Combat

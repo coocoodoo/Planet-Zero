@@ -1,6 +1,7 @@
 title = "Vector Assault"
 bpm = 144
 style = "combat"
+cues = ["combat"]
 loop_start = 0
 
 sections = [

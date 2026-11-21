@@ -72,6 +72,9 @@ impl App {
         } else {
             self.flight.position.z >= ARM_ALTITUDE && self.orbit.hold >= 0.6
         };
+        if controls.orbital && !self.orbit.boost && self.world.kind != MapKind::Space {
+            self.sounds.push(crate::audio::Sound::OrbitIgnite);
+        }
         self.orbit.boost = controls.orbital;
     }
     pub(super) fn prepare_orbit(&mut self) {
@@ -166,6 +169,7 @@ impl App {
                 self.finish_ascent(space);
                 self.orbit.cooldown = 0.4;
             } else if altitude <= body.surface_altitude() {
+                self.sounds.push(crate::audio::Sound::Landing);
                 self.flight.orbital_scenery = None;
                 self.flight.orbit_quiet = false;
                 self.orbit.cooldown = 0.4;
@@ -237,6 +241,7 @@ impl App {
                 }
                 self.auto = false;
                 self.orbit.transition = self.network.get(target).cloned();
+                self.sounds.push(crate::audio::Sound::Breakthrough);
                 return true;
             }
         }
@@ -295,6 +300,7 @@ impl App {
         }
         self.auto = false;
         self.orbit.transition = Some(previous);
+        self.sounds.push(crate::audio::Sound::Reentry);
     }
     fn finish_ascent(&mut self, destination: Arc<World>) {
         self.network.take(MapKey::of(&destination));
@@ -309,7 +315,7 @@ impl App {
             self.orbit.earth = Some(self.network.random_earth_except(self.orbit.departure));
         }
         self.orbit.arrival_notice = 5.0;
-        self.sounds.push(crate::audio::Sound::Phase);
+        self.sounds.push(crate::audio::Sound::OrbitArrival);
         self.flight.surface = None;
         self.flight.orbital_scenery = None;
         self.flight.sky_rotation = Quat::IDENTITY;

@@ -1,0 +1,49 @@
+title = "Long Way Home"
+bpm = 92
+style = "defeat"
+cues = ["defeat"]
+loop_start = 8
+lead = "sine"
+
+sections = [
+  { phrase = 0, energy = 0.25, lead = true },
+  { phrase = 1, energy = 0.15, lead = false },
+]
+
+melody = [
+  "E5:4 C5:4 A4:8",
+  "C5:4 A4:4 F4:8",
+  "F4:4 A4:4 D5:8",
+  "B4:8 G#4:8",
+  "A4:4 C5:4 E5:8",
+  "F5:4 E5:4 C5:8",
+  "D5:4 C5:4 A4:8",
+  "G#4:8 B4:8",
+  "A4:16",
+  "C5:16",
+  "D5:8 F5:8",
+  "E5:16",
+  "C5:8 A4:8",
+  "A4:16",
+  "G#4:8 B4:8",
+  "A4:16",
+]
+
+harmony = [
+  "A2 C3 E3 G3",
+  "F2 A2 C3 E3",
+  "D3 F3 A3 C4",
+  "E2 G#2 B2 D3",
+  "A2 C3 E3 G3",
+  "F2 A2 C3 E3",
+  "D3 F3 A3 C4",
+  "E2 G#2 B2 D3",
+  "A2 C3 E3 G3",
+  "F2 A2 C3 E3",
+  "D3 F3 A3 C4",
+  "E2 G#2 B2 D3",
+  "A2 C3 E3 G3",
+  "F2 A2 C3 E3",
+  "E2 G#2 B2 D3",
+  "A2 C3 E3 G3",
+]

@@ -1,0 +1,56 @@
+title = "Leviathan"
+bpm = 136
+style = "boss"
+cues = ["boss"]
+loop_start = 0
+groove = "march"
+bass_line = "gallop"
+
+sections = [
+  { phrase = 0, energy = 0.8, lead = true },
+  { phrase = 0, energy = 0.95, lead = true },
+  { phrase = 1, energy = 1.0, lead = true },
+  { phrase = 0, energy = 0.9, lead = true },
+  { phrase = 1, energy = 1.0, lead = true },
+  { phrase = 0, energy = 0.95, lead = true },
+  { phrase = 1, energy = 1.0, lead = true },
+  { phrase = 0, energy = 1.0, lead = true },
+]
+
+melody = [
+  "D5:2 D5:1 D5:1 A5:4 F5:2 E5:2 D5:4",
+  "D#5:2 G5:2 A#5:4 A5:4 G5:4",
+  "D5:2 F5:2 A5:2 D6:2 C#6:4 A5:4",
+  "E6:4 C#6:4 A5:8",
+  "D6:3 C6:1 A#5:2 A5:2 F5:4 D5:4",
+  "G5:2 A#5:2 D6:4 C#6:4 A#5:4",
+  "C#6:4 E6:4 G6:4 A#6:4",
+  "A6:4 G6:2 E6:2 C#6:8",
+  "G6:6 F6:2 D6:4 A#5:4",
+  "A5:4 D6:4 F6:8",
+  "D#6:4 G6:4 A#6:4 G6:4",
+  "A6:6 G6:2 E6:4 C#6:4",
+  "D6:4 F6:4 A6:8",
+  "A#6:4 A6:2 G6:2 D6:8",
+  "E6:2 G6:2 A#6:4 G6:4 E6:4",
+  "C#6:4 E6:4 A6:8",
+]
+
+harmony = [
+  "D3 F3 A3 C4",
+  "D#3 G3 A#3 D4",
+  "D3 F3 A3 C4",
+  "A2 C#3 E3 G3",
+  "A#2 D3 F3 A3",
+  "G2 A#2 D3 F3",
+  "C#3 E3 G3 A#3",
+  "A2 C#3 E3 G3",
+  "G2 A#2 D3 F3",
+  "D3 F3 A3 C4",
+  "D#3 G3 A#3 D4",
+  "A2 C#3 E3 G3",
+  "A#2 D3 F3 A3",
+  "G2 A#2 D3 F3",
+  "C#3 E3 G3 A#3",
+  "A2 C#3 E3 G3",
+]

@@ -1,0 +1,59 @@
+title = "Mirage Dunes"
+bpm = 112
+style = "cruise"
+cues = ["flight"]
+maps = ["desert", "canyon", "volcanic"]
+loop_start = 8
+lead = "fm"
+lead_duty = 0.9
+groove = "tribal"
+bass_line = "long"
+arp = "up"
+arp_wave = "triangle"
+
+sections = [
+  { phrase = 0, energy = 0.4, lead = false },
+  { phrase = 0, energy = 0.65, lead = true },
+  { phrase = 1, energy = 0.75, lead = true },
+  { phrase = 0, energy = 0.8, lead = true },
+  { phrase = 1, energy = 0.9, lead = true },
+  { phrase = 0, energy = 0.6, lead = true },
+]
+
+melody = [
+  "E5:3 F5:1 G#5:4 F5:2 E5:2 D5:4",
+  "C5:2 E5:2 F5:4 A5:4 E5:4",
+  "G#5:3 A5:1 B5:4 A5:2 G#5:2 F5:4",
+  "F5:4 E5:2 D5:2 A4:8",
+  "E5:3 F5:1 G#5:4 B5:4 D6:4",
+  "C6:6 B5:1 A5:1 G#5:4 F5:4",
+  "F5:2 E5:2 D5:4 C5:4 D5:4",
+  "E5:2 F5:2 E5:12",
+  "A5:4 C6:4 B5:2 A5:2 G#5:4",
+  "F5:4 A5:4 D6:8",
+  "C6:3 B5:1 A5:4 G#5:4 F5:4",
+  "E5:4 G#5:4 B5:8",
+  "C6:2 B5:2 A5:4 E5:4 A5:4",
+  "D6:4 C6:2 A5:2 F5:4 D5:4",
+  "F5:2 G#5:2 A5:4 C6:4 B5:4",
+  "G#5:4 F5:4 E5:8",
+]
+
+harmony = [
+  "E2 G#2 B2 D3",
+  "F2 A2 C3 E3",
+  "E2 G#2 B2 D3",
+  "D3 F3 A3 C4",
+  "E2 G#2 B2 D3",
+  "F2 A2 C3 E3",
+  "D3 F3 A3 C4",
+  "E2 G#2 B2 D3",
+  "A2 C3 E3 G3",
+  "D3 F3 A3 C4",
+  "F2 A2 C3 E3",
+  "E2 G#2 B2 D3",
+  "A2 C3 E3 G3",
+  "D3 F3 A3 C4",
+  "F2 A2 C3 E3",
+  "E2 G#2 B2 D3",
+]

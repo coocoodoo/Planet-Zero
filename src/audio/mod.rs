@@ -9,7 +9,7 @@ mod tests;
 
 pub use backend::Output;
 pub use mixer::Mixer;
-pub use score::{Cue, scores};
+pub use score::{Cue, playlist, scores};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Sound {
@@ -35,6 +35,76 @@ pub enum Sound {
     Overdrive,
     Phase,
     Boss,
+    BoostStart,
+    OrbitReady,
+    OrbitIgnite,
+    Breakthrough,
+    OrbitArrival,
+    Reentry,
+    Landing,
+    EnemyFire(bool),
+    Graze,
+    Flyby,
+    WeaponSwitch(u8),
+    Toggle(bool),
+    View,
+    Wave,
+    Destroyed,
+}
+impl Sound {
+    /// 每种音效独立的限频槽位与最短间隔（秒）
+    pub(crate) fn throttle(self) -> (usize, f64) {
+        match self {
+            Sound::Navigate => (0, 0.035),
+            Sound::Confirm => (1, 0.07),
+            Sound::Countdown(_) => (2, 0.12),
+            Sound::Roll => (3, 0.7),
+            Sound::Gun => (4, 0.065),
+            Sound::Missile => (5, 0.14),
+            Sound::Laser => (6, 0.10),
+            Sound::Plasma => (7, 0.10),
+            Sound::Orb => (8, 0.16),
+            Sound::Impact => (9, 0.10),
+            Sound::Explosion(false) => (10, 0.10),
+            Sound::Explosion(true) => (11, 0.5),
+            Sound::Damage => (12, 0.22),
+            Sound::Coin(_) => (13, 0.025),
+            Sound::Pickup => (14, 0.09),
+            Sound::Upgrade => (15, 0.12),
+            Sound::Support => (16, 0.2),
+            Sound::Gate(_) => (17, 0.12),
+            Sound::Nova => (18, 0.3),
+            Sound::Overdrive => (19, 0.5),
+            Sound::Phase => (20, 0.5),
+            Sound::Boss => (21, 1.5),
+            Sound::Warp => (22, 0.6),
+            Sound::BoostStart => (23, 0.8),
+            Sound::OrbitReady => (24, 2.0),
+            Sound::OrbitIgnite => (25, 1.5),
+            Sound::Breakthrough => (26, 2.0),
+            Sound::OrbitArrival => (27, 2.0),
+            Sound::Reentry => (28, 2.0),
+            Sound::Landing => (29, 2.0),
+            Sound::EnemyFire(false) => (30, 0.12),
+            Sound::EnemyFire(true) => (31, 0.3),
+            Sound::Graze => (32, 0.08),
+            Sound::Flyby => (33, 0.5),
+            Sound::WeaponSwitch(_) => (34, 0.06),
+            Sound::Toggle(_) => (35, 0.08),
+            Sound::View => (36, 0.06),
+            Sound::Wave => (37, 2.0),
+            Sound::Destroyed => (38, 2.0),
+        }
+    }
+}
+pub(crate) const THROTTLE_SLOTS: usize = 39;
+
+/// 实时输出的选曲种子，每次启动随机
+#[allow(dead_code)]
+fn entropy() -> u32 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(1, |d| d.subsec_nanos() ^ d.as_secs() as u32)
 }
 
 #[derive(Clone, Copy, Default)]
@@ -90,6 +160,16 @@ pub struct Frame {
     pub overdrive: bool,
     pub settings: Settings,
     pub events: Events,
+    /// 当前地图，决定地图专属配乐
+    pub map: crate::world::MapKind,
+    /// 机型序号，决定引擎音色
+    pub vehicle: u8,
+    /// 大气层内轨道推进强度
+    pub ascent: f32,
+    /// 升空进度，0 为地面，1 为入轨
+    pub altitude: f32,
+    /// 处于真空环境
+    pub vacuum: bool,
 }
 impl Default for Frame {
     fn default() -> Self {
@@ -102,6 +182,11 @@ impl Default for Frame {
             overdrive: false,
             settings: Settings::default(),
             events: Events::default(),
+            map: crate::world::MapKind::Islands,
+            vehicle: 0,
+            ascent: 0.0,
+            altitude: 0.0,
+            vacuum: false,
         }
     }
 }

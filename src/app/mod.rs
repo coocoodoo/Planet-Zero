@@ -90,6 +90,7 @@ pub struct App {
     pub perf_panel: PerfPanel,
     pub perf: PerfStats,
     escape_since: Option<Instant>,
+    sound_state: audio::SoundState,
 }
 
 impl App {
@@ -186,6 +187,7 @@ impl App {
             perf_panel: PerfPanel::Off,
             perf: PerfStats::default(),
             escape_since: None,
+            sound_state: Default::default(),
         }
     }
     pub fn start(&mut self) {
@@ -374,6 +376,7 @@ impl App {
         if self.mission.countdown <= 0.0 {
             self.flight.step(dt, &controls, &self.world);
         }
+        self.flight_sounds();
         if self.step_orbit(dt) {
             return;
         }

@@ -1,6 +1,7 @@
 title = "Slipstream Circuit"
 bpm = 144
 style = "race"
+cues = ["race", "coins"]
 loop_start = 0
 
 sections = [

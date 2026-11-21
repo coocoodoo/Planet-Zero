@@ -1,0 +1,60 @@
+title = "Glacier Drift"
+bpm = 92
+style = "ambient"
+cues = ["flight"]
+maps = ["fjords", "icebergs", "alpine"]
+loop_start = 8
+lead = "fm"
+lead_duty = 0.5
+groove = "half"
+bass_line = "long"
+arp = "slow"
+arp_wave = "triangle"
+pad = 1.4
+
+sections = [
+  { phrase = 0, energy = 0.3, lead = false },
+  { phrase = 0, energy = 0.5, lead = true },
+  { phrase = 1, energy = 0.6, lead = true },
+  { phrase = 0, energy = 0.65, lead = true },
+  { phrase = 1, energy = 0.7, lead = true },
+  { phrase = 0, energy = 0.5, lead = true },
+]
+
+melody = [
+  "F#5:8 C#6:4 B5:4",
+  "D6:6 C#6:2 B5:8",
+  "A5:8 F#5:4 E5:4",
+  "C#6:12 -:4",
+  "B5:4 C#6:4 D6:8",
+  "F#6:6 E6:2 D6:8",
+  "E6:4 D6:4 B5:8",
+  "A#5:8 C#6:8",
+  "G5:4 B5:4 E6:8",
+  "D6:8 B5:4 G5:4",
+  "F#5:4 A5:4 E6:8",
+  "C#6:8 B5:8",
+  "B5:6 A5:2 G5:8",
+  "F#5:8 D6:8",
+  "E6:6 C#6:2 A5:8",
+  "A#5:16",
+]
+
+harmony = [
+  "B2 D3 F#3 C#4",
+  "G2 B2 D3 F#3",
+  "D3 F#3 A3 E4",
+  "A2 C#3 E3 B3",
+  "B2 D3 F#3 C#4",
+  "G2 B2 D3 F#3",
+  "E3 G3 B3 F#4",
+  "F#2 A#2 C#3 E3",
+  "E3 G3 B3 F#4",
+  "G2 B2 D3 F#3",
+  "D3 F#3 A3 E4",
+  "A2 C#3 E3 B3",
+  "E3 G3 B3 F#4",
+  "G2 B2 D3 F#3",
+  "A2 C#3 E3 B3",
+  "F#2 A#2 C#3 E3",
+]

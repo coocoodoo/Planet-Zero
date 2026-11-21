@@ -1,0 +1,59 @@
+title = "Magma Core"
+bpm = 126
+style = "cruise"
+cues = ["flight"]
+maps = ["volcanic"]
+loop_start = 8
+lead = "saw"
+bass = "fm"
+groove = "tribal"
+bass_line = "gallop"
+arp = "down"
+
+sections = [
+  { phrase = 0, energy = 0.45, lead = false },
+  { phrase = 0, energy = 0.75, lead = true },
+  { phrase = 1, energy = 0.85, lead = true },
+  { phrase = 0, energy = 0.8, lead = true },
+  { phrase = 1, energy = 0.95, lead = true },
+  { phrase = 0, energy = 0.7, lead = true },
+  { phrase = 1, energy = 0.9, lead = true },
+]
+
+melody = [
+  "D5:2 F5:2 A5:4 G5:2 F5:2 E5:4",
+  "F5:4 D5:2 F5:2 A#5:8",
+  "G5:4 E5:2 G5:2 C6:4 A#5:4",
+  "A5:4 C#6:4 E6:8",
+  "D6:4 C6:2 A5:2 F5:4 A5:4",
+  "A#5:4 A5:2 G5:2 D5:4 G5:4",
+  "C#6:4 A5:2 E5:2 G5:4 C#5:4",
+  "D5:4 C#5:4 A4:8",
+  "D6:4 F6:4 D6:2 C6:2 A#5:4",
+  "C6:4 E6:4 G6:8",
+  "F6:4 E6:2 D6:2 A5:8",
+  "C#6:2 D6:2 E6:4 A5:8",
+  "G5:2 A#5:2 D6:4 C6:2 A#5:2 A5:4",
+  "A#5:4 F5:4 D5:8",
+  "E5:2 G5:2 A5:4 C#6:4 E6:4",
+  "D6:16",
+]
+
+harmony = [
+  "D3 F3 A3 C4",
+  "A#2 D3 F3 A3",
+  "C3 E3 G3 A#3",
+  "A2 C#3 E3 G3",
+  "D3 F3 A3 C4",
+  "G2 A#2 D3 F3",
+  "A2 C#3 E3 G3",
+  "A2 C#3 E3 G3",
+  "A#2 D3 F3 A3",
+  "C3 E3 G3 A#3",
+  "D3 F3 A3 C4",
+  "A2 C#3 E3 G3",
+  "G2 A#2 D3 F3",
+  "A#2 D3 F3 A3",
+  "A2 C#3 E3 G3",
+  "D3 F3 A3 C4",
+]

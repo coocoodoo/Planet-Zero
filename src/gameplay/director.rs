@@ -79,6 +79,7 @@ impl Mission {
             return;
         }
         self.announce("ENEMY WAVE INCOMING");
+        self.sounds.push(crate::audio::Sound::Wave);
         let count =
             (3 + (self.level - 1).min(3)).min(8_u32.saturating_sub(self.enemies.len() as u32));
         for i in 0..count {

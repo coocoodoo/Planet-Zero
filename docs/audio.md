@@ -2,19 +2,38 @@
 
 声音由 Rust 实时合成，使用方波、锯齿波、三角波、正弦波、FM 音色和噪声发生器。乐谱中的主旋律、和声与段落分别编写，低音、琶音、鼓组和过门按乐谱编排。输出为 48 kHz 立体声，设备使用 16 位 PCM，保留芯片音乐的音色并提供干净的动态范围
 
-| 场景 | 原创曲目 | 完整编排 |
-| --- | --- | --- |
-| 主菜单与待机 | Horizon Signal | 64 小节，106.67 秒 |
-| 自由飞行与任务准备 | Cloud Atlas | 64 小节，106.67 秒 |
-| 竞速与金币 | Slipstream Circuit | 64 小节，106.67 秒 |
-| 常规空战 | Vector Assault | 64 小节，106.67 秒 |
-| Boss 战 | Black Sun Protocol | 64 小节，106.67 秒 |
-| 通关 | Wings of Dawn | 16 小节，26.67 秒 |
-| 失败 | Return to Base | 16 小节，26.67 秒 |
+配乐按“场景 + 地图”选曲，共 25 首原创曲目。每个场景有自己的曲库，自由飞行时优先播放当前地图的专属曲目；一首完整播完后在同一曲库里随机换下一首，不重复当前曲目。每次启动用时间播种，开场曲目也不固定
 
-五首主循环共享 144 BPM 的拍点，巡航与待机使用较疏的节奏。场景切换在下一小节衔接，最长等待约 1.67 秒；通关与失败在下一拍进入，最长等待约 0.42 秒。切换时释放旧声部并保留短延迟尾音；结算曲播放完整段落后循环后八小节。暂停降低配乐音量与高频，恢复后继续当前进度
+| 场景 | 曲目 |
+| --- | --- |
+| 主菜单 | Horizon Signal（144 BPM）、Hangar Lights（100 BPM，钟琴音色） |
+| 群岛、湿地、高地 | Cloud Atlas、Tailwind、Green Lowlands（108 BPM，摇摆节奏） |
+| 峡湾、冰山、高山 | Cloud Atlas、Glacier Drift（92 BPM，空灵钟声），高山另有 Tailwind |
+| 沙漠、峡谷 | Tailwind、Mirage Dunes（112 BPM，弗里吉亚属音阶与部落鼓） |
+| 火山 | Mirage Dunes、Magma Core（126 BPM，奔马低音） |
+| 城市 | Tailwind、Neon Avenue（118 BPM，合成器浪潮四拍） |
+| 月球 | Sea of Tranquility（84 BPM，利底亚氛围）、Orbital Silence |
+| 太空 | Orbital Silence（76 BPM，无鼓氛围）、Starlane Cruise（104 BPM） |
+| 加速升空 | Escape Velocity（150 BPM，逐级上行和声） |
+| 竞速 | Slipstream Circuit、Checkpoint Fever（156 BPM，碎拍）、Coin Cascade |
+| 金币冲刺 | Coin Cascade（138 BPM）、Slipstream Circuit |
+| 常规空战 | Vector Assault、Steel Rain（152 BPM，进行曲鼓组）、Crimson Horizon（140 BPM，双旋律） |
+| Boss 战 | Black Sun Protocol、Leviathan（136 BPM，那不勒斯和弦与减七和弦） |
+| 通关 | Wings of Dawn、Clear Skies |
+| 失败 | Return to Base、Long Way Home |
 
-低护盾或 Boss 半血时加入紧张节奏，超载期间加入高音琶音层。引擎与加速声音连续跟随飞行状态，音高、风噪和音量平滑变化。五种武器各有独立音色；另外覆盖菜单操作、倒计时、翻滚、命中、受击、普通与 Boss 爆炸、金币连击、检查点、补给、武器升级、僚机支援、NOVA、超载、阶段完成及 Boss 警报
+场景切换在下一小节衔接；通关、失败与升空在下一拍切入。穿越虫洞到达有专属曲目的地图时，在下一小节换成该地图的配乐。轨道推进点火后切到升空曲，下降段继续播放太空配乐，着陆后回到地表曲目。切换时释放旧声部并保留短延迟尾音；结算曲播放完整段落后循环后八小节。暂停降低配乐音量与高频，恢复后继续当前进度
+
+乐谱除旋律与和声外，可以为每首曲目指定主旋律音色、低音型（drive、cruise、eighths、gallop、walk、long、pedal）、鼓组（drive、steady、four、half、break、march、tribal、shuffle、none）、琶音型、摇摆量、铺底音量和副旋律，`cues` 声明曲目所属场景，`maps` 声明专属地图
+
+低护盾或 Boss 半血时加入紧张节奏，超载期间加入高音琶音层。引擎声音随机型变化：猎鹰均衡，飞镖高亢，阿特拉斯低沉厚重，黄蜂尖锐，纸飞机几乎只有风声。轨道推进时叠加火箭低频轰鸣与随高度升高的气流哨音，进入真空后风噪消失、配乐变暗
+
+音效覆盖：
+- 自机：加力点火、翻滚与筋斗、悬停与自动开火开关、视角切换、受击、坠毁
+- 武器：五种武器各有独立音色，切换武器时按武器播放不同音高的上膛声，NOVA、超载、拾取与强化
+- 敌机：普通敌机与重型敌机（Boss、地面炮台、重型机）的开火声，敌机贴身掠过的呼啸，擦弹提示，命中、普通与 Boss 爆炸，敌机来袭警报，Boss 警报
+- 飞行与太空：达到入轨高度的提示音、轨道推进点火、冲出大气层的音爆、入轨和弦、再入大气的摩擦轰鸣、着陆和弦、虫洞穿越
+- 菜单操作、倒计时、金币连击、检查点、阶段完成
 
 音乐、音效分别混音，警报与大爆炸短暂压低配乐。方波和锯齿波使用 PolyBLEP 抑制混叠，振幅包络和音量变化平滑处理，旋律具有立体声延迟，输出经过直流消除和峰值限制。音效限频避免密集命中重复堆积，实时声部上限为 64
 
@@ -30,7 +49,7 @@
 桌面 macOS / Windows 使用 CPAL，Linux 与 Cardputer Zero 通过 `pacat` 输出到 PipeWire / PulseAudio。设备安装包依赖 `pulseaudio-utils`，音频线程与渲染独立，以 10 ms 分块输出并请求 60 ms 缓冲
 
 ```sh
-# 导出七首配乐、96 秒串烧和音效试听为 WAV
+# 导出全部配乐、110 秒场景串烧和音效试听为 WAV
 cargo run --release --no-default-features --bin flight-club-audio -- captures/audio
 
 # 在设备上测量合成器，或关闭音频进行画面对照

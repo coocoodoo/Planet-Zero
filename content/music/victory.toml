@@ -1,6 +1,7 @@
 title = "Wings of Dawn"
 bpm = 144
 style = "victory"
+cues = ["victory"]
 loop_start = 8
 
 sections = [

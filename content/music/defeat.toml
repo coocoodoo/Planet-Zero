@@ -1,6 +1,7 @@
 title = "Return to Base"
 bpm = 144
 style = "defeat"
+cues = ["defeat"]
 loop_start = 8
 
 sections = [

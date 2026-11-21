@@ -1,6 +1,7 @@
 title = "Black Sun Protocol"
 bpm = 144
 style = "boss"
+cues = ["boss"]
 loop_start = 0
 
 sections = [

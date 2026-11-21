@@ -28,6 +28,7 @@ impl Drop for Handle {
 }
 pub fn open(receiver: Receiver<Frame>) -> Result<Handle, Box<dyn std::error::Error>> {
     let mut mixer = Mixer::new(48000);
+    mixer.reseed(super::super::entropy());
     let mut child = Command::new("pacat")
         .args([
             "--playback",

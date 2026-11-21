@@ -31,6 +31,7 @@ where
     T: cpal::SizedSample + cpal::FromSample<f32>,
 {
     let mut mixer = Mixer::new(config.sample_rate.0);
+    mixer.reseed(super::super::entropy());
     let channels = config.channels as usize;
     device.build_output_stream(
         config,

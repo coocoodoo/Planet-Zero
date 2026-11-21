@@ -58,6 +58,7 @@ impl Mission {
             if enemy.health <= 0.0 {
                 continue;
             }
+            let distance_before = enemy.position.distance(previous);
             enemy.hit = (enemy.hit - dt).max(0.0);
             enemy.phase += dt
                 * if enemy.kind == 8 {
@@ -92,6 +93,13 @@ impl Mission {
                 enemy.position += (goal - enemy.position) * (dt * rate).min(1.0);
             }
             enemy.yaw += angle(flight.yaw - enemy.yaw) * (dt * 2.0).min(1.0);
+            // 敌机贴近到掠过距离时播放呼啸声
+            if !enemy.is_ground()
+                && distance_before >= 45.0
+                && enemy.position.distance(flight.position) < 45.0
+            {
+                self.sounds.push(crate::audio::Sound::Flyby);
+            }
             collision |=
                 segment_distance(enemy.position, previous, flight.position) < enemy.radius() + 7.0;
             let previous_cooldown = enemy.cooldown;
@@ -115,6 +123,9 @@ impl Mission {
                     }
                 } / difficulty;
                 let aim = (enemy.aim_point - enemy.position).normalize_or_zero();
+                self.sounds.push(crate::audio::Sound::EnemyFire(
+                    enemy.is_boss() || enemy.is_ground() || enemy.kind == 8,
+                ));
                 let count = if enemy.is_boss() {
                     if enraged { 11 } else { 7 }
                 } else {
@@ -217,6 +228,7 @@ impl Mission {
                     && segment_distance(Vec3::ZERO, relative_before, relative_after) < 20.0
                 {
                     shot.grazed = true;
+                    self.sounds.push(crate::audio::Sound::Graze);
                     self.grazes += 1;
                     self.score += 25;
                     self.overdrive = (self.overdrive + 3.0).min(100.0);
@@ -329,6 +341,9 @@ impl Mission {
             }
         }
         if self.health <= 0.0 {
+            if self.outcome.is_none() {
+                self.sounds.push(crate::audio::Sound::Destroyed);
+            }
             self.outcome = Some(false);
             self.announce("AIRCRAFT LOST");
         }
