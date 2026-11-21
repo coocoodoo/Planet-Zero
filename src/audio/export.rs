@@ -39,6 +39,11 @@ fn wav(
             .first()
             .copied()
             .unwrap_or(crate::world::MapKind::Islands),
+        weather: score
+            .weathers
+            .first()
+            .copied()
+            .unwrap_or(crate::content::weather::Weather::Clear),
         ..Frame::default()
     };
     mixer.update(frame);
@@ -199,6 +204,7 @@ pub fn soundtrack(directory: &Path) -> io::Result<()> {
         Sound::View,
         Sound::Wave,
         Sound::Destroyed,
+        Sound::Thunder,
     ];
     let mut index = 0;
     wav(

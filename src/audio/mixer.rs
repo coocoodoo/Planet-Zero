@@ -69,7 +69,10 @@ pub struct Mixer {
     filtered: [f32; 2],
     dc_input: [f32; 2],
     dc_output: [f32; 2],
-    engine: [Oscillator; 5],
+    engine: [Oscillator; 7],
+    rain: f32,
+    wind: f32,
+    haze: f32,
     engine_gain: f32,
     boost: f32,
     ascent: f32,
@@ -89,7 +92,11 @@ impl Mixer {
             cue: Cue::Menu,
             decks: [
                 Deck::new(
-                    playlist(Cue::Menu, crate::world::MapKind::Islands)[0],
+                    playlist(
+                        Cue::Menu,
+                        crate::world::MapKind::Islands,
+                        crate::content::weather::Weather::Clear,
+                    )[0],
                     0,
                     0.0,
                 ),
@@ -123,7 +130,12 @@ impl Mixer {
                 Oscillator::new(317),
                 Oscillator::new(911),
                 Oscillator::new(1291),
+                Oscillator::new(1777),
+                Oscillator::new(2333),
             ],
+            rain: 0.0,
+            wind: 0.0,
+            haze: 0.0,
             engine_gain: 0.0,
             boost: 0.0,
             ascent: 0.0,
@@ -155,7 +167,7 @@ impl Mixer {
     }
     /// 从场景曲库随机选曲，曲库多于一首时避开正在播放的曲目
     fn choose(&mut self, cue: Cue, exclude: Option<usize>) -> usize {
-        let mut list = playlist(cue, self.frame.map);
+        let mut list = playlist(cue, self.frame.map, self.frame.weather);
         if list.len() > 1
             && let Some(current) = exclude
         {
@@ -167,7 +179,8 @@ impl Mixer {
         self.decks[self.live].step
     }
     pub fn update(&mut self, frame: Frame) {
-        let fits = frame.cue == self.cue && playlist(frame.cue, frame.map).contains(&self.track());
+        let fits = frame.cue == self.cue
+            && playlist(frame.cue, frame.map, frame.weather).contains(&self.track());
         self.pending = if fits {
             self.unfit_since = None;
             None
@@ -176,7 +189,7 @@ impl Mixer {
             self.unfit_since = None;
             Some(frame.cue)
         } else {
-            // 同一场景换地图：新地图稳定且当前曲目播放够久才换，快速穿梭虫洞时保持原曲
+            // 同一场景换地图或天气：新环境稳定且当前曲目播放够久才换，快速穿梭虫洞时保持原曲
             let since = *self.unfit_since.get_or_insert(self.clock);
             let played = self.clock - self.decks[self.live].started;
             (self.clock - since >= SCENE_DWELL && played >= MINIMUM_PLAY).then_some(frame.cue)
@@ -304,7 +317,10 @@ impl Mixer {
         let live = d == self.live;
         if self.decks[d].step >= scores()[self.decks[d].track].steps.len() {
             // 整首播完后换一首同场景曲目，结算曲循环尾段
-            if live && self.cue.rotates() && playlist(self.cue, self.frame.map).len() > 1 {
+            if live
+                && self.cue.rotates()
+                && playlist(self.cue, self.frame.map, self.frame.weather).len() > 1
+            {
                 let track = self.choose(self.cue, Some(self.decks[d].track));
                 self.decks[d].track = track;
                 self.decks[d].started = self.clock;
@@ -446,7 +462,15 @@ impl Mixer {
         ) * self.ascent
             * 0.016
             * air;
-        let engine = turbine * self.engine_gain + rumble + whistle;
+        // 天气环境声：雨滴沙沙声与时强时弱的风声，真空中消失
+        self.rain += (self.frame.rain - self.rain) * dt * 0.8;
+        self.wind += (self.frame.wind - self.wind) * dt * 0.8;
+        self.haze += (self.frame.haze - self.haze) * dt * 0.5;
+        let hiss = self.engine[5].sample(Wave::Noise, 0.0, -0.3, &self.tables) * self.rain * 0.022;
+        let gust = 0.65 + 0.35 * self.tables.sine(self.clock as f32 * 0.13);
+        let gale =
+            self.engine[6].sample(Wave::Noise, 0.0, 0.025, &self.tables) * self.wind * gust * 0.09;
+        let engine = turbine * self.engine_gain + rumble + whistle + (hiss + gale) * air;
         let mut result = [0.0; 2];
         for channel in 0..2 {
             let wet = music[channel] + echo[channel] + room[channel];
@@ -454,7 +478,8 @@ impl Mixer {
                 * if self.frame.paused {
                     0.055
                 } else {
-                    0.65 - self.vacuum * 0.3
+                    // 真空与雾、雪、沙尘让配乐更暗更闷
+                    0.65 - self.vacuum * 0.3 - self.haze * 0.22
                 };
             let mixed = self.filtered[channel] * self.music_gain * (1.0 - self.duck)
                 + (fx[channel] + engine) * self.effects_gain;

@@ -1,0 +1,59 @@
+title = "Snowfall"
+bpm = 88
+style = "ambient"
+cues = ["flight"]
+weathers = ["snow"]
+loop_start = 0
+lead = "fm"
+lead_duty = 0.8
+groove = "none"
+bass_line = "long"
+arp = "slow"
+arp_wave = "sine"
+pad = 1.5
+
+sections = [
+  { phrase = 0, energy = 0.3, lead = true },
+  { phrase = 0, energy = 0.4, lead = true },
+  { phrase = 1, energy = 0.45, lead = true },
+  { phrase = 0, energy = 0.4, lead = true },
+  { phrase = 1, energy = 0.5, lead = true },
+]
+
+melody = [
+  "E5:4 A5:4 C#6:8",
+  "C#6:4 A5:4 F#5:8",
+  "F#5:4 A5:4 D6:6 C#6:2",
+  "B5:8 G#5:8",
+  "A5:4 C#6:4 E6:8",
+  "E6:6 D#6:2 C#6:8",
+  "D6:4 F#6:4 E6:4 C#6:4",
+  "B5:16",
+  "A5:8 F#5:8",
+  "G#5:8 B5:8",
+  "C#6:12 B5:4",
+  "A5:16",
+  "F#6:8 E6:4 D6:4",
+  "E6:8 B5:8",
+  "C#6:8 E6:8",
+  "A5:16",
+]
+
+harmony = [
+  "A2 C#3 E3 G#3",
+  "F#2 A2 C#3 E3",
+  "D3 F#3 A3 C#4",
+  "E3 G#3 B3 F#4",
+  "A2 C#3 E3 G#3",
+  "C#3 E3 G#3 B3",
+  "D3 F#3 A3 C#4",
+  "E3 G#3 B3 F#4",
+  "D3 F#3 A3 C#4",
+  "E3 G#3 B3 F#4",
+  "C#3 E3 G#3 B3",
+  "F#2 A2 C#3 E3",
+  "D3 F#3 A3 C#4",
+  "E3 G#3 B3 F#4",
+  "A2 C#3 E3 G#3",
+  "A2 C#3 E3 G#3",
+]

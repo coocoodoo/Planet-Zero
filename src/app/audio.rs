@@ -1,5 +1,6 @@
 use super::*;
 use crate::audio::{Cue, Frame, Sound};
+use crate::content::weather::Weather;
 use crate::world::{MapKind, orbit::Body};
 
 /// 升空配乐切入高度：冲出低空、接近大气层边缘时才进入升空段落
@@ -12,6 +13,7 @@ const ASCENT_RUMBLE_ALTITUDE: f32 = 600.0;
 pub(super) struct SoundState {
     boosting: bool,
     armed: bool,
+    lightning: bool,
 }
 
 impl App {
@@ -25,6 +27,13 @@ impl App {
     }
     /// 根据连续飞行状态的变化补充音效：加力点火与入轨高度提示
     pub(super) fn flight_sounds(&mut self) {
+        // 闪电亮起时补一声雷鸣，雷声本身带有延迟
+        let lightning =
+            !self.world.kind.vacuum() && self.flight.weather.flash(self.flight.time) > 0.06;
+        if lightning && !self.sound_state.lightning {
+            self.sounds.push(Sound::Thunder);
+        }
+        self.sound_state.lightning = lightning;
         let boost = self.flight.boost;
         if !self.sound_state.boosting && boost > 0.45 && self.ascent() < 0.1 {
             self.sound_state.boosting = true;
@@ -101,6 +110,9 @@ impl App {
         } else {
             self.world.kind
         };
+        let weather = self.flight.weather;
+        let w = |kind| weather.weight(kind).min(1.0);
+        let air = f32::from(!self.world.kind.vacuum() && !descending);
         let altitude = if self.world.kind == MapKind::Space {
             1.0
         } else {
@@ -133,6 +145,10 @@ impl App {
                     .clamp(0.0, 1.0),
             altitude,
             vacuum: self.world.kind.vacuum() || descending || altitude > 0.85,
+            weather: weather.target,
+            rain: air * (w(Weather::Rain) + w(Weather::Storm)),
+            wind: air * (w(Weather::Sandstorm) + w(Weather::Storm) * 0.6 + w(Weather::Snow) * 0.3),
+            haze: air * (w(Weather::Fog) + w(Weather::Sandstorm) * 0.6 + w(Weather::Snow) * 0.4),
         }
     }
 }

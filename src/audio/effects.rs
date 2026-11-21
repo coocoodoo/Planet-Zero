@@ -311,6 +311,20 @@ pub fn tones(sound: Sound, mut emit: impl FnMut(Tone)) {
                 put(blip(Wave::Pulse, 587.0, 587.0, 0.09, 0.14, at + 0.16));
             }
         }
+        Sound::Thunder => {
+            // 远处雷声：短促的炸裂后是低沉滚动的余音
+            put(blip(Wave::Noise, 0.0, 0.0, 0.20, 0.12, 0.25)
+                .shape(-0.5)
+                .pan(-0.3));
+            put(blip(Wave::Noise, 0.0, 0.0, 0.34, 2.2, 0.3)
+                .shape(0.03)
+                .attack(0.15));
+            put(blip(Wave::Sine, 55.0, 32.0, 0.22, 1.6, 0.35).attack(0.2));
+            put(blip(Wave::Noise, 0.0, 0.0, 0.14, 1.2, 0.9)
+                .shape(0.06)
+                .attack(0.3)
+                .pan(0.4));
+        }
         Sound::Destroyed => {
             put(blip(Wave::Noise, 0.0, 0.0, 0.42, 1.4, 0.0).shape(0.1));
             put(blip(Wave::Sine, 110.0, 30.0, 0.4, 0.9, 0.0));

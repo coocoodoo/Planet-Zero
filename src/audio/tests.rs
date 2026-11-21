@@ -1,4 +1,5 @@
 use super::*;
+use crate::content::weather::Weather;
 
 #[test]
 fn scores_have_full_arrangements_and_valid_loop_points() {
@@ -21,21 +22,21 @@ fn scores_have_full_arrangements_and_valid_loop_points() {
 fn every_scene_and_map_has_matching_music() {
     use crate::world::MapKind;
     for cue in Cue::ALL {
-        let list = playlist(cue, MapKind::Islands);
+        let list = playlist(cue, MapKind::Islands, Weather::Clear);
         assert!(!list.is_empty(), "{cue:?}");
         if cue.rotates() && cue != Cue::Ascent {
             assert!(list.len() >= 2, "{cue:?} 至少需要两首轮换");
         }
     }
     for map in MapKind::ALL {
-        let list = playlist(Cue::Flight, map);
+        let list = playlist(Cue::Flight, map, Weather::Clear);
         assert!(list.len() >= 2, "{map:?} 需要至少两首地图配乐");
         assert!(list.iter().all(|i| scores()[*i].maps.contains(&map)));
     }
     // 太空与地表的巡航曲互不混用
-    let space = playlist(Cue::Flight, MapKind::Space);
+    let space = playlist(Cue::Flight, MapKind::Space, Weather::Clear);
     assert!(
-        playlist(Cue::Flight, MapKind::Desert)
+        playlist(Cue::Flight, MapKind::Desert, Weather::Clear)
             .iter()
             .all(|i| !space.contains(i))
     );
@@ -244,6 +245,7 @@ fn every_effect_renders_bounded_audio() {
         Sound::View,
         Sound::Wave,
         Sound::Destroyed,
+        Sound::Thunder,
     ];
     let mut slots = std::collections::HashSet::new();
     for sound in all {
@@ -350,7 +352,7 @@ fn map_music_waits_for_the_new_map_to_settle() {
         m.update(frame);
     }
     seconds(&mut m, 1.0);
-    assert!(playlist(Cue::Flight, MapKind::Space).contains(&m.track()));
+    assert!(playlist(Cue::Flight, MapKind::Space, Weather::Clear).contains(&m.track()));
     assert_eq!(m.cue(), Cue::Flight);
 }
 
@@ -368,4 +370,72 @@ fn entry_points_skip_quiet_intros() {
         .find(|s| s.title == "Hangar Lights")
         .unwrap();
     assert!(hangar.entry >= 128);
+}
+
+#[test]
+fn weather_brings_its_own_music_on_planets_with_air() {
+    use crate::world::MapKind;
+    for (weather, title) in [
+        (Weather::Storm, "Storm Front"),
+        (Weather::Rain, "Storm Front"),
+        (Weather::Snow, "Snowfall"),
+        (Weather::Fog, "Haze"),
+        (Weather::Sandstorm, "Haze"),
+    ] {
+        let list = playlist(Cue::Flight, MapKind::Alpine, weather);
+        assert!(
+            list.iter()
+                .all(|i| scores()[*i].weathers.contains(&weather))
+        );
+        assert!(
+            list.iter().any(|i| scores()[*i].title == title),
+            "{weather:?}"
+        );
+    }
+    // 晴天、多云与彩虹沿用地图配乐，真空与非巡航场景不受天气影响
+    for weather in [Weather::Clear, Weather::Cloudy, Weather::Rainbow] {
+        assert_eq!(
+            playlist(Cue::Flight, MapKind::Alpine, weather),
+            playlist(Cue::Flight, MapKind::Alpine, Weather::Clear)
+        );
+    }
+    assert_eq!(
+        playlist(Cue::Flight, MapKind::Space, Weather::Storm),
+        playlist(Cue::Flight, MapKind::Space, Weather::Clear)
+    );
+    assert_eq!(
+        playlist(Cue::Combat, MapKind::Alpine, Weather::Storm),
+        playlist(Cue::Combat, MapKind::Alpine, Weather::Clear)
+    );
+}
+
+#[test]
+fn settled_weather_switches_music_and_adds_ambience() {
+    use crate::world::MapKind;
+    let mut m = Mixer::new(8000);
+    let mut frame = Frame {
+        cue: Cue::Flight,
+        map: MapKind::Alpine,
+        settings: Settings {
+            profile: 0,
+            volume: 10,
+        },
+        ..Frame::default()
+    };
+    m.update(frame);
+    m.start_cue(Cue::Flight);
+    seconds(&mut m, 26.0);
+    frame.weather = Weather::Storm;
+    frame.rain = 1.0;
+    frame.wind = 0.6;
+    frame.events.push(Sound::Thunder);
+    m.update(frame);
+    frame.events = Events::default();
+    let mut block = vec![0.0; 1600];
+    for _ in 0..100 {
+        m.render(&mut block);
+        assert!(block.iter().all(|v| v.is_finite() && v.abs() <= 0.881));
+        m.update(frame);
+    }
+    assert_eq!(scores()[m.track()].title, "Storm Front");
 }

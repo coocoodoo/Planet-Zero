@@ -885,3 +885,24 @@ fn orbital_ascent_climbs_steadily_instead_of_shooting_up() {
     assert!(app.flight.speed > 300.0);
     assert!(fastest <= 100.0, "vertical {fastest}");
 }
+
+#[test]
+fn lightning_in_a_storm_brings_thunder_and_storm_ambience() {
+    use crate::content::weather::{Weather, WeatherState};
+    let mut app = App::new(World::generate(crate::world::MapKind::Wetlands, 31));
+    app.start();
+    app.flight.weather = WeatherState::new(Weather::Storm, app.world.kind, app.world.seed);
+    let mut thunder = false;
+    let mut frame = app.audio_frame();
+    for _ in 0..30 * 60 {
+        app.step(1.0 / 30.0, None);
+        frame = app.audio_frame();
+        thunder |= frame
+            .events
+            .iter()
+            .any(|s| s == crate::audio::Sound::Thunder);
+    }
+    assert!(thunder);
+    assert_eq!(frame.weather, Weather::Storm);
+    assert!(frame.rain > 0.9 && frame.wind > 0.5);
+}

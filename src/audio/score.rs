@@ -1,4 +1,5 @@
 use super::oscillator::{Tone, Wave, frequency};
+use crate::content::weather::Weather;
 use crate::world::MapKind;
 use std::sync::OnceLock;
 
@@ -61,6 +62,23 @@ const MAP_NAMES: [&str; 12] = [
     "city",
     "highlands",
 ];
+const WEATHER_NAMES: [&str; 8] = [
+    "clear",
+    "rain",
+    "snow",
+    "storm",
+    "fog",
+    "sandstorm",
+    "cloudy",
+    "rainbow",
+];
+fn parse_weather(name: &str) -> Weather {
+    WEATHER_NAMES
+        .iter()
+        .position(|n| *n == name)
+        .map(|i| Weather::ALL[i])
+        .unwrap_or_else(|| panic!("未知天气 {name}"))
+}
 fn parse_map(name: &str) -> MapKind {
     MAP_NAMES
         .iter()
@@ -85,6 +103,8 @@ struct Definition {
     cues: Vec<String>,
     #[serde(default)]
     maps: Vec<String>,
+    #[serde(default)]
+    weathers: Vec<String>,
     loop_start: usize,
     lead: Option<String>,
     lead_duty: Option<f32>,
@@ -118,6 +138,7 @@ pub struct Score {
     pub chords: Vec<[u8; 4]>,
     pub cues: Vec<Cue>,
     pub maps: Vec<MapKind>,
+    pub weathers: Vec<Weather>,
 }
 impl Score {
     pub fn seconds(&self) -> f32 {
@@ -125,7 +146,7 @@ impl Score {
     }
 }
 
-const SOURCES: [&str; 25] = [
+const SOURCES: [&str; 28] = [
     include_str!("../../content/music/menu.toml"),
     include_str!("../../content/music/hangar-lights.toml"),
     include_str!("../../content/music/flight.toml"),
@@ -138,6 +159,9 @@ const SOURCES: [&str; 25] = [
     include_str!("../../content/music/sea-of-tranquility.toml"),
     include_str!("../../content/music/orbital-silence.toml"),
     include_str!("../../content/music/starlane.toml"),
+    include_str!("../../content/music/storm-front.toml"),
+    include_str!("../../content/music/snowfall.toml"),
+    include_str!("../../content/music/haze.toml"),
     include_str!("../../content/music/escape-velocity.toml"),
     include_str!("../../content/music/race.toml"),
     include_str!("../../content/music/checkpoint-fever.toml"),
@@ -163,20 +187,29 @@ pub fn scores() -> &'static [Score] {
     })
 }
 
-/// 场景曲库：地图专属曲目优先，没有专属时使用通用曲目
-pub fn playlist(cue: Cue, map: MapKind) -> Vec<usize> {
+/// 场景曲库：有大气的地图遇到雨雪雾等天气时播放天气曲目，其次是地图专属曲目，最后是通用曲目
+pub fn playlist(cue: Cue, map: MapKind, weather: Weather) -> Vec<usize> {
     let tracks = scores();
     let of_cue = |i: &usize| tracks[*i].cues.contains(&cue);
+    if !map.vacuum() {
+        let weathered: Vec<usize> = (0..tracks.len())
+            .filter(of_cue)
+            .filter(|i| tracks[*i].weathers.contains(&weather))
+            .collect();
+        if !weathered.is_empty() {
+            return weathered;
+        }
+    }
     let specific: Vec<usize> = (0..tracks.len())
         .filter(of_cue)
-        .filter(|i| tracks[*i].maps.contains(&map))
+        .filter(|i| tracks[*i].weathers.is_empty() && tracks[*i].maps.contains(&map))
         .collect();
     if !specific.is_empty() {
         return specific;
     }
     let generic: Vec<usize> = (0..tracks.len())
         .filter(of_cue)
-        .filter(|i| tracks[*i].maps.is_empty())
+        .filter(|i| tracks[*i].weathers.is_empty() && tracks[*i].maps.is_empty())
         .collect();
     if !generic.is_empty() {
         return generic;
@@ -414,6 +447,7 @@ fn compile(d: Definition) -> Score {
     let counter_wave = d.counter_wave.as_deref().map_or(Wave::Triangle, wave);
     let cues: Vec<Cue> = d.cues.iter().map(|c| Cue::parse(c)).collect();
     let maps: Vec<MapKind> = d.maps.iter().map(|m| parse_map(m)).collect();
+    let weathers: Vec<Weather> = d.weathers.iter().map(|w| parse_weather(w)).collect();
     let phrases = d.melody.len() / 8;
     assert!(
         d.melody.len().is_multiple_of(8) && d.harmony.len() == d.melody.len(),
@@ -676,5 +710,6 @@ fn compile(d: Definition) -> Score {
         chords,
         cues,
         maps,
+        weathers,
     }
 }

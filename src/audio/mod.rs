@@ -50,6 +50,7 @@ pub enum Sound {
     View,
     Wave,
     Destroyed,
+    Thunder,
 }
 impl Sound {
     /// 每种音效独立的限频槽位与最短间隔（秒）
@@ -94,10 +95,11 @@ impl Sound {
             Sound::View => (36, 0.06),
             Sound::Wave => (37, 2.0),
             Sound::Destroyed => (38, 2.0),
+            Sound::Thunder => (39, 1.2),
         }
     }
 }
-pub(crate) const THROTTLE_SLOTS: usize = 39;
+pub(crate) const THROTTLE_SLOTS: usize = 40;
 
 /// 实时输出的选曲种子，每次启动随机
 #[allow(dead_code)]
@@ -170,6 +172,12 @@ pub struct Frame {
     pub altitude: f32,
     /// 处于真空环境
     pub vacuum: bool,
+    /// 当前天气，决定天气配乐
+    pub weather: crate::content::weather::Weather,
+    /// 雨声、风声与雾气对配乐的遮蔽强度，0 到 1
+    pub rain: f32,
+    pub wind: f32,
+    pub haze: f32,
 }
 impl Default for Frame {
     fn default() -> Self {
@@ -187,6 +195,10 @@ impl Default for Frame {
             ascent: 0.0,
             altitude: 0.0,
             vacuum: false,
+            weather: crate::content::weather::Weather::Clear,
+            rain: 0.0,
+            wind: 0.0,
+            haze: 0.0,
         }
     }
 }
