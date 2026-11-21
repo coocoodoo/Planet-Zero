@@ -213,8 +213,19 @@ impl Renderer {
                     if center_scale * MODEL_SCALE > 3.0 {
                         self.voxel_faces(camera, flight, (a, b, z), palette[color]);
                     } else {
+                        // 同一体素的采样点常落在同一像素上，重复写入同色同深度没有效果，跳过即可
+                        let color = self.fogged_scenery(palette[color], depth);
+                        let mut drawn = [(i32::MIN, i32::MIN); 36];
+                        let mut count = 0;
                         for offset in &offsets[..samples * samples] {
-                            self.point(p + *offset * scale, depth, palette[color], 0, 1);
+                            let q = p + *offset * scale;
+                            let pixel = (q.x.round() as i32, q.y.round() as i32);
+                            if drawn[..count].contains(&pixel) {
+                                continue;
+                            }
+                            drawn[count] = pixel;
+                            count += 1;
+                            self.plot(pixel.0, pixel.1, depth, color, 1);
                         }
                     }
                 }

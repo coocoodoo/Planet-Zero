@@ -33,7 +33,7 @@ impl TriangleColumns {
 }
 
 impl Renderer {
-    fn fogged_scenery(&self, color: u32, depth: f32) -> u32 {
+    pub(super) fn fogged_scenery(&self, color: u32, depth: f32) -> u32 {
         self.scenery_fog
             .map_or(color, |(start, inverse_range, haze)| {
                 mix(color, haze, (depth - start) * inverse_range)
@@ -285,21 +285,26 @@ impl Renderer {
         let y = p.y.round() as i32;
         for yy in y - radius..=y + radius {
             for xx in x - radius..=x + radius {
-                if xx >= 0
-                    && yy >= 0
-                    && xx < self.w as i32
-                    && yy < self.h as i32
-                    && (self.near_depth == f32::NEG_INFINITY
-                        || (yy >= self.visible[xx as usize].0 && yy < self.visible[xx as usize].1))
-                {
-                    let at = xx as usize * self.h + yy as usize;
-                    if self.depth[at] >= depth - 1.0 && depth >= self.near_depth - 1.0 {
-                        self.pixels[at] = color;
-                        self.mask[at] = mark;
-                        if mark == 1 {
-                            self.depth[at] = self.depth[at].min(depth);
-                        }
-                    }
+                self.plot(xx, yy, depth, color, mark);
+            }
+        }
+    }
+    /// 写入单个像素（已含雾色），带画布、可见区与深度检查
+    #[inline]
+    pub(super) fn plot(&mut self, x: i32, y: i32, depth: f32, color: u32, mark: u8) {
+        if x >= 0
+            && y >= 0
+            && x < self.w as i32
+            && y < self.h as i32
+            && (self.near_depth == f32::NEG_INFINITY
+                || (y >= self.visible[x as usize].0 && y < self.visible[x as usize].1))
+        {
+            let at = x as usize * self.h + y as usize;
+            if self.depth[at] >= depth - 1.0 && depth >= self.near_depth - 1.0 {
+                self.pixels[at] = color;
+                self.mask[at] = mark;
+                if mark == 1 {
+                    self.depth[at] = self.depth[at].min(depth);
                 }
             }
         }
