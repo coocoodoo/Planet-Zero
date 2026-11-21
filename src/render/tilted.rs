@@ -469,13 +469,11 @@ impl Renderer {
                 } else {
                     0.0
                 };
-                let lod = if altitude_fade > 0.0 {
-                    (view_distance.max(1.0) / 180.0).log2() * altitude_fade
+                let sample_step = if altitude_fade > 0.0 {
+                    ((view_distance / 100.0).clamp(0.5, 16.0) * altitude_fade).max(0.15)
                 } else {
-                    0.0
+                    0.15
                 };
-                let coarse = (view_distance / 100.0).clamp(0.5, 16.0);
-                let sample_step = (coarse * altitude_fade).max(0.15);
                 let shade = if faceted && altitude_fade == 0.0 {
                     shade
                 } else {
@@ -503,16 +501,9 @@ impl Renderer {
                 });
                 let uv = cap.filter(|p| p.z >= 0.9999).unwrap_or(pos);
                 let cell = sample_step;
-                let gx = (uv.x / cell).floor();
-                let gy = (uv.y / cell).floor();
-                let fx = uv.x / cell - gx;
-                let fy = uv.y / cell - gy;
-                let samples = [
-                    (gx, gy, (1.0 - fx) * (1.0 - fy)),
-                    (gx + 1.0, gy, fx * (1.0 - fy)),
-                    (gx, gy + 1.0, (1.0 - fx) * fy),
-                    (gx + 1.0, gy + 1.0, fx * fy),
-                ];
+                let (sx, sy) = (uv.x / cell, uv.y / cell);
+                let gx = sx.floor();
+                let gy = sy.floor();
                 let x0 = (gx * cell) as i32;
                 let x1 = ((gx + 1.0) * cell) as i32;
                 let y0 = (gy * cell) as i32;
@@ -546,6 +537,19 @@ impl Renderer {
                 {
                     self.terrain_cache.shade(materials[0], shade)
                 } else {
+                    // 慢路径才需要细节层级与四个采样权重
+                    let (fx, fy) = (sx - gx, sy - gy);
+                    let samples = [
+                        (gx, gy, (1.0 - fx) * (1.0 - fy)),
+                        (gx + 1.0, gy, fx * (1.0 - fy)),
+                        (gx, gy + 1.0, (1.0 - fx) * fy),
+                        (gx + 1.0, gy + 1.0, fx * fy),
+                    ];
+                    let lod = if altitude_fade > 0.0 {
+                        (view_distance.max(1.0) / 180.0).log2() * altitude_fade
+                    } else {
+                        0.0
+                    };
                     let (mut red, mut green, mut blue) = (0.0_f32, 0.0_f32, 0.0_f32);
                     let details = if materials.iter().any(|&m| rocky(m)) {
                         super::geology::stone_texels_lod(
@@ -587,8 +591,12 @@ impl Renderer {
                         camera.position.z,
                     );
                 }
-                let amount = ((depth - fog.0) * inverse_fog).clamp(0.0, 1.0);
-                self.pixels[at] = mix(color, fog.2, amount);
+                let amount = (depth - fog.0) * inverse_fog;
+                self.pixels[at] = if amount <= 0.0 {
+                    color
+                } else {
+                    mix(color, fog.2, amount.min(1.0))
+                };
                 self.depth[at] = depth;
             }
         }

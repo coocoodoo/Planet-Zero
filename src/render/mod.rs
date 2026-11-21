@@ -359,15 +359,33 @@ impl Renderer {
                     }
                 }
             }
+            if rolled {
+                for (depth, &occluded) in self.depth.iter_mut().zip(&self.occluded) {
+                    *depth = if occluded {
+                        f32::NEG_INFINITY
+                    } else {
+                        f32::INFINITY
+                    };
+                }
+            }
             self.mapping_key = Some(mapping_key);
         }
         if rolled {
-            for (depth, &occluded) in self.depth.iter_mut().zip(&self.occluded) {
-                *depth = if occluded {
-                    f32::NEG_INFINITY
-                } else {
-                    f32::INFINITY
-                };
+            // 可见区外的深度保持负无穷且不会被写入，只需重置每列的可见区间
+            let h = self.h;
+            for (x, &(top, bottom)) in self.visible.iter().enumerate() {
+                let rows = span(top, bottom, h);
+                let column = x * h;
+                for (depth, &occluded) in self.depth[column + rows.start..column + rows.end]
+                    .iter_mut()
+                    .zip(&self.occluded[column + rows.start..column + rows.end])
+                {
+                    *depth = if occluded {
+                        f32::NEG_INFINITY
+                    } else {
+                        f32::INFINITY
+                    };
+                }
             }
         } else {
             self.depth.fill(f32::INFINITY);
