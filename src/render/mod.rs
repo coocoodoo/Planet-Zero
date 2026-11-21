@@ -2,6 +2,7 @@ mod aircraft;
 mod celestial;
 mod clouds;
 mod cockpit;
+mod feel;
 mod geology;
 mod landmarks;
 mod lighting;
@@ -383,6 +384,7 @@ impl Renderer {
         self.detail[3] = portals_started.elapsed().as_secs_f64() * 1000.0;
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
+        self.shadow(world, flight, &camera);
         let mut jets: Vec<&Flight> = flight
             .wingmen
             .iter()
@@ -403,6 +405,7 @@ impl Renderer {
         for jet in jets {
             self.jet(jet, &camera);
         }
+        self.plasma(flight, &camera);
         if let Some(mission) = mission {
             self.mission(mission, flight, &camera);
         }
@@ -414,6 +417,7 @@ impl Renderer {
         if !world.kind.vacuum() {
             self.precipitation(world, flight, &camera);
         }
+        self.speed_lines(flight, &camera);
         if rolled {
             for (i, dest) in self.output.iter_mut().enumerate() {
                 *dest = if has_panel && self.cockpit.pixels[i] != 0 {
@@ -500,7 +504,7 @@ impl Renderer {
             let thin_air = 1.0
                 - (1.0 - crate::world::orbit::thin_air(flight.position.z)) * (1.0 - bend).powi(2);
             if thin_air > 0.0 {
-                self.stars(camera, thin_air, flight.sky_rotation);
+                self.stars(camera, thin_air, flight.sky_rotation, true);
             }
             self.orbital_bodies(world, camera, flight);
         }

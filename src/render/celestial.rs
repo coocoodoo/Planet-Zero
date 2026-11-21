@@ -102,8 +102,15 @@ fn sky_direction(face: usize, x: usize, y: usize) -> Vec3 {
 }
 
 impl Renderer {
-    pub(super) fn stars(&mut self, camera: &Camera, opacity: f32, rotation: glam::Quat) {
-        self.sky_texture(camera, starfield(), opacity, rotation);
+    pub(super) fn stars(
+        &mut self,
+        camera: &Camera,
+        opacity: f32,
+        rotation: glam::Quat,
+        horizon: bool,
+    ) {
+        // 大气层内升空时，地平线附近保留一圈蓝色大气，越往天顶越接近星空
+        self.sky_texture(camera, starfield(), opacity, rotation, horizon);
     }
 
     pub(super) fn aurora(&mut self, camera: &Camera, flight: &Flight, night: f32) {
@@ -115,7 +122,7 @@ impl Renderer {
                 - weather.weight(Weather::Snow) * 0.65);
         let rotation = glam::Quat::from_rotation_z(flight.time * 0.006)
             * glam::Quat::from_rotation_x((flight.time * 0.035).sin() * 0.025);
-        self.sky_texture(camera, aurora_texture(), strength, rotation);
+        self.sky_texture(camera, aurora_texture(), strength, rotation, false);
     }
 
     fn sky_texture(
@@ -124,13 +131,15 @@ impl Renderer {
         texture: &[u32],
         opacity: f32,
         rotation: glam::Quat,
+        horizon: bool,
     ) {
         let mut sky_camera = *camera;
         sky_camera.q = camera.q.max(0.004);
+        let level_step = sky_camera.up * (-sky_camera.q / sky_camera.scale);
         for x in 0..self.w {
-            let (_, mut ray) = sky_camera.ray(vec2(x as f32, self.visible[x].0 as f32));
-            ray = rotation * ray;
-            let step = rotation * sky_camera.up * (-sky_camera.q / sky_camera.scale);
+            let (_, mut level) = sky_camera.ray(vec2(x as f32, self.visible[x].0 as f32));
+            let mut ray = rotation * level;
+            let step = rotation * level_step;
             for y in self.visible[x].0..self.visible[x].1 {
                 let at = x * self.h + y as usize;
                 if self.depth[at] == f32::INFINITY {
@@ -145,7 +154,12 @@ impl Renderer {
                     let tx = ((u + 1.0) * 63.5).clamp(0.0, 127.0) as usize;
                     let ty = ((v + 1.0) * 63.5).clamp(0.0, 127.0) as usize;
                     let color = texture[face * 16384 + ty * 128 + tx];
-                    let opacity = opacity * (color >> 24) as f32 / 255.0;
+                    let mut opacity = opacity * (color >> 24) as f32 / 255.0;
+                    if horizon {
+                        let elevation = level.z * level.length_recip();
+                        let t = ((elevation + 0.02) / 0.34).clamp(0.0, 1.0);
+                        opacity *= t * t * (3.0 - 2.0 * t);
+                    }
                     self.pixels[at] = if opacity >= 1.0 {
                         color
                     } else {
@@ -153,11 +167,12 @@ impl Renderer {
                     };
                 }
                 ray += step;
+                level += level_step;
             }
         }
     }
     pub(super) fn cosmos(&mut self, world: &World, camera: &Camera, flight: &Flight) {
-        self.stars(camera, 1.0, flight.sky_rotation);
+        self.stars(camera, 1.0, flight.sky_rotation, false);
         self.sun(camera, flight);
         self.orbital_bodies(world, camera, flight);
     }
