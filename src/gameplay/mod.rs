@@ -1,4 +1,4 @@
-use crate::flight::{Flight, angle};
+use crate::flight::{Flight, angle, heading};
 use crate::gameplay::progression::{self as campaign, Loadout, Notice, NoticeKind, Phase};
 use crate::world::World;
 use glam::{Vec3, vec3};

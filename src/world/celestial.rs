@@ -2,9 +2,6 @@ use super::*;
 
 pub const MOON_RADIUS: f32 = 640.0;
 
-pub fn moon_center(_position: Vec3) -> Vec3 {
-    super::orbit::Body::Moon.center()
-}
 use glam::{Vec3, vec3};
 use std::f32::consts::TAU;
 

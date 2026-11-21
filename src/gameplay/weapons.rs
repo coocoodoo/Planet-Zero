@@ -314,7 +314,7 @@ impl Mission {
         self.fire_timer =
             spec.interval / (1.0 + (level - 1) as f32 * 0.12) / if overdrive { 1.4 } else { 1.0 };
         let forward = flight.axes()[1];
-        let right = vec3(flight.yaw.cos(), flight.yaw.sin(), 0.0);
+        let right = heading(flight.yaw).1;
         let origin = flight.position + forward * 12.0;
         let targets = self.targets(origin, forward, spec.cone);
         let direction = targets

@@ -64,7 +64,7 @@ pub(crate) const TOP: [[u8; 3]; MATERIAL_COUNT] = [
     [111, 147, 171],
 ];
 
-pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
+pub const fn rgb(r: u8, g: u8, b: u8) -> u32 {
     u32::from_le_bytes([r, g, b, 255])
 }
 
@@ -483,7 +483,13 @@ impl Renderer {
             self.hurt_frame(width, height, hurt, flight.time);
             return;
         }
-        for (dest, color) in self.rgba.chunks_exact_mut(4).zip(&self.output) {
+        for (dest, color) in self
+            .rgba
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(&self.output)
+        {
             let color = if flight.warp_flash > 0.0 {
                 mix(*color, rgb(139, 220, 255), flight.warp_flash * 0.55)
             } else {
@@ -752,8 +758,10 @@ mod parallel_tests {
                 parallel.render(&world, &flight, 320, 170, 0);
                 let differences = single
                     .rgba
-                    .chunks_exact(4)
-                    .zip(parallel.rgba.chunks_exact(4))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .zip(parallel.rgba.as_chunks::<4>().0.iter())
                     .filter(|(a, b)| a.iter().zip(b.iter()).any(|(a, b)| a.abs_diff(*b) > 8))
                     .count();
                 assert!(
@@ -787,8 +795,10 @@ mod parallel_tests {
                     parallel.render(&world, &flight, 320, 170, 0);
                     let differences = single
                         .rgba
-                        .chunks_exact(4)
-                        .zip(parallel.rgba.chunks_exact(4))
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .zip(parallel.rgba.as_chunks::<4>().0.iter())
                         .filter(|(a, b)| a.iter().zip(b.iter()).any(|(a, b)| a.abs_diff(*b) > 8))
                         .count();
                     assert!(
@@ -916,8 +926,10 @@ mod equivalence_tests {
                     }
                     let diff = parallel
                         .rgba
-                        .chunks_exact(4)
-                        .zip(single.rgba.chunks_exact(4))
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .zip(single.rgba.as_chunks::<4>().0.iter())
                         .filter(|(a, b)| a != b)
                         .count();
                     assert!(

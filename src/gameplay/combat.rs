@@ -50,8 +50,7 @@ impl Mission {
                 }
             }
         }
-        let forward = vec3(flight.yaw.sin(), -flight.yaw.cos(), 0.0);
-        let right = vec3(flight.yaw.cos(), flight.yaw.sin(), 0.0);
+        let (forward, right) = heading(flight.yaw);
         let difficulty = self.difficulty.factor();
         let mut collision = false;
         for enemy in &mut self.enemies {
@@ -60,38 +59,19 @@ impl Mission {
             }
             let distance_before = enemy.position.distance(previous);
             enemy.hit = (enemy.hit - dt).max(0.0);
-            enemy.phase += dt
-                * if enemy.kind == 8 {
-                    1.5
-                } else {
-                    0.55 + (enemy.kind % 3) as f32 * 0.12
-                };
+            let spec = enemy.kind.spec();
+            enemy.phase += dt * spec.phase_rate;
             let enraged = enemy.is_boss() && enemy.health < enemy.max_health * 0.5;
             let distance = if enemy.is_boss() {
                 235.0
             } else {
                 145.0 + enemy.id as f32 % 4.0 * 30.0
             };
-            let lateral = enemy.phase.sin()
-                * match enemy.kind {
-                    3 => 60.0,
-                    4 => 115.0,
-                    5 => 75.0,
-                    _ => 90.0,
-                };
+            let lateral = enemy.phase.sin() * spec.lateral;
             let mut goal = flight.position + forward * distance + right * lateral;
             goal.z = (flight.position.z + (enemy.phase * 0.7).sin() * 24.0).clamp(100.0, 260.0);
             goal.z = goal.z.max(world.height(goal.x, goal.y) + 45.0);
-            if !enemy.is_ground() {
-                let rate = if enemy.is_boss() {
-                    1.2
-                } else if enemy.kind == 8 {
-                    2.8
-                } else {
-                    1.8
-                };
-                enemy.position += (goal - enemy.position) * (dt * rate).min(1.0);
-            }
+            enemy.position += (goal - enemy.position) * (dt * spec.agility).min(1.0);
             enemy.yaw += angle(flight.yaw - enemy.yaw) * (dt * 2.0).min(1.0);
             // 敌机贴近到掠过距离时播放呼啸声
             if !enemy.is_ground()
@@ -112,42 +92,23 @@ impl Mission {
                 };
             }
             if enemy.cooldown <= 0.0 {
-                enemy.cooldown = if enemy.is_boss() {
-                    if enraged { 0.7 } else { 1.3 }
-                } else {
-                    match enemy.kind {
-                        6 => 3.5,
-                        7 => 4.0,
-                        8 => 2.3,
-                        _ => 3.2 - enemy.kind as f32 * 0.3,
-                    }
-                } / difficulty;
+                enemy.cooldown = if enraged { 0.7 } else { spec.cooldown } / difficulty;
                 let aim = (enemy.aim_point - enemy.position).normalize_or_zero();
                 self.sounds.push(crate::audio::Sound::EnemyFire(
-                    enemy.is_boss() || enemy.is_ground() || enemy.kind == 8,
+                    enemy.is_boss() || enemy.is_ground() || enemy.kind == EnemyKind::Striker,
                 ));
-                let count = if enemy.is_boss() {
-                    if enraged { 11 } else { 7 }
-                } else {
-                    if enemy.kind == 6 {
-                        3
-                    } else if enemy.kind == 8 {
-                        4
-                    } else {
-                        1 + (enemy.kind % 3) as i32
-                    }
-                };
+                let count = if enraged { 11 } else { spec.burst as i32 };
                 for i in 0..count {
                     if self.shots.len() >= 180 {
                         break;
                     }
                     let offset = i as f32 - (count - 1) as f32 * 0.5;
                     let (horizontal, vertical) = match enemy.kind {
-                        4 => (
+                        EnemyKind::Serpent => (
                             offset * 0.025 + (enemy.phase * 2.0).sin() * 0.16,
                             offset * 0.045,
                         ),
-                        5 => {
+                        EnemyKind::Tempest => {
                             let a = i as f32 * std::f32::consts::TAU / count as f32 + enemy.phase;
                             (a.cos() * 0.24, a.sin() * 0.24)
                         }
@@ -180,12 +141,12 @@ impl Mission {
         let jammers: Vec<_> = self
             .enemies
             .iter()
-            .filter(|e| e.kind == 7 && e.health > 0.0)
+            .filter(|e| e.kind == EnemyKind::Jammer && e.health > 0.0)
             .map(|e| e.position)
             .collect();
         for enemy in &mut self.enemies {
             // 只修复仍存活的敌机，避免把本帧被击毁的目标救回
-            if enemy.kind != 7
+            if enemy.kind != EnemyKind::Jammer
                 && enemy.health > 0.0
                 && jammers.iter().any(|p| p.distance(enemy.position) < 150.0)
             {
@@ -299,29 +260,21 @@ impl Mission {
             .collect();
         self.enemies.retain(|e| e.health > 0.0);
         for (position, kind) in dead {
+            let boss = kind.is_boss();
             self.kills += 1;
-            self.sounds
-                .push(crate::audio::Sound::Explosion((3..=5).contains(&kind)));
+            self.sounds.push(crate::audio::Sound::Explosion(boss));
             self.overdrive = (self.overdrive + 4.0).min(100.0);
-            if (3..=5).contains(&kind) {
-                self.boss_defeated = true;
-            }
-            if self.phase() == Phase::Patrol || (self.phase() == Phase::Strike && kind == 6) {
+            self.boss_defeated |= boss;
+            if self.phase() == Phase::Patrol
+                || (self.phase() == Phase::Strike && kind == EnemyKind::Battery)
+            {
                 self.objective += 1;
             }
             self.combo = (self.combo + 1).min(10);
             self.combo_time = 5.0;
             self.best_combo = self.best_combo.max(self.combo);
-            self.score += (if (3..=5).contains(&kind) {
-                10000
-            } else {
-                300 + kind as u32 * 150
-            }) * (1 + self.combo / 3);
-            self.effect(
-                position,
-                if (3..=5).contains(&kind) { 90.0 } else { 23.0 },
-                [255, 160, 66],
-            );
+            self.score += kind.spec().score * (1 + self.combo / 3);
+            self.effect(position, if boss { 90.0 } else { 23.0 }, [255, 160, 66]);
             let roll = self.random() * 10.0;
             let choice = roll as usize;
             let kind = match choice {

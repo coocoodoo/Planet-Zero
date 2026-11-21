@@ -124,8 +124,7 @@ impl Renderer {
         }
 
         if let Some(convoy) = &mission.convoy {
-            let right = vec3(flight.yaw.cos(), flight.yaw.sin(), 0.0);
-            let forward = vec3(flight.yaw.sin(), -flight.yaw.cos(), 0.0);
+            let (forward, right) = crate::flight::heading(flight.yaw);
             let local =
                 |x: f32, y: f32, z: f32| convoy.position + right * x + forward * y + Vec3::Z * z;
             for side in [-1.0, 1.0] {
@@ -208,17 +207,8 @@ impl Renderer {
                 }
                 continue;
             }
-            let scale = if enemy.is_boss() {
-                3.2
-            } else {
-                match enemy.kind {
-                    7 => 0.7,
-                    8 => 1.2,
-                    _ => 0.75 + enemy.kind as f32 * 0.18,
-                }
-            };
-            let forward = vec3(enemy.yaw.sin(), -enemy.yaw.cos(), 0.0);
-            let right = vec3(enemy.yaw.cos(), enemy.yaw.sin(), 0.0);
+            let scale = enemy.kind.spec().scale;
+            let (forward, right) = crate::flight::heading(enemy.yaw);
             let bank = enemy.phase.cos() * 0.25;
             let right = right * bank.cos() + Vec3::Z * bank.sin();
             let local = |x: f32, y: f32, z: f32| {
@@ -227,16 +217,8 @@ impl Renderer {
             let color = if enemy.hit > 0.1 {
                 rgb(255, 252, 232)
             } else {
-                match enemy.kind {
-                    0 => rgb(239, 98, 112),
-                    1 => rgb(171, 119, 235),
-                    2 => rgb(209, 161, 101),
-                    3 => rgb(113, 133, 172),
-                    4 => rgb(141, 208, 123),
-                    5 => rgb(189, 135, 215),
-                    7 => rgb(120, 221, 193),
-                    _ => rgb(255, 172, 76),
-                }
+                let [r, g, b] = enemy.kind.spec().color;
+                rgb(r, g, b)
             };
             let dark = mix(color, rgb(22, 24, 42), 0.55);
             self.mark = ENEMY_MARK;

@@ -29,6 +29,12 @@ pub fn angle(value: f32) -> f32 {
     value - TAU * (value / TAU).round()
 }
 
+/// 航向角对应的水平前向与右向单位向量
+pub fn heading(yaw: f32) -> (Vec3, Vec3) {
+    let (sin, cos) = yaw.sin_cos();
+    (vec3(sin, -cos, 0.0), vec3(cos, sin, 0.0))
+}
+
 pub fn ease(rate: f32, dt: f32) -> f32 {
     1.0 - (-rate * dt).exp()
 }
@@ -286,6 +292,12 @@ impl Flight {
     }
     pub fn can_warp(&self) -> bool {
         self.portal_cooldown <= 0.0
+    }
+    /// 立即切换到指定视角，跳过镜头过渡
+    pub fn snap_view(&mut self, view: usize) {
+        self.view = view;
+        self.weights = [0.0; 3];
+        self.weights[view] = 1.0;
     }
     pub fn set_demo(&mut self, enabled: bool) {
         self.demo = enabled;

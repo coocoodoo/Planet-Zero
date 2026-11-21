@@ -55,8 +55,10 @@ impl Cockpit {
             layers: sources.map(|bytes| {
                 let count = u16::from_le_bytes([bytes[0], bytes[1]]) as usize;
                 let palette: Vec<u32> = bytes[2..2 + count * 4]
-                    .chunks_exact(4)
-                    .map(|v| u32::from_le_bytes(v.try_into().unwrap()))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|v| u32::from_le_bytes(*v))
                     .collect();
                 let mut colors = [[0; 256]; 6];
                 for (i, &color) in palette.iter().enumerate() {
@@ -80,7 +82,9 @@ impl Cockpit {
                     .collect();
                 let pixels = bytes[2 + count * 4..].to_vec();
                 let runs = pixels
-                    .chunks_exact(342)
+                    .as_chunks::<342>()
+                    .0
+                    .iter()
                     .map(|row| {
                         let mut runs = Vec::new();
                         let mut x = 0;

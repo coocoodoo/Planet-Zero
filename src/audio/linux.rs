@@ -58,7 +58,7 @@ pub fn open(receiver: Receiver<Frame>) -> Result<Handle, Box<dyn std::error::Err
             // PCM 以 10 ms 分块，预留 30 ms 输入，后续按采样时钟发送
             for _ in 0..3 {
                 mixer.render(&mut samples);
-                for (value, bytes) in samples.iter().zip(bytes.chunks_exact_mut(2)) {
+                for (value, bytes) in samples.iter().zip(bytes.as_chunks_mut::<2>().0.iter_mut()) {
                     bytes.copy_from_slice(&((*value * 32767.0) as i16).to_le_bytes());
                 }
                 if input.write_all(&bytes).is_err() {
@@ -82,7 +82,7 @@ pub fn open(receiver: Receiver<Frame>) -> Result<Handle, Box<dyn std::error::Err
                         rendered as f64 / 48000.0
                     );
                 }
-                for (value, bytes) in samples.iter().zip(bytes.chunks_exact_mut(2)) {
+                for (value, bytes) in samples.iter().zip(bytes.as_chunks_mut::<2>().0.iter_mut()) {
                     bytes.copy_from_slice(&((*value * 32767.0) as i16).to_le_bytes());
                 }
                 if let Err(error) = input.write_all(&bytes) {

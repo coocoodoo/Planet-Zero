@@ -406,18 +406,18 @@ impl Mixer {
             hat.decay = 0.02;
             hat.pan = 0.3;
             self.overlay(hat, d);
-            if step % 4 == 0 {
+            if step.is_multiple_of(4) {
                 let mut kick = Tone::new(Wave::Sine, 150.0, 0.34 * level, 0.12);
                 kick.end_hz = 44.0;
                 kick.decay = 0.1;
                 kick.sustain = 0.05;
                 self.overlay(kick, d);
             }
-            if step % 2 == 0 {
+            if step.is_multiple_of(2) {
                 let octave = 12 * (1 + (height * 3.0) as u8).min(3);
                 let note = chord[(step / 2) % 4] + octave;
                 let mut arp = Tone::new(Wave::Saw, frequency(note), 0.035 * level, 0.09);
-                arp.pan = if step % 4 == 0 { -0.5 } else { 0.5 };
+                arp.pan = if step.is_multiple_of(4) { -0.5 } else { 0.5 };
                 arp.sustain = 0.2;
                 arp.send = 0.2;
                 self.overlay(arp, d);
@@ -442,7 +442,7 @@ impl Mixer {
             self.overlay(bell, d);
         }
         // 雷暴：隔小节一声低沉的定音鼓
-        if f.storm > 0.05 && self.cue == Cue::Flight && step % 32 == 0 {
+        if f.storm > 0.05 && self.cue == Cue::Flight && step.is_multiple_of(32) {
             let mut drum = Tone::new(Wave::Sine, 82.0, 0.3 * f.storm, 0.6);
             drum.end_hz = 52.0;
             drum.attack = 0.004;
@@ -472,7 +472,7 @@ impl Mixer {
         }
     }
     pub fn render(&mut self, destination: &mut [f32]) {
-        for stereo in destination.chunks_exact_mut(2) {
+        for stereo in destination.as_chunks_mut::<2>().0.iter_mut() {
             let value = self.sample();
             stereo.copy_from_slice(&value);
         }

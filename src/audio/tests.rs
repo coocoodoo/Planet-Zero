@@ -444,7 +444,7 @@ fn combat_intensity_rises_when_enemies_close_in_and_guns_fire() {
             yaw: 0.0,
             health: 40.0,
             max_health: 40.0,
-            kind: 0,
+            kind: crate::gameplay::EnemyKind::Light,
             phase: 0.0,
             cooldown: 2.0,
             hit: 0.0,

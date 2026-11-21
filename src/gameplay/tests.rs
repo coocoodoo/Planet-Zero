@@ -316,7 +316,7 @@ fn all_three_bosses_are_spawnable() {
         mission.direct_combat(0.1, &flight, world);
         kinds.insert(mission.enemies.iter().find(|e| e.is_boss()).unwrap().kind);
     }
-    assert_eq!(kinds, std::collections::HashSet::from([3, 4, 5]));
+    assert_eq!(kinds, std::collections::HashSet::from(EnemyKind::BOSSES));
 }
 
 #[test]
@@ -326,8 +326,8 @@ fn jammers_do_not_revive_destroyed_enemies() {
     let mut m = Mission::new(Mode::Combat, Difficulty::Cadet, &mut f, world);
     m.countdown = 0.0;
     m.enemies.clear();
-    m.spawn_enemy(7, &f, world, 0.0);
-    m.spawn_enemy(0, &f, world, 0.0);
+    m.spawn_enemy(EnemyKind::Jammer, &f, world, 0.0);
+    m.spawn_enemy(EnemyKind::Light, &f, world, 0.0);
     let jammer = m.enemies[0].position;
     m.enemies[1].position = jammer + glam::Vec3::X * 20.0;
     m.enemies[1].health = -0.1;

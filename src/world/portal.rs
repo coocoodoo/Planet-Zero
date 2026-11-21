@@ -82,31 +82,6 @@ impl Portal {
     }
 }
 
-impl super::World {
-    pub fn spawn_portals(&mut self, position: Vec3, forward: Vec3) {
-        let heading = forward.x.atan2(-forward.y);
-        let direction = vec3(heading.sin(), -heading.cos(), 0.0);
-        let right = vec3(direction.y, -direction.x, 0.0);
-        let radius = 48.0;
-        let mut portals = vec![
-            Portal {
-                center: position + forward * 240.0,
-                yaw: heading + std::f32::consts::PI,
-                radius,
-            },
-            Portal {
-                center: position + direction * (240.0 + MIN_SPACING) + right * 850.0,
-                yaw: heading + 0.9,
-                radius,
-            },
-        ];
-        for portal in &mut portals {
-            portal.place_height(self);
-        }
-        self.portals = portals;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -35,7 +35,7 @@ fn draw_frame(texture: &Texture2D) {
 
 fn save_capture(app: &App, path: &std::path::Path) {
     let mut bytes = Vec::with_capacity(app.screen.len());
-    for row in app.screen.chunks_exact(WIDTH * 4).rev() {
+    for row in app.screen.as_chunks::<{ WIDTH * 4 }>().0.iter().rev() {
         bytes.extend_from_slice(row);
     }
     Image {
@@ -58,9 +58,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
     ] {
         app.mode = mode;
         app.start();
-        app.flight.view = view;
-        app.flight.weights = [0.0; 3];
-        app.flight.weights[view] = 1.0;
+        app.flight.snap_view(view);
         if name == "menu" {
             app.home();
         }

@@ -66,7 +66,7 @@ impl Renderer {
         if flight.orbit_quiet {
             return;
         }
-        for (entry, _, _, _) in portal_scenes(world, flight, camera, network) {
+        for (entry, _, _) in portal_scenes(world, flight, camera, network) {
             let Some(window) = self.aperture(entry, flight, camera) else {
                 continue;
             };
@@ -156,7 +156,7 @@ impl Renderer {
         remote.visible.resize(rw, (0, 0));
         let rows: Vec<_> = (0..self.h).map(|y| y * rh / self.h).collect();
         let mut samples = std::mem::take(&mut self.portal_samples);
-        for (original, exit, destination, _) in scenes {
+        for (original, exit, destination) in scenes {
             let Some(window) = self.aperture(original, flight, camera) else {
                 continue;
             };
@@ -407,13 +407,12 @@ fn portal_scenes<'a>(
     crate::world::portal::Portal,
     crate::world::portal::Portal,
     &'a World,
-    usize,
 )> {
     let mut scenes = vec![];
     if world.portals.len() == 2 && network.is_none_or(|n| !n.active) {
         for i in 0..2 {
             if preview_in_range(world.portals[i], flight, camera) {
-                scenes.push((world.portals[i], world.portals[1 - i], world, i));
+                scenes.push((world.portals[i], world.portals[1 - i], world));
             }
         }
     }
@@ -423,16 +422,11 @@ fn portal_scenes<'a>(
                 continue;
             }
             if let Some(target) = network.get(route.target) {
-                scenes.push((
-                    route.aperture,
-                    network.exit(target, route.id),
-                    target,
-                    route.target.kind as usize,
-                ));
+                scenes.push((route.aperture, network.exit(target, route.id), target));
             }
         }
     }
-    scenes.retain(|(entry, _, _, _)| !flight.hides_portal(*entry));
+    scenes.retain(|(entry, _, _)| !flight.hides_portal(*entry));
     scenes
 }
 
@@ -609,8 +603,10 @@ mod tests {
         flight.warp_flash = 0.0;
         renderer.render(&world, &flight, 320, 170, 0);
         let differences = before
-            .chunks_exact(4)
-            .zip(renderer.rgba.chunks_exact(4))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(renderer.rgba.as_chunks::<4>().0.iter())
             .filter(|(a, b)| a.iter().zip(*b).any(|(x, y)| x.abs_diff(*y) > 5))
             .count();
         assert!(
@@ -783,8 +779,10 @@ mod window_tests {
         world.scenery[0].yaw = 1.5;
         renderer.render(&world, &flight, 320, 170, 0);
         let changed: Vec<_> = before
-            .chunks_exact(4)
-            .zip(renderer.rgba.chunks_exact(4))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(renderer.rgba.as_chunks::<4>().0.iter())
             .enumerate()
             .filter(|(_, (a, b))| a != b)
             .map(|(i, _)| (i % 320, i / 320))

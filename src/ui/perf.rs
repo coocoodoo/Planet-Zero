@@ -123,7 +123,11 @@ fn background(canvas: &mut Canvas, bounds: [i32; 4]) {
     let [x, y, w, h] = bounds;
     for row in y..y + h {
         let start = (row as usize * crate::app::WIDTH + x as usize) * 4;
-        for pixel in canvas.pixels[start..start + w as usize * 4].chunks_exact_mut(4) {
+        for pixel in canvas.pixels[start..start + w as usize * 4]
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+        {
             let alpha = pixel[3] as u32;
             let combined = 7 * 255 + 3 * alpha;
             for (channel, color) in pixel[..3].iter_mut().zip([8, 12, 20]) {

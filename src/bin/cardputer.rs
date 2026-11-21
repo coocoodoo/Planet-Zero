@@ -70,13 +70,7 @@ fn options() -> Result<Options, Box<dyn Error>> {
         }
         let value = args.next().ok_or_else(|| format!("{arg} 缺少参数值"))?;
         match arg.as_str() {
-            "--audio" => {
-                result.audio = match value.as_str() {
-                    "on" => true,
-                    "off" => false,
-                    _ => return Err("audio 支持 on 或 off".into()),
-                }
-            }
+            "--audio" => result.audio = switch("audio", &value)?,
             "--audio-benchmark" => result.audio_benchmark = Some(value.parse()?),
             "--level" => result.level = value.parse()?,
             "--mode" => {
@@ -96,22 +90,10 @@ fn options() -> Result<Options, Box<dyn Error>> {
                 result.map = MapKind::parse(&value).ok_or("未知地图，请使用 --help 查看地图名称")?
             }
             "--seed" => result.seed = Some(value.parse()?),
-            "--demo" => {
-                result.demo = match value.as_str() {
-                    "on" => true,
-                    "off" => false,
-                    _ => return Err("demo 支持 on 或 off".into()),
-                }
-            }
+            "--demo" => result.demo = switch("demo", &value)?,
             "--imu-test" => result.imu_test = Some(value.parse()?),
             "--imu-csv" => result.imu_csv = Some(value.into()),
-            "--imu" => {
-                result.imu = match value.as_str() {
-                    "on" => true,
-                    "off" => false,
-                    _ => return Err("imu 支持 on 或 off".into()),
-                }
-            }
+            "--imu" => result.imu = switch("imu", &value)?,
             "--travel" => result.travel = Some(value.parse()?),
             "--hd" => result.hd = Some(value.parse()?),
             "--maneuvers" => result.maneuvers = Some(value.parse()?),
@@ -157,15 +139,34 @@ fn options() -> Result<Options, Box<dyn Error>> {
     Ok(result)
 }
 
-fn capture(path: &Path, name: &str, game: &Game) -> std::io::Result<()> {
+fn switch(name: &str, value: &str) -> Result<bool, String> {
+    match value {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        _ => Err(format!("{name} 支持 on 或 off")),
+    }
+}
+
+/// 把 RGBA 画面写成 `<path>/<name>.ppm`
+fn write_ppm(
+    path: &Path,
+    name: &str,
+    width: usize,
+    height: usize,
+    rgba: &[u8],
+) -> std::io::Result<()> {
     std::fs::create_dir_all(path)?;
     let mut file =
         std::io::BufWriter::new(std::fs::File::create(path.join(format!("{name}.ppm")))?);
-    write!(file, "P6\n{WIDTH} {HEIGHT}\n255\n")?;
-    for pixel in game.screen.chunks_exact(4) {
+    write!(file, "P6\n{width} {height}\n255\n")?;
+    for pixel in rgba.as_chunks::<4>().0 {
         file.write_all(&pixel[..3])?;
     }
     file.flush()
+}
+
+fn capture(path: &Path, name: &str, game: &Game) -> std::io::Result<()> {
+    write_ppm(path, name, WIDTH, HEIGHT, &game.screen)
 }
 
 fn report(name: &str, scale: usize, samples: &mut [f64]) {
@@ -216,9 +217,7 @@ fn benchmark(options: &Options, game: &mut Game, frames: usize) -> Result<(), Bo
             game.world.kind,
             game.world.seed,
         );
-        game.flight.view = view;
-        game.flight.weights = [0.0; 3];
-        game.flight.weights[view] = 1.0;
+        game.flight.snap_view(view);
         for _ in 0..if game.mode == flight_club::gameplay::Mode::Free {
             60
         } else {
@@ -324,9 +323,7 @@ fn capture_landmarks(game: &mut Game, path: &Path) -> Result<(), Box<dyn Error>>
         game.flight.follow = position;
         game.flight.yaw = yaw;
         game.flight.camera_yaw = -yaw;
-        game.flight.view = view;
-        game.flight.weights = [0.0; 3];
-        game.flight.weights[view] = 1.0;
+        game.flight.snap_view(view);
         game.flight.wing_count = 0;
         game.flight.hud = false;
         game.draw();
@@ -562,10 +559,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         game.world.kind,
         game.world.seed,
     );
-    game.flight.view = if options.demo { 1 } else { options.view };
-    game.flight.weights = [0.0; 3];
-    let view = game.flight.view;
-    game.flight.weights[view] = 1.0;
+    game.flight
+        .snap_view(if options.demo { 1 } else { options.view });
     if let Some(scale) = options.hd {
         return scenarios::high_resolution(&options, &mut game, scale);
     }

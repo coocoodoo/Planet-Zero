@@ -8,9 +8,7 @@ pub(super) fn high_resolution(
     scale: usize,
 ) -> Result<(), Box<dyn Error>> {
     game.start();
-    game.flight.view = options.view;
-    game.flight.weights = [0.0; 3];
-    game.flight.weights[options.view] = 1.0;
+    game.flight.snap_view(options.view);
     for _ in 0..60 {
         game.step(1.0 / 30.0);
     }
@@ -23,15 +21,7 @@ pub(super) fn high_resolution(
         started.elapsed().as_secs_f64() * 1000.0
     );
     if let Some(path) = &options.capture {
-        std::fs::create_dir_all(path)?;
-        let mut file = std::io::BufWriter::new(std::fs::File::create(
-            path.join(format!("hd-{scale}x.ppm")),
-        )?);
-        write!(file, "P6\n{w} {h}\n255\n")?;
-        for pixel in renderer.rgba.chunks_exact(4) {
-            file.write_all(&pixel[..3])?;
-        }
-        file.flush()?;
+        write_ppm(path, &format!("hd-{scale}x"), w, h, &renderer.rgba)?;
     }
     Ok(())
 }
@@ -46,9 +36,7 @@ pub(super) fn travel(
     game.auto = false;
     game.network.active = true;
     game.flight.wing_count = 0;
-    game.flight.view = options.view;
-    game.flight.weights = [0.0; 3];
-    game.flight.weights[options.view] = 1.0;
+    game.flight.snap_view(options.view);
     let controls = Controls {
         manual: true,
         ..Default::default()
@@ -127,9 +115,7 @@ pub(super) fn maneuvers(
             game.auto = false;
             game.flight.position.z = game.flight.loop_altitude() + 160.0;
             game.flight.follow = game.flight.position;
-            game.flight.view = view;
-            game.flight.weights = [0.0; 3];
-            game.flight.weights[view] = 1.0;
+            game.flight.snap_view(view);
             game.flight.wing_count = 0;
             game.flight.hud = false;
             let name = format!(

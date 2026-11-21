@@ -21,28 +21,26 @@ impl Mission {
         self.enemies.clear();
         self.countdown = 0.0;
     }
-    pub(super) fn spawn_enemy(&mut self, kind: u8, flight: &Flight, world: &World, lane: f32) {
+    pub(super) fn spawn_enemy(
+        &mut self,
+        kind: EnemyKind,
+        flight: &Flight,
+        world: &World,
+        lane: f32,
+    ) {
         if self.enemies.len() >= 12 {
             return;
         }
-        let forward = vec3(flight.yaw.sin(), -flight.yaw.cos(), 0.0);
-        let right = vec3(flight.yaw.cos(), flight.yaw.sin(), 0.0);
+        let (forward, right) = heading(flight.yaw);
         let phase = self.random() * std::f32::consts::TAU;
-        let boss = (3..=5).contains(&kind);
-        let health = match kind {
-            0 => 42.0,
-            1 => 64.0,
-            2 => 95.0,
-            3..=5 => 2400.0,
-            6 => 180.0,
-            7 => 115.0,
-            _ => 140.0,
-        } * self.difficulty.factor()
+        let boss = kind.is_boss();
+        let health = kind.spec().health
+            * self.difficulty.factor()
             * (1.0 + self.level.saturating_sub(1).min(20) as f32 * 0.08);
         let mut position = flight.position
             + forward * (if boss { 270.0 } else { 220.0 } + self.random() * 75.0)
             + right * lane;
-        if kind == 6 {
+        if kind == EnemyKind::Battery {
             position += forward * 220.0;
             position.z = world.height(position.x, position.y) + 5.0;
         }
@@ -60,8 +58,8 @@ impl Mission {
             aim_point: flight.position,
         });
     }
-    pub(super) fn random_fraction(&self, kind: u8) -> f32 {
-        (self.next_id % 5) as f32 * 0.25 + kind as f32 * 0.03
+    pub(super) fn random_fraction(&self, kind: EnemyKind) -> f32 {
+        (self.next_id % 5) as f32 * 0.25 + kind as u8 as f32 * 0.03
     }
     pub(super) fn spawn_wave(&mut self, flight: &Flight, world: &World) {
         self.wave += 1;
@@ -69,10 +67,10 @@ impl Mission {
             && !self.enemies.iter().any(Enemy::is_boss)
             && !self.boss_defeated
         {
-            let kind = 3 + ((self.random() * 3.0) as u8).min(2);
+            let kind = EnemyKind::BOSSES[((self.random() * 3.0) as usize).min(2)];
             self.spawn_enemy(kind, flight, world, 0.0);
             for side in [-1.0, 1.0] {
-                self.spawn_enemy(1, flight, world, side * 110.0);
+                self.spawn_enemy(EnemyKind::Interceptor, flight, world, side * 110.0);
             }
             self.announce("WARNING / BOSS APPROACH");
             self.sounds.push(crate::audio::Sound::Boss);
@@ -84,11 +82,11 @@ impl Mission {
             (3 + (self.level - 1).min(3)).min(8_u32.saturating_sub(self.enemies.len() as u32));
         for i in 0..count {
             let kind = if self.level >= 3 && i == 0 && self.wave.is_multiple_of(3) {
-                7
+                EnemyKind::Jammer
             } else if self.level >= 2 && i == 1 && self.wave.is_multiple_of(2) {
-                8
+                EnemyKind::Striker
             } else {
-                (self.random() * 3.0) as u8
+                EnemyKind::FIGHTERS[(self.random() * 3.0) as usize]
             };
             self.spawn_enemy(
                 kind,
@@ -102,7 +100,7 @@ impl Mission {
             && self.enemies.iter().filter(|e| e.is_ground()).count() < 2
         {
             self.spawn_enemy(
-                6,
+                EnemyKind::Battery,
                 flight,
                 world,
                 if self.wave.is_multiple_of(2) {
@@ -139,9 +137,8 @@ impl Mission {
         }
         if let Some(convoy) = &mut self.convoy {
             convoy.previous = convoy.position;
-            let goal = flight.position
-                + vec3(flight.yaw.sin(), -flight.yaw.cos(), 0.0) * 95.0
-                + vec3(flight.yaw.cos(), flight.yaw.sin(), 0.0) * 25.0;
+            let (forward, right) = heading(flight.yaw);
+            let goal = flight.position + forward * 95.0 + right * 25.0;
             convoy.position = convoy.position.lerp(goal, (dt * 2.0).min(1.0));
             convoy.position.z = convoy
                 .position
@@ -193,11 +190,6 @@ impl Mission {
             }
             _ => self.phase_elapsed >= self.phase_duration(),
         };
-        if self.convoy.as_ref().is_some_and(|c| c.health <= 0.0) {
-            self.outcome = Some(false);
-            self.announce("CONVOY LOST");
-            return;
-        }
         if completed {
             if self.phase() == Phase::Boss {
                 self.score += (self.health * 30.0 + self.remaining * 10.0) as u32;
