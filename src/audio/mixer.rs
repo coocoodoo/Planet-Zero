@@ -8,7 +8,8 @@ fn ramp(value: f32, from: f32, to: f32) -> f32 {
     ((value - from) / (to - from)).clamp(0.0, 1.0)
 }
 
-/// 各编配层的目标音量：探索随时间段与天气变化，竞速和战斗随激烈程度逐层加入
+/// 各编配层的目标音量：探索随时间段与天气变化；竞速和战斗始终保留完整的主旋律与律动，
+/// 激烈程度只把各层推到满音量并加入副旋律，避免没有敌机时音乐几乎消失
 pub(super) fn layer_targets(cue: Cue, frame: &Frame) -> [f32; LAYERS] {
     let mut g = [1.0; LAYERS];
     match cue {
@@ -23,11 +24,11 @@ pub(super) fn layer_targets(cue: Cue, frame: &Frame) -> [f32; LAYERS] {
         }
         Cue::Race | Cue::Coins | Cue::Combat | Cue::Boss => {
             let i = frame.intensity;
-            g[score::BASS as usize] = 0.6 + 0.4 * ramp(i, 0.0, 0.2);
-            g[score::HATS as usize] = 0.5 + 0.5 * ramp(i, 0.05, 0.3);
-            g[score::DRUMS as usize] = 0.3 + 0.7 * ramp(i, 0.25, 0.5);
-            g[score::ARP as usize] = 0.15 + 0.85 * ramp(i, 0.4, 0.65);
-            g[score::LEAD as usize] = ramp(i, 0.55, 0.8);
+            g[score::BASS as usize] = 0.85 + 0.15 * ramp(i, 0.0, 0.2);
+            g[score::HATS as usize] = 0.7 + 0.3 * ramp(i, 0.05, 0.3);
+            g[score::DRUMS as usize] = 0.55 + 0.45 * ramp(i, 0.25, 0.5);
+            g[score::ARP as usize] = 0.6 + 0.4 * ramp(i, 0.4, 0.65);
+            g[score::LEAD as usize] = 0.65 + 0.35 * ramp(i, 0.55, 0.8);
             g[score::COUNTER as usize] = ramp(i, 0.7, 0.95);
         }
         _ => {}
@@ -187,6 +188,11 @@ impl Mixer {
     pub fn track(&self) -> usize {
         self.decks[self.live].track
     }
+    /// 某一编配层当前的音量
+    #[cfg(test)]
+    pub(super) fn layer(&self, layer: u8) -> f32 {
+        self.layers[layer as usize]
+    }
     /// 正在发声的播放轨数量，交叉淡化期间为 2
     pub fn decks_playing(&self) -> usize {
         self.decks.iter().filter(|d| d.playing).count()
@@ -242,6 +248,8 @@ impl Mixer {
         self.pending = None;
         self.frame.cue = cue;
         self.targets = layer_targets(self.cue, &self.frame);
+        // 新曲直接从当前场景的编制开始，不经历慢释放
+        self.layers = self.targets;
     }
     /// 立即移除一条播放轨的全部配乐声部
     fn silence(&mut self, deck: usize) {
@@ -290,6 +298,7 @@ impl Mixer {
         self.live = new;
         self.cue = next;
         self.targets = layer_targets(self.cue, &self.frame);
+        self.layers = self.targets;
         self.pending = None;
         self.transitions += 1;
     }
@@ -487,10 +496,15 @@ impl Mixer {
             }
         }
         let dt = 1.0 / self.rate;
-        // 时间段与天气缓慢过渡，战斗强度变化更快
+        // 时间段与天气缓慢过渡；战斗强度升高时约一秒跟上，回落时约七秒才淡下，
+        // 敌机来去不会让编制忽大忽小
         let targets = self.targets;
-        let speed = if self.cue == Cue::Flight { 0.5 } else { 1.6 };
         for (layer, target) in self.layers.iter_mut().zip(targets) {
+            let speed = match self.cue {
+                Cue::Flight => 0.5,
+                _ if target > *layer => 1.2,
+                _ => 0.15,
+            };
             *layer += (target - *layer) * (dt * speed).min(1.0);
         }
         self.night += (self.frame.night - self.night) * dt * 0.5;

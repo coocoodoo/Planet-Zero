@@ -341,7 +341,7 @@ fn entry_points_skip_quiet_intros() {
 #[test]
 fn night_and_weather_thin_out_exploration_layers() {
     use super::mixer::layer_targets;
-    use super::score::{ARP, DRUMS, LEAD, PAD};
+    use super::score::{ARP, COUNTER, DRUMS, LEAD, PAD};
     let day = layer_targets(Cue::Flight, &Frame::default());
     assert!(day.iter().all(|g| (*g - 1.0).abs() < 0.001));
     let night = layer_targets(
@@ -361,7 +361,7 @@ fn night_and_weather_thin_out_exploration_layers() {
         },
     );
     assert!(snow[DRUMS as usize] < 0.35);
-    // 战斗按强度逐层加入：巡逻只有律动，交火时全编制
+    // 战斗始终保留主旋律与律动，交火时推满并加入副旋律
     let calm = layer_targets(
         Cue::Combat,
         &Frame {
@@ -376,8 +376,42 @@ fn night_and_weather_thin_out_exploration_layers() {
             ..Frame::default()
         },
     );
-    assert!(calm[LEAD as usize] == 0.0 && calm[DRUMS as usize] < 0.5);
+    assert!(
+        calm.iter()
+            .enumerate()
+            .all(|(layer, g)| layer == COUNTER as usize || *g >= 0.55)
+    );
+    assert!(calm[COUNTER as usize] == 0.0 && calm[DRUMS as usize] < 0.8);
     assert!(fight.iter().all(|g| *g >= 0.999));
+}
+
+#[test]
+fn combat_layers_rise_quickly_and_release_slowly() {
+    use super::score::COUNTER;
+    let frame = |intensity| Frame {
+        cue: Cue::Combat,
+        intensity,
+        ..Frame::default()
+    };
+    let mut m = Mixer::new(24000);
+    m.update(frame(0.0));
+    m.start_cue(Cue::Combat);
+    // 立体声交错：9600 个值为 0.2 秒
+    let mut buffer = vec![0.0; 9600];
+    let mut run = |m: &mut Mixer, intensity, seconds: usize| {
+        for _ in 0..seconds * 5 {
+            m.update(frame(intensity));
+            m.render(&mut buffer);
+        }
+    };
+    run(&mut m, 0.0, 4);
+    let calm = m.layer(COUNTER);
+    run(&mut m, 1.0, 3);
+    let heated = m.layer(COUNTER);
+    assert!(calm < 0.05 && heated > 0.9, "{calm} -> {heated}");
+    // 敌机离开一秒后副旋律仍基本保留，不会立即掉下去
+    run(&mut m, 0.0, 1);
+    assert!(m.layer(COUNTER) > 0.75, "{}", m.layer(COUNTER));
 }
 
 #[test]
