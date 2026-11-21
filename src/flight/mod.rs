@@ -22,6 +22,8 @@ pub const DAY_SECONDS: f32 = 600.0;
 pub const MIN_CLEARANCE: f32 = 28.0;
 const LOOP_RATE: f32 = 1.25;
 const NORMAL_PITCH: f32 = 0.55;
+/// 大气层内轨道推进的最大爬升速度（米/秒）
+const ORBITAL_CLIMB: f32 = 90.0;
 
 pub fn angle(value: f32) -> f32 {
     value - TAU * (value / TAU).round()
@@ -563,6 +565,11 @@ impl Flight {
         if self.loop_remaining <= 0.0 {
             let limit = self.speed * (0.4 + high_altitude.max(self.orbital_thrust) * 0.6);
             climb = climb.clamp(-limit, limit);
+            // 轨道推进沿弧线爬升：保持高速但限制垂直速度，升空过程约二十多秒
+            if self.orbit_flight && self.orbital_thrust > 0.0001 && climb > 0.0 {
+                let ascent = limit + (ORBITAL_CLIMB - limit) * self.orbital_thrust;
+                climb = climb.min(ascent.max(ORBITAL_CLIMB));
+            }
         }
         let acceleration = if self.hover
             || self.loop_remaining > 0.0

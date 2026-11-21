@@ -864,3 +864,24 @@ fn space_bodies_block_the_aircraft_in_every_mode() {
         );
     }
 }
+
+#[test]
+fn orbital_ascent_climbs_steadily_instead_of_shooting_up() {
+    let mut app = App::new(World::generate(crate::world::MapKind::Islands, 7));
+    app.start();
+    app.key(crate::keys::UP, 1);
+    app.key(crate::keys::BOOST, 1);
+    let mut fastest: f32 = 0.0;
+    for _ in 0..30 * 12 {
+        let before = app.flight.position.z;
+        app.step(1.0 / 30.0, None);
+        if app.flight.orbital_thrust > 0.99 {
+            fastest = fastest.max((app.flight.position.z - before) * 30.0);
+        }
+    }
+    // 按住爬升加速 12 秒后仍在大气层内，升空全程约二十多秒
+    let z = app.flight.position.z;
+    assert!((700.0..1500.0).contains(&z), "altitude {z}");
+    assert!(app.flight.speed > 300.0);
+    assert!(fastest <= 100.0, "vertical {fastest}");
+}

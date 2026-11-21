@@ -2,6 +2,11 @@ use super::*;
 use crate::audio::{Cue, Frame, Sound};
 use crate::world::{MapKind, orbit::Body};
 
+/// 升空配乐切入高度：冲出低空、接近大气层边缘时才进入升空段落
+pub const ASCENT_MUSIC_ALTITUDE: f32 = 1000.0;
+/// 火箭轰鸣从这一高度开始逐渐增强
+const ASCENT_RUMBLE_ALTITUDE: f32 = 600.0;
+
 /// 连续飞行状态的上一帧取值，用于触发一次性音效
 #[derive(Default)]
 pub(super) struct SoundState {
@@ -46,9 +51,11 @@ impl App {
             events.push(sound);
         }
         let ascent = self.ascent();
-        let ascending = ascent > 0.3;
+        let altitude_m = self.flight.position.z;
+        let ascending = ascent > 0.3
+            && (altitude_m >= ASCENT_MUSIC_ALTITUDE || self.orbit.transition.is_some());
         // 下降段仍在太空配乐中，落地后切回地表曲目
-        let descending = self.orbit.transition.is_some() && !ascending;
+        let descending = self.orbit.transition.is_some() && ascent <= 0.3;
         let cue = match self.page {
             Page::Menu => Cue::Menu,
             Page::Help if self.help_return == Page::Menu => Cue::Menu,
@@ -119,7 +126,11 @@ impl App {
             events,
             map,
             vehicle: self.flight.vehicle as u8,
-            ascent: ascent * f32::from(flying),
+            ascent: ascent
+                * f32::from(flying)
+                * ((altitude_m - ASCENT_RUMBLE_ALTITUDE)
+                    / (ASCENT_MUSIC_ALTITUDE - ASCENT_RUMBLE_ALTITUDE))
+                    .clamp(0.0, 1.0),
             altitude,
             vacuum: self.world.kind.vacuum() || descending || altitude > 0.85,
         }

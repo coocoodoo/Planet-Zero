@@ -123,8 +123,14 @@ fn application_routes_results_pause_and_events_to_audio() {
     assert_eq!(app.audio_frame().cue, Cue::Coins);
     app.mode = Mode::Free;
     app.flight.orbital_thrust = 0.9;
+    app.flight.position.z = 400.0;
+    let f = app.audio_frame();
+    assert_eq!(f.cue, Cue::Flight, "常规飞行高度不切升空配乐");
+    assert_eq!(f.ascent, 0.0);
+    app.flight.position.z = crate::app::ASCENT_MUSIC_ALTITUDE + 50.0;
     let f = app.audio_frame();
     assert_eq!(f.cue, Cue::Ascent);
+    assert!(f.ascent > 0.8);
     assert_eq!(f.map, app.world.kind);
     app.flight.orbital_thrust = 0.0;
     assert_eq!(app.audio_frame().cue, Cue::Flight);
