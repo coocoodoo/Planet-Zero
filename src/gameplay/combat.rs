@@ -184,7 +184,11 @@ impl Mission {
             .map(|e| e.position)
             .collect();
         for enemy in &mut self.enemies {
-            if enemy.kind != 7 && jammers.iter().any(|p| p.distance(enemy.position) < 150.0) {
+            // 只修复仍存活的敌机，避免把本帧被击毁的目标救回
+            if enemy.kind != 7
+                && enemy.health > 0.0
+                && jammers.iter().any(|p| p.distance(enemy.position) < 150.0)
+            {
                 enemy.health = (enemy.health + dt * 8.0).min(enemy.max_health);
             }
         }
