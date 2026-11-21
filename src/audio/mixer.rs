@@ -44,11 +44,6 @@ const ENGINES: [(f32, f32, f32, f32, f32); 5] = [
     (60.0, 0.002, 0.004, 0.030, 0.05),
 ];
 
-/// 同一场景内换地图或天气后，新环境需保持的秒数才换曲
-const SCENE_DWELL: f64 = 8.0;
-/// 因环境变化换曲前，当前曲目至少播放的秒数
-const MINIMUM_PLAY: f64 = 25.0;
-
 /// 一条配乐播放轨；换曲时旧轨淡出、新轨淡入，两轨同时发声
 #[derive(Clone, Copy)]
 struct Deck {
@@ -84,7 +79,8 @@ pub struct Mixer {
     live: usize,
     shuffle: u32,
     pending: Option<Cue>,
-    unfit_since: Option<f64>,
+    /// 同一场景内换地图：不等节拍，立即开始交叉淡化
+    immediate: bool,
     clock: f64,
     last_effect: [f64; THROTTLE_SLOTS],
     seed: u32,
@@ -137,7 +133,7 @@ impl Mixer {
             live: 0,
             shuffle: 0x9e37_79b9,
             pending: None,
-            unfit_since: None,
+            immediate: false,
             clock: 0.0,
             last_effect: [-10.0; THROTTLE_SLOTS],
             seed: 173,
@@ -211,19 +207,9 @@ impl Mixer {
     }
     pub fn update(&mut self, frame: Frame) {
         let fits = frame.cue == self.cue && playlist(frame.cue, frame.map).contains(&self.track());
-        self.pending = if fits {
-            self.unfit_since = None;
-            None
-        } else if frame.cue != self.cue {
-            // 场景变化在下一拍交叉淡化
-            self.unfit_since = None;
-            Some(frame.cue)
-        } else {
-            // 同一场景换地图或天气：新环境稳定且当前曲目播放够久才换，快速穿梭虫洞时保持原曲
-            let since = *self.unfit_since.get_or_insert(self.clock);
-            let played = self.clock - self.decks[self.live].started;
-            (self.clock - since >= SCENE_DWELL && played >= MINIMUM_PLAY).then_some(frame.cue)
-        };
+        // 场景变化在下一拍、换地图立即开始交叉淡化
+        self.pending = (!fits).then_some(frame.cue);
+        self.immediate = frame.cue == self.cue;
         if frame.settings.effects() {
             for event in frame.events.iter() {
                 self.play(event);
@@ -247,7 +233,6 @@ impl Mixer {
         self.decks[1].playing = false;
         self.cue = cue;
         self.pending = None;
-        self.unfit_since = None;
         self.frame.cue = cue;
     }
     /// 立即移除一条播放轨的全部配乐声部
@@ -265,11 +250,25 @@ impl Mixer {
     fn crossfade(&mut self, next: Cue) {
         let (fade_out, fade_in) = if next.urgent() {
             (0.9, 0.25)
+        } else if next == self.cue {
+            (1.6, 1.2)
         } else {
-            (2.6, 1.4)
+            (1.8, 1.0)
         };
         let old = self.live;
         let new = 1 - old;
+        // 淡出中的曲目正好属于新场景（例如穿回上一张地图）：直接淡回，不从头重播
+        if self.decks[new].playing
+            && playlist(next, self.frame.map).contains(&self.decks[new].track)
+        {
+            self.decks[old].fade = -1.0 / fade_out;
+            self.decks[new].fade = 1.0 / fade_in;
+            self.live = new;
+            self.cue = next;
+            self.pending = None;
+            self.transitions += 1;
+            return;
+        }
         if self.decks[new].playing {
             self.silence(new);
         }
@@ -289,7 +288,6 @@ impl Mixer {
         self.live = new;
         self.cue = next;
         self.pending = None;
-        self.unfit_since = None;
         self.transitions += 1;
     }
     fn add(&mut self, tone: Tone) {
@@ -340,7 +338,7 @@ impl Mixer {
     fn tick(&mut self, d: usize) {
         if d == self.live
             && let Some(next) = self.pending
-            && self.decks[d].step.is_multiple_of(4)
+            && (self.immediate || self.decks[d].step.is_multiple_of(4))
         {
             self.crossfade(next);
         }

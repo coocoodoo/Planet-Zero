@@ -293,7 +293,7 @@ fn scene_changes_crossfade_on_the_beat() {
 }
 
 #[test]
-fn map_music_waits_for_the_new_map_to_settle() {
+fn map_changes_crossfade_right_away_and_hopping_back_revives_the_old_song() {
     use crate::world::MapKind;
     let mut m = Mixer::new(8000);
     let mut frame = Frame {
@@ -303,28 +303,23 @@ fn map_music_waits_for_the_new_map_to_settle() {
     };
     m.update(frame);
     m.start_cue(Cue::Flight);
-    let first = m.track();
-    // 每 3 秒穿越一次虫洞，曲目保持不变
-    for hop in 0..10 {
-        frame.map = [MapKind::Space, MapKind::City, MapKind::Icebergs][hop % 3];
-        m.update(frame);
-        seconds(&mut m, 3.0);
-        frame.map = MapKind::Desert;
-        m.update(frame);
-        seconds(&mut m, 0.2);
-    }
-    assert_eq!(m.track(), first);
-    assert_eq!(m.transitions, 0);
-    // 在新地图停留足够久后换成该地图的配乐
+    let desert = m.track();
+    seconds(&mut m, 2.0);
+    // 穿过虫洞后立即开始淡出旧曲、淡入新地图主题
     frame.map = MapKind::Space;
     m.update(frame);
-    for _ in 0..12 {
-        seconds(&mut m, 1.0);
-        m.update(frame);
-    }
-    seconds(&mut m, 1.0);
+    seconds(&mut m, 0.3);
     assert!(playlist(Cue::Flight, MapKind::Space).contains(&m.track()));
-    assert_eq!(m.cue(), Cue::Flight);
+    assert_eq!(m.decks_playing(), 2);
+    // 淡出途中穿回原地图：原曲直接淡回
+    frame.map = MapKind::Desert;
+    m.update(frame);
+    seconds(&mut m, 0.3);
+    assert_eq!(m.track(), desert);
+    seconds(&mut m, 2.5);
+    assert_eq!(m.decks_playing(), 1);
+    assert_eq!(m.track(), desert);
+    assert_eq!(m.transitions, 2);
 }
 
 #[test]
