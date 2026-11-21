@@ -100,6 +100,8 @@ pub struct Renderer {
     workers: Vec<Renderer>,
     portal_view: Option<Box<Renderer>>,
     portal_samples: Vec<(u32, u32, f32)>,
+    /// 虫洞合成时读取的原画面副本，跨帧复用
+    portal_base: Vec<u32>,
     near_depth: f32,
     cockpit: crate::render::cockpit::Cockpit,
     visible: Vec<(i32, i32)>,
@@ -220,6 +222,7 @@ impl Renderer {
             workers: vec![],
             portal_view: None,
             portal_samples: Vec::new(),
+            portal_base: Vec::new(),
             near_depth: f32::NEG_INFINITY,
             cockpit: crate::render::cockpit::Cockpit::new(),
             visible: vec![],

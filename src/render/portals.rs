@@ -249,7 +249,15 @@ impl Renderer {
                     remote.precipitation(destination, &remote_flight, &view);
                 }
             }
-            let base = self.pixels.clone();
+            let pixel_scale = camera.scale / Camera::new(flight, 320, 170).scale;
+            // 透镜外圈按扭曲偏移读取原画面，偏移不超过 26 个像素单位；只复制这些列，不克隆整张画布
+            let h = self.h;
+            let margin = (27.0 * pixel_scale).ceil() as usize + 1;
+            let lo = (min_x as usize).saturating_sub(margin);
+            let hi = (max_x as usize + margin + 1).min(self.w);
+            let mut base = std::mem::take(&mut self.portal_base);
+            base.resize(self.pixels.len(), 0);
+            base[lo * h..hi * h].copy_from_slice(&self.pixels[lo * h..hi * h]);
             let rim = portal_color(destination.kind, theme);
             let phase = flight.time * 1.5;
             let (s, c) = phase.sin_cos();
@@ -258,8 +266,7 @@ impl Renderer {
             let wave = |phase: f32| {
                 waves[((phase * (256.0 / std::f32::consts::TAU)) as i32 & 255) as usize]
             };
-            let pixel_scale = camera.scale / Camera::new(flight, 320, 170).scale;
-            let (w, h) = (self.w, self.h);
+            let w = self.w;
             let compose = |offset: usize,
                            pixels: &mut [u32],
                            depths: &mut [f32],
@@ -363,6 +370,7 @@ impl Renderer {
                     }
                 });
             }
+            self.portal_base = base;
         }
         self.portal_samples = samples;
         self.portal_view = Some(remote);
