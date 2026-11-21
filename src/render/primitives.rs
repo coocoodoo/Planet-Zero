@@ -264,6 +264,21 @@ impl Renderer {
             self.point(a.lerp(b, step as f32 / steps as f32), depth, color, 0, 0);
         }
     }
+    /// 圆形像素点，用于弹体等需要与方形拾取物区分的目标
+    pub(super) fn disc(&mut self, p: Vec2, depth: f32, color: u32, radius: i32) {
+        if radius <= 1 {
+            self.point(p, depth, color, radius, 0);
+            return;
+        }
+        let limit = radius * radius + radius;
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                if dx * dx + dy * dy <= limit {
+                    self.point(p + vec2(dx as f32, dy as f32), depth, color, 0, 0);
+                }
+            }
+        }
+    }
     pub(super) fn point(&mut self, p: Vec2, depth: f32, color: u32, radius: i32, mark: u8) {
         let color = self.fogged_scenery(color, depth);
         let x = p.x.round() as i32;

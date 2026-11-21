@@ -365,10 +365,23 @@ impl Renderer {
                 );
             } else if let Some((p, d, s)) = camera.project(shot.position) {
                 let radius = (shot.radius * s).round().clamp(1.0, 8.0) as i32;
-                self.point(p, d, rgb(44, 24, 53), radius + 1, 0);
-                self.point(p, d - 0.1, color, radius, 0);
-                self.point(p, d - 0.2, rgb(255, 250, 225), (radius - 1).max(0), 0);
-                if !shot.hostile {
+                let tracer = !shot.hostile && matches!(shot.weapon, Weapon::Gun | Weapon::Missile);
+                let tail = camera.project(shot.position - shot.velocity * 0.03);
+                if let (true, Some((tail, _, _))) = (tracer, tail) {
+                    // 曳光弹：沿飞行方向的武器色外沿与亮芯，区别于方形拾取物
+                    let scale = self.full_width.max(320) as f32 / 320.0;
+                    let tail = p + (tail - p).clamp_length(4.0 * scale, 12.0 * scale);
+                    let normal = (p - tail).normalize_or_zero().perp() * scale;
+                    self.stroke(tail, p, d, color);
+                    self.stroke(tail + normal, p + normal, d, color);
+                    self.stroke(p.lerp(tail, 0.5), p, d - 0.1, rgb(255, 250, 225));
+                    self.point(p, d - 0.2, rgb(255, 255, 255), radius.min(2) - 1, 0);
+                } else {
+                    self.disc(p, d, rgb(44, 24, 53), radius + 1);
+                    self.disc(p, d - 0.1, color, radius);
+                    self.disc(p, d - 0.2, rgb(255, 250, 225), (radius - 1).max(0));
+                }
+                if !shot.hostile && shot.weapon != Weapon::Gun {
                     self.world_line(
                         camera,
                         shot.position,
