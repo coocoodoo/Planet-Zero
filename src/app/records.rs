@@ -19,7 +19,7 @@ impl App {
         if self.mode == Mode::Race && self.mission.outcome != Some(true) {
             return;
         }
-        let key = self.record_key();
+        let key = self.run_key.clone();
         self.new_record = true;
         self.best_score = self.mission.score;
         if let Some(record) = self.records.iter_mut().find(|r| r.0 == key) {

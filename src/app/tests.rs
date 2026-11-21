@@ -827,3 +827,22 @@ fn menu_demo_travel_keeps_the_players_map_and_weather() {
     assert_eq!(app.flight.weather.target, Weather::Storm);
     assert_eq!(app.page, Page::Playing);
 }
+
+#[test]
+fn records_stay_with_the_starting_map_after_wormhole_travel() {
+    let mut app = App::new(World::generate(crate::world::MapKind::City, 2049));
+    app.record_path = None;
+    app.mode = Mode::Combat;
+    app.start();
+    let key = app.record_key();
+    app.network.ensure(&app.world);
+    let route = app.network.routes(&app.world)[0];
+    app.network
+        .remember(World::generate(route.target.kind, route.target.seed).into());
+    assert!(app.arrive(route));
+    assert_ne!(app.record_key(), key);
+    app.mission.score = 5000;
+    app.save_record();
+    assert!(app.records.iter().any(|(k, s)| k == &key && *s == 5000));
+    assert!(!app.records.iter().any(|(k, _)| k == &app.record_key()));
+}

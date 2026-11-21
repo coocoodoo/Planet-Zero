@@ -92,6 +92,8 @@ pub struct App {
     escape_since: Option<Instant>,
     sound_state: audio::SoundState,
     /// 菜单演示穿越虫洞前玩家所选的地图与天气，开始任务时恢复
+    /// 任务开始时的成绩键，途中穿越虫洞不影响成绩归属
+    run_key: String,
     menu_home: Option<(
         crate::world::network::MapKey,
         crate::content::weather::WeatherState,
@@ -194,6 +196,7 @@ impl App {
             escape_since: None,
             sound_state: Default::default(),
             menu_home: None,
+            run_key: String::new(),
         }
     }
     pub fn start(&mut self) {
@@ -233,10 +236,11 @@ impl App {
         self.flight.hover = false;
         self.page = Page::Playing;
         self.new_record = false;
+        self.run_key = self.record_key();
         self.best_score = self
             .records
             .iter()
-            .find(|(key, _)| key == &self.record_key())
+            .find(|(key, _)| key == &self.run_key)
             .map_or(0, |r| r.1);
         self.keys.clear();
         if self.mission.countdown > 0.0 {
