@@ -110,6 +110,10 @@ pub struct Renderer {
     visible: Vec<(i32, i32)>,
     mapping: Vec<usize>,
     mapping_key: Option<(usize, usize, usize, usize, u32, u64)>,
+    /// 座舱画布尺寸与是否旋转；变化时才整张重置遮挡与深度
+    canvas: Option<(usize, usize, bool)>,
+    /// 上次映射中由遮挡变为可见的画布位置
+    unoccluded: Vec<u32>,
     occluded: Vec<bool>,
     pub stages: [f64; 3],
     pub triangles: u32,
@@ -232,6 +236,8 @@ impl Renderer {
             visible: vec![],
             mapping: vec![],
             mapping_key: None,
+            canvas: None,
+            unoccluded: Vec::new(),
             occluded: vec![],
             stages: [0.0; 3],
             triangles: 0,
@@ -326,9 +332,24 @@ impl Renderer {
             if has_panel { self.cockpit.revision } else { 0 },
         );
         if self.mapping_key != Some(mapping_key) {
+            let canvas = (self.w, self.h, rolled);
+            if self.canvas != Some(canvas) || self.occluded.len() != self.pixels.len() {
+                self.occluded.clear();
+                self.occluded.resize(self.pixels.len(), rolled);
+                if rolled {
+                    self.depth.fill(f32::NEG_INFINITY);
+                }
+                self.unoccluded.clear();
+                self.canvas = Some(canvas);
+            } else {
+                // 只把上次映射到的可见像素恢复为遮挡，不必整张画布重置
+                for &at in &self.unoccluded {
+                    self.occluded[at as usize] = true;
+                    self.depth[at as usize] = f32::NEG_INFINITY;
+                }
+                self.unoccluded.clear();
+            }
             self.visible.fill((self.h as i32, 0));
-            self.occluded.resize(self.pixels.len(), rolled);
-            self.occluded.fill(rolled);
             if !rolled {
                 self.visible.fill((0, height as i32));
                 for y in 0..height {
@@ -350,22 +371,17 @@ impl Renderer {
                                 if height == 170 { y } else { y * 170 / height },
                             )
                         {
-                            self.occluded[sx * self.h + sy] = false;
+                            let at = sx * self.h + sy;
+                            if self.occluded[at] {
+                                self.occluded[at] = false;
+                                self.unoccluded.push(at as u32);
+                            }
                             self.visible[sx].0 = self.visible[sx].0.min(sy as i32);
                             self.visible[sx].1 = self.visible[sx].1.max(sy as i32 + 1);
                         }
                         q.x += c;
                         q.y += s;
                     }
-                }
-            }
-            if rolled {
-                for (depth, &occluded) in self.depth.iter_mut().zip(&self.occluded) {
-                    *depth = if occluded {
-                        f32::NEG_INFINITY
-                    } else {
-                        f32::INFINITY
-                    };
                 }
             }
             self.mapping_key = Some(mapping_key);
