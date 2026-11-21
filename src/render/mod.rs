@@ -124,6 +124,35 @@ pub struct Renderer {
     pub detail: [f64; 4],
 }
 
+/// 列的可见行区间，裁剪到画布高度
+fn span(top: i32, bottom: i32, h: usize) -> std::ops::Range<usize> {
+    let top = top.clamp(0, h as i32) as usize;
+    let bottom = bottom.clamp(0, h as i32) as usize;
+    top..bottom.max(top)
+}
+
+/// 按每列可见像素数的前缀和切分列区间，使各线程的绘制量接近
+fn strips(visible: &[(i32, i32)], count: usize, h: usize) -> Vec<usize> {
+    let w = visible.len();
+    // 每列另计少量固定开销，避免全遮挡区域被并成一条
+    let weight = |x: usize| span(visible[x].0, visible[x].1, h).len() + 4;
+    let total: usize = (0..w).map(weight).sum();
+    let mut bounds = Vec::with_capacity(count + 1);
+    bounds.push(0);
+    let mut acc = 0;
+    let mut x = 0;
+    for i in 1..count {
+        let goal = total * i / count;
+        while x < w && acc + weight(x) / 2 < goal {
+            acc += weight(x);
+            x += 1;
+        }
+        bounds.push(x);
+    }
+    bounds.push(w);
+    bounds
+}
+
 fn render_pool() -> &'static rayon_core::ThreadPool {
     static POOL: std::sync::OnceLock<rayon_core::ThreadPool> = std::sync::OnceLock::new();
     POOL.get_or_init(|| {
@@ -474,44 +503,49 @@ impl Renderer {
         if self.workers.is_empty() {
             self.layer(world, flight, camera, clouds);
         } else {
-            let strip = self.w.div_ceil(self.workers.len());
             let w = self.w;
             let h = self.h;
+            let bounds = strips(&self.visible, self.workers.len(), h);
             let visible = &self.visible;
+            let (pixels, depth) = (&self.pixels, &self.depth);
             render_pool().in_place_scope(|scope| {
                 for (i, worker) in self.workers.iter_mut().enumerate().rev() {
-                    let start = i * strip;
-                    let end = ((i + 1) * strip).min(w);
+                    let (start, end) = (bounds[i], bounds[i + 1]);
                     worker.light = self.light;
                     worker.x_origin = start;
-                    worker.full_width = self.w;
+                    worker.full_width = w;
                     worker.w = end - start;
                     worker.h = h;
-                    worker.pixels.resize(worker.w * h, 0);
-                    if clouds {
-                        worker
-                            .pixels
-                            .copy_from_slice(&self.pixels[start * h..end * h]);
-                        worker.triangles = 0;
-                    } else {
-                        worker.pixels.fill(0);
-                    }
-                    worker.mask.resize(worker.w * h, 0);
-                    worker.mask.fill(0);
-                    worker.near_depth = self.near_depth;
-                    worker.depth.resize(worker.w * h, f32::INFINITY);
-                    worker
-                        .depth
-                        .copy_from_slice(&self.depth[start * h..end * h]);
                     worker.visible.clear();
                     worker.visible.extend_from_slice(&visible[start..end]);
-                    if worker.visible.iter().all(|&(top, bottom)| top >= bottom)
-                        || worker.depth.iter().all(|&depth| depth == f32::NEG_INFINITY)
-                    {
+                    if worker.visible.iter().all(|&(top, bottom)| top >= bottom) {
                         worker.detail = [0.0; 4];
                         worker.triangles = 0;
                         continue;
                     }
+                    worker.pixels.resize(worker.w * h, 0);
+                    worker.depth.resize(worker.w * h, f32::INFINITY);
+                    worker.mask.resize(worker.w * h, 0);
+                    worker.mask.fill(0);
+                    if clouds {
+                        worker.triangles = 0;
+                    } else {
+                        worker.pixels.fill(0);
+                    }
+                    // 只搬运可见行，座舱遮挡与虫洞透镜外的像素不会显示
+                    for (x, &(top, bottom)) in worker.visible.iter().enumerate() {
+                        let rows = span(top, bottom, h);
+                        if rows.is_empty() {
+                            continue;
+                        }
+                        let local = x * h + rows.start..x * h + rows.end;
+                        let global = (start + x) * h + rows.start..(start + x) * h + rows.end;
+                        if clouds {
+                            worker.pixels[local.clone()].copy_from_slice(&pixels[global.clone()]);
+                        }
+                        worker.depth[local].copy_from_slice(&depth[global]);
+                    }
+                    worker.near_depth = self.near_depth;
                     worker.column.clear();
                     worker
                         .column
@@ -536,11 +570,17 @@ impl Renderer {
                 self.triangles = self.workers.iter().map(|w| w.triangles).sum();
             }
             for (i, worker) in self.workers.iter().enumerate() {
-                let start = i * strip * h;
-                let end = start + worker.pixels.len();
-                self.pixels[start..end].copy_from_slice(&worker.pixels);
-                if !clouds {
-                    self.depth[start..end].copy_from_slice(&worker.depth);
+                for (x, &(top, bottom)) in worker.visible.iter().enumerate() {
+                    let rows = span(top, bottom, h);
+                    if rows.is_empty() {
+                        continue;
+                    }
+                    let local = x * h + rows.start..x * h + rows.end;
+                    let global = (bounds[i] + x) * h + rows.start..(bounds[i] + x) * h + rows.end;
+                    self.pixels[global.clone()].copy_from_slice(&worker.pixels[local.clone()]);
+                    if !clouds {
+                        self.depth[global].copy_from_slice(&worker.depth[local]);
+                    }
                 }
             }
         }
@@ -550,6 +590,32 @@ impl Renderer {
 #[cfg(test)]
 mod parallel_tests {
     use super::*;
+    #[test]
+    fn strips_balance_visible_pixels_and_cover_every_column() {
+        // 中间窄、两侧被座舱遮挡的可见区域
+        let visible: Vec<(i32, i32)> = (0..400)
+            .map(|x| {
+                if (40..360).contains(&x) {
+                    (60, 300)
+                } else {
+                    (400, 0)
+                }
+            })
+            .collect();
+        let bounds = strips(&visible, 4, 400);
+        assert_eq!((bounds[0], bounds[4]), (0, 400));
+        assert!(bounds.windows(2).all(|w| w[0] <= w[1]));
+        let loads: Vec<usize> = bounds
+            .windows(2)
+            .map(|w| {
+                (w[0]..w[1])
+                    .map(|x| span(visible[x].0, visible[x].1, 400).len())
+                    .sum()
+            })
+            .collect();
+        let (min, max) = (loads.iter().min().unwrap(), loads.iter().max().unwrap());
+        assert!(*max - *min <= 2 * 240, "{loads:?}");
+    }
     #[test]
     fn column_workers_preserve_depth_for_foreground_occlusion() {
         let mut world = World::generate(crate::world::MapKind::Moon, 7);
@@ -709,5 +775,79 @@ mod parallel_tests {
         world.scenery[0].position = camera.position + camera.forward * 100.0;
         renderer.render(&world, &flight, 320, 170, 0);
         assert_ne!(renderer.rgba, empty);
+    }
+}
+
+#[cfg(test)]
+mod equivalence_tests {
+    use super::*;
+    // 同一状态下单线程与按可见量分条的并行渲染应只在条带接缝处有零星差异
+    #[test]
+    fn single_and_parallel_render_the_same_frames() {
+        use crate::app::App;
+        use crate::world::MapKind;
+        for (kind, seed) in [
+            (MapKind::Islands, 7),
+            (MapKind::City, 2049),
+            (MapKind::Alpine, 31),
+            (MapKind::Moon, MapKind::Moon.seed()),
+            (MapKind::Space, MapKind::Space.seed()),
+        ] {
+            let mut app = App::new(World::generate(kind, seed));
+            app.start();
+            app.auto = true;
+            app.flight.wing_count = 2;
+            app.network.active = true;
+            app.network.ensure(&app.world);
+            app.network
+                .summon(&app.world, app.flight.position, app.flight.axes()[1]);
+            for _ in 0..2000 {
+                app.prepare_scene();
+                app.network.poll();
+                if !app.network.loading() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            for frame in 0..240 {
+                app.prepare_scene();
+                app.network.poll();
+                app.step(1.0 / 30.0, None);
+                if frame % 40 != 39 {
+                    continue;
+                }
+                for view in 0..3 {
+                    let mut flight = app.flight.clone();
+                    flight.weights = [0.0; 3];
+                    flight.weights[view] = 1.0;
+                    if view == 2 {
+                        flight.bank = 0.6;
+                    }
+                    let mut parallel = Renderer::single();
+                    parallel.workers = (0..4).map(|_| Renderer::single()).collect();
+                    let mut single = Renderer::single();
+                    for r in [&mut parallel, &mut single] {
+                        r.render_connected(
+                            &app.world,
+                            &flight,
+                            (320, 170),
+                            app.theme,
+                            Some(&app.mission),
+                            Some(&app.network),
+                        );
+                    }
+                    let diff = parallel
+                        .rgba
+                        .chunks_exact(4)
+                        .zip(single.rgba.chunks_exact(4))
+                        .filter(|(a, b)| a != b)
+                        .count();
+                    assert!(
+                        diff < 320 * 170 / 100,
+                        "{kind:?} frame {frame} view {view}: {diff}"
+                    );
+                }
+            }
+        }
     }
 }
