@@ -8,12 +8,6 @@ impl Renderer {
                     camera.project(flight.trails[i - 1][side]),
                     camera.project(flight.trails[i][side]),
                 ) {
-                    // 贴近镜头的尾迹段投影后会拉成横跨画面的长线，直接跳过
-                    let near = 30.0;
-                    let longest = 48.0 * self.full_width.max(320) as f32 / 320.0;
-                    if da.min(db) < near || a.distance(b) > longest {
-                        continue;
-                    }
                     let steps = a.distance(b).ceil().clamp(1.0, self.w.max(100) as f32) as usize;
                     let age = i as f32 / flight.trails.len() as f32;
                     if age > 0.7 && i % 2 == 0 {
