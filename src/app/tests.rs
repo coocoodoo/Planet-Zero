@@ -930,3 +930,27 @@ fn sound_volume_and_hud_survive_a_restart() {
     assert!(!path.with_extension("tmp").exists());
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn opening_settings_while_loading_is_not_interrupted() {
+    use crate::world::MapKind;
+    let mut app = App::new(World::new(7));
+    app.loader.start(MapKind::Alpine, MapKind::Alpine.seed());
+    app.selection = START_ROW;
+    app.key(crate::keys::ENTER, 1);
+    app.key(crate::keys::ENTER, 0);
+    assert_eq!(app.page, Page::Loading);
+    app.key(crate::keys::SETTINGS, 1);
+    app.key(crate::keys::SETTINGS, 0);
+    assert_eq!(app.page, Page::Settings);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while app.loader.pending.is_some() && Instant::now() < deadline {
+        app.step(1.0 / 30.0, None);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(app.world.kind, MapKind::Alpine);
+    // 加载完成不打断设置页，关闭后进入游戏而不是卡在加载页
+    assert_eq!(app.page, Page::Settings);
+    app.close_settings();
+    assert_eq!(app.page, Page::Playing);
+}

@@ -240,7 +240,7 @@ impl App {
         }
         self.auto = self.mode == Mode::Free;
         self.flight.hover = false;
-        self.page = Page::Playing;
+        self.resume_to(Page::Playing);
         self.new_record = false;
         self.run_key = self.record_key();
         self.best_score = self
@@ -251,6 +251,19 @@ impl App {
         self.keys.clear();
         if self.mission.countdown > 0.0 {
             self.sounds.push(crate::audio::Sound::Countdown(3));
+        }
+    }
+    /// 加载完成后回到目标页面；玩家在加载时打开了帮助或设置，则保留当前页，只更新返回位置
+    fn resume_to(&mut self, page: Page) {
+        if self.page == Page::Help && self.help_return == Page::Loading {
+            self.help_return = page;
+        } else if self.settings_return.0 == Page::Loading
+            && (self.page == Page::Settings
+                || (self.page == Page::Help && self.help_return == Page::Settings))
+        {
+            self.settings_return.0 = page;
+        } else {
+            self.page = page;
         }
     }
     pub fn result_action(&mut self) {
@@ -306,7 +319,7 @@ impl App {
         if let Some(route) = self.travel {
             if self.arrive(route) {
                 self.travel = None;
-                self.page = self.travel_return;
+                self.resume_to(self.travel_return);
             } else {
                 self.network.request(route.target);
                 return;
