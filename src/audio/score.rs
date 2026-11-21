@@ -112,6 +112,8 @@ pub struct Score {
     pub title: String,
     pub bpm: u32,
     pub loop_start: usize,
+    /// 切换进入时的起始步：跳过无旋律或低能量的前奏，直接进入主题
+    pub entry: usize,
     pub steps: Vec<Vec<Tone>>,
     pub chords: Vec<[u8; 4]>,
     pub cues: Vec<Cue>,
@@ -659,10 +661,17 @@ fn compile(d: Definition) -> Score {
             }
         }
     }
+    let entry = d
+        .sections
+        .iter()
+        .position(|s| s.lead && s.energy >= 0.55)
+        .unwrap_or(0)
+        * 128;
     Score {
         title: d.title,
         bpm: d.bpm,
         loop_start: d.loop_start * 16,
+        entry,
         steps,
         chords,
         cues,

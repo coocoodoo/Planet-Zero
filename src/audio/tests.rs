@@ -42,55 +42,6 @@ fn every_scene_and_map_has_matching_music() {
 }
 
 #[test]
-fn entering_a_new_map_switches_to_its_music_at_the_next_bar() {
-    use crate::world::MapKind;
-    let mut m = Mixer::new(48000);
-    let mut frame = Frame {
-        cue: Cue::Flight,
-        map: MapKind::Desert,
-        ..Frame::default()
-    };
-    m.update(frame);
-    m.start_cue(Cue::Flight);
-    assert!(playlist(Cue::Flight, MapKind::Desert).contains(&m.track()));
-    let mut buffer = vec![0.0; 9600];
-    m.render(&mut buffer);
-    frame.map = MapKind::Space;
-    m.update(frame);
-    for _ in 0..30 {
-        m.render(&mut buffer);
-    }
-    assert!(playlist(Cue::Flight, MapKind::Space).contains(&m.track()));
-    assert_eq!(m.cue(), Cue::Flight);
-}
-
-#[test]
-fn transitions_wait_for_bars_and_results_wait_for_beats() {
-    let mut m = Mixer::new(48000);
-    let mut buffer = vec![0.0; 12000];
-    m.render(&mut buffer);
-    m.update(Frame {
-        cue: Cue::Combat,
-        ..Frame::default()
-    });
-    m.render(&mut buffer);
-    assert_eq!(m.cue(), Cue::Menu);
-    for _ in 0..14 {
-        m.render(&mut buffer);
-    }
-    assert_eq!(m.cue(), Cue::Combat);
-    assert_eq!(m.transitions, 1);
-    m.update(Frame {
-        cue: Cue::Victory,
-        ..Frame::default()
-    });
-    for _ in 0..4 {
-        m.render(&mut buffer);
-    }
-    assert_eq!(m.cue(), Cue::Victory);
-}
-
-#[test]
 fn mixing_is_bounded_and_muting_preserves_the_music_clock() {
     let mut m = Mixer::new(24000);
     m.start_cue(Cue::Boss);
@@ -328,4 +279,87 @@ fn ascent_layer_and_vacuum_stay_bounded() {
         m.render(&mut buffer);
         assert!(buffer.iter().all(|v| v.is_finite() && v.abs() <= 0.881));
     }
+}
+
+fn seconds(m: &mut Mixer, seconds: f32) {
+    let mut block = vec![0.0; 1600];
+    for _ in 0..(seconds * 10.0).round() as usize {
+        m.render(&mut block);
+    }
+}
+
+#[test]
+fn scene_changes_crossfade_on_the_beat() {
+    let mut m = Mixer::new(8000);
+    m.start_cue(Cue::Menu);
+    seconds(&mut m, 1.0);
+    m.update(Frame {
+        cue: Cue::Combat,
+        ..Frame::default()
+    });
+    seconds(&mut m, 0.6);
+    assert_eq!(m.cue(), Cue::Combat);
+    assert_eq!(m.decks_playing(), 2, "旧曲应在淡出中继续演奏");
+    assert!(m.step() >= scores()[m.track()].entry, "新曲从主题段进入");
+    seconds(&mut m, 3.0);
+    assert_eq!(m.decks_playing(), 1);
+    assert_eq!(m.transitions, 1);
+    m.update(Frame {
+        cue: Cue::Victory,
+        ..Frame::default()
+    });
+    seconds(&mut m, 0.6);
+    assert_eq!(m.cue(), Cue::Victory);
+    assert!(m.step() < 16, "结算曲从开头播放");
+}
+
+#[test]
+fn map_music_waits_for_the_new_map_to_settle() {
+    use crate::world::MapKind;
+    let mut m = Mixer::new(8000);
+    let mut frame = Frame {
+        cue: Cue::Flight,
+        map: MapKind::Desert,
+        ..Frame::default()
+    };
+    m.update(frame);
+    m.start_cue(Cue::Flight);
+    let first = m.track();
+    // 每 3 秒穿越一次虫洞，曲目保持不变
+    for hop in 0..10 {
+        frame.map = [MapKind::Space, MapKind::City, MapKind::Icebergs][hop % 3];
+        m.update(frame);
+        seconds(&mut m, 3.0);
+        frame.map = MapKind::Desert;
+        m.update(frame);
+        seconds(&mut m, 0.2);
+    }
+    assert_eq!(m.track(), first);
+    assert_eq!(m.transitions, 0);
+    // 在新地图停留足够久后换成该地图的配乐
+    frame.map = MapKind::Space;
+    m.update(frame);
+    for _ in 0..12 {
+        seconds(&mut m, 1.0);
+        m.update(frame);
+    }
+    seconds(&mut m, 1.0);
+    assert!(playlist(Cue::Flight, MapKind::Space).contains(&m.track()));
+    assert_eq!(m.cue(), Cue::Flight);
+}
+
+#[test]
+fn entry_points_skip_quiet_intros() {
+    for score in scores() {
+        if score.cues.iter().all(|c| c.rotates()) {
+            assert!(score.entry < score.steps.len(), "{}", score.title);
+            let bar = &score.steps[score.entry..score.entry + 16];
+            assert!(bar.iter().flatten().count() > 8, "{}", score.title);
+        }
+    }
+    let hangar = scores()
+        .iter()
+        .find(|s| s.title == "Hangar Lights")
+        .unwrap();
+    assert!(hangar.entry >= 128);
 }

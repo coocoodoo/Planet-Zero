@@ -128,6 +128,8 @@ impl Tone {
 #[derive(Clone, Copy)]
 pub struct Voice {
     pub tone: Tone,
+    /// 配乐声部所属的播放轨，交叉淡化时按轨调节音量
+    pub deck: u8,
     osc: Oscillator,
     age: f32,
     pan: [f32; 2],
@@ -143,6 +145,7 @@ impl Voice {
         let release_at = envelope(tone.hold, &tone);
         Self {
             tone,
+            deck: 0,
             osc: Oscillator::new(seed),
             age: -tone.delay,
             pan: [((1.0 - pan) * 0.5).sqrt(), ((1.0 + pan) * 0.5).sqrt()],
@@ -155,14 +158,6 @@ impl Voice {
     }
     pub fn remaining(&self) -> f32 {
         self.tone.hold + self.tone.release - self.age
-    }
-    pub fn fade(&mut self, seconds: f32) {
-        if self.age >= 0.0 {
-            self.release_at = self.level();
-            self.tone.hold = self.age;
-            self.tone.release = seconds;
-            self.release_rate = 1.0 / seconds.max(0.001);
-        }
     }
     fn level(&self) -> f32 {
         if self.age < self.tone.hold {
