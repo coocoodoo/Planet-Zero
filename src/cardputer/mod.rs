@@ -109,6 +109,10 @@ impl Game {
             controls.manual = true;
         }
         self.app.step(dt, Some(controls));
+        // 加载完成后的自动开局同样交给体感控制
+        if self.app.page == Page::Playing && self.imu_enabled {
+            self.auto = false;
+        }
     }
     pub fn draw(&mut self) {
         self.app.draw();

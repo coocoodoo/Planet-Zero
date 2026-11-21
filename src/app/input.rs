@@ -80,6 +80,11 @@ impl App {
             }
             return;
         }
+        // 开局或开关海图会清空按键集合；按住不放的键靠自动重复事件补回，不重复触发动作
+        if value == 2 {
+            self.keys.insert(code);
+            return;
+        }
         if value != 1 || !self.keys.insert(code) {
             return;
         }

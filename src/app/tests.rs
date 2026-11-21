@@ -976,3 +976,27 @@ fn chart_preloads_the_wormhole_it_focuses() {
         );
     }
 }
+
+#[test]
+fn held_keys_come_back_through_autorepeat_after_a_reset() {
+    let mut app = App::new(World::new(7));
+    app.mode = Mode::Combat;
+    app.start();
+    app.key(crate::keys::FIRE, 1);
+    app.keys.clear();
+    app.key(crate::keys::FIRE, 2);
+    assert!(app.keys.contains(&crate::keys::FIRE));
+    app.key(crate::keys::FIRE, 0);
+    assert!(!app.keys.contains(&crate::keys::FIRE));
+}
+
+#[test]
+fn returning_home_clears_orbit_flight_state() {
+    let mut app = App::new(World::new(7));
+    app.start();
+    app.flight.orbit_flight = true;
+    app.flight.orbital_thrust = 0.8;
+    app.home();
+    assert!(!app.flight.orbit_flight);
+    assert_eq!(app.flight.orbital_thrust, 0.0);
+}

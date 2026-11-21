@@ -300,6 +300,9 @@ impl App {
         self.flight.orbit_quiet = false;
         self.flight.orbital_scenery = None;
         self.flight.planet_maps = [None, None];
+        // 菜单演示按普通飞行处理，不沿用自由飞行时的稀薄大气与轨道推进
+        self.flight.orbit_flight = false;
+        self.flight.orbital_thrust = 0.0;
         self.page = Page::Menu;
         self.travel = None;
         self.flight.portal_transit = None;
