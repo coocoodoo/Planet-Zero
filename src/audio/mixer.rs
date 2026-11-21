@@ -44,6 +44,8 @@ const ENGINES: [(f32, f32, f32, f32, f32); 5] = [
     (60.0, 0.002, 0.004, 0.030, 0.05),
 ];
 
+const MAX_VOICES: usize = 64;
+
 /// 一条配乐播放轨；换曲时旧轨淡出、新轨淡入，两轨同时发声
 #[derive(Clone, Copy)]
 struct Deck {
@@ -72,7 +74,9 @@ impl Deck {
 pub struct Mixer {
     rate: f32,
     tables: Tables,
-    voices: [Option<Voice>; 64],
+    /// 正在发声的声部，紧凑存放，结束的声部交换删除
+    voices: Vec<Voice>,
+    targets: [f32; LAYERS],
     frame: Frame,
     cue: Cue,
     decks: [Deck; 2],
@@ -116,7 +120,8 @@ impl Mixer {
         Self {
             rate: rate as f32,
             tables: Tables::new(),
-            voices: [None; 64],
+            voices: Vec::with_capacity(MAX_VOICES),
+            targets: [1.0; LAYERS],
             frame: Frame::default(),
             cue: Cue::Menu,
             decks: [
@@ -216,6 +221,8 @@ impl Mixer {
             }
         }
         self.frame = frame;
+        // 层目标只随画面帧与场景变化，不必逐采样计算
+        self.targets = layer_targets(self.cue, &self.frame);
     }
     pub fn start_cue(&mut self, cue: Cue) {
         let track = self.choose(cue, None);
@@ -234,17 +241,12 @@ impl Mixer {
         self.cue = cue;
         self.pending = None;
         self.frame.cue = cue;
+        self.targets = layer_targets(self.cue, &self.frame);
     }
     /// 立即移除一条播放轨的全部配乐声部
     fn silence(&mut self, deck: usize) {
-        for slot in &mut self.voices {
-            if slot
-                .as_ref()
-                .is_some_and(|v| v.tone.priority == 1 && v.deck as usize == deck)
-            {
-                *slot = None;
-            }
-        }
+        self.voices
+            .retain(|v| !(v.tone.priority == 1 && v.deck as usize == deck));
     }
     /// 旧曲在原有节拍上继续演奏并淡出，新曲从主题段淡入
     fn crossfade(&mut self, next: Cue) {
@@ -287,6 +289,7 @@ impl Mixer {
         };
         self.live = new;
         self.cue = next;
+        self.targets = layer_targets(self.cue, &self.frame);
         self.pending = None;
         self.transitions += 1;
     }
@@ -294,26 +297,28 @@ impl Mixer {
         self.add_to(tone, 0);
     }
     fn add_to(&mut self, tone: Tone, deck: usize) {
-        let slot = self.voices.iter().position(Option::is_none).or_else(|| {
-            self.voices
-                .iter()
-                .enumerate()
-                .filter(|(_, v)| v.as_ref().is_some_and(|v| v.tone.priority <= tone.priority))
-                .min_by(|(_, a), (_, b)| {
-                    let a = a.as_ref().unwrap();
-                    let b = b.as_ref().unwrap();
-                    a.tone
-                        .priority
-                        .cmp(&b.tone.priority)
-                        .then(a.remaining().total_cmp(&b.remaining()))
-                })
-                .map(|(i, _)| i)
-        });
+        self.seed = self.seed.wrapping_add(7919);
+        let mut voice = Voice::new(tone, self.seed);
+        voice.deck = deck as u8;
+        if self.voices.len() < MAX_VOICES {
+            self.voices.push(voice);
+            return;
+        }
+        // 声部已满时替换优先级不高于新声部、剩余时间最短的一个
+        let slot = self
+            .voices
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| v.tone.priority <= tone.priority)
+            .min_by(|(_, a), (_, b)| {
+                a.tone
+                    .priority
+                    .cmp(&b.tone.priority)
+                    .then(a.remaining().total_cmp(&b.remaining()))
+            })
+            .map(|(i, _)| i);
         if let Some(slot) = slot {
-            self.seed = self.seed.wrapping_add(7919);
-            let mut voice = Voice::new(tone, self.seed);
-            voice.deck = deck as u8;
-            self.voices[slot] = Some(voice);
+            self.voices[slot] = voice;
         }
     }
     fn play(&mut self, sound: Sound) {
@@ -365,7 +370,7 @@ impl Mixer {
         }
         self.decks[d].step += 1;
         self.decks[d].until += self.rate as f64 * 15.0 / score.bpm as f64;
-        self.peak_voices = self.peak_voices.max(self.voices.iter().flatten().count());
+        self.peak_voices = self.peak_voices.max(self.voices.len());
     }
     fn overlay(&mut self, mut tone: Tone, d: usize) {
         tone.layer = score::OVERLAY;
@@ -483,7 +488,7 @@ impl Mixer {
         }
         let dt = 1.0 / self.rate;
         // 时间段与天气缓慢过渡，战斗强度变化更快
-        let targets = layer_targets(self.cue, &self.frame);
+        let targets = self.targets;
         let speed = if self.cue == Cue::Flight { 0.5 } else { 1.6 };
         for (layer, target) in self.layers.iter_mut().zip(targets) {
             *layer += (target - *layer) * (dt * speed).min(1.0);
@@ -519,37 +524,43 @@ impl Mixer {
         let mut music = [0.0; 2];
         let mut fx = [0.0; 2];
         let mut send = [0.0; 2];
-        for slot in &mut self.voices {
-            if let Some(voice) = slot {
-                let mut value = voice.sample(dt, &self.tables);
-                if voice.tone.priority == 1 {
-                    let gain = gains[voice.deck as usize & 1]
-                        * self.layers[voice.tone.layer as usize % LAYERS];
-                    value = [value[0] * gain, value[1] * gain];
-                }
-                let bus = if voice.tone.priority == 1 {
-                    &mut music
-                } else {
-                    &mut fx
-                };
-                send[0] += value[0] * voice.tone.send;
-                send[1] += value[1] * voice.tone.send;
-                bus[0] += value[0];
-                bus[1] += value[1];
-                if voice.remaining() <= 0.0 {
-                    *slot = None;
-                }
+        let mut i = 0;
+        while i < self.voices.len() {
+            let voice = &mut self.voices[i];
+            let mut value = voice.sample(dt, &self.tables);
+            let bus = if voice.tone.priority == 1 {
+                let gain = gains[voice.deck as usize & 1]
+                    * self.layers[voice.tone.layer as usize % LAYERS];
+                value = [value[0] * gain, value[1] * gain];
+                &mut music
+            } else {
+                &mut fx
+            };
+            send[0] += value[0] * voice.tone.send;
+            send[1] += value[1] * voice.tone.send;
+            bus[0] += value[0];
+            bus[1] += value[1];
+            if voice.remaining() <= 0.0 {
+                self.voices.swap_remove(i);
+            } else {
+                i += 1;
             }
         }
         let echo = self.delay[self.delay_index];
         self.delay[self.delay_index] = [send[0] + echo[1] * 0.34, send[1] + echo[0] * 0.34];
-        self.delay_index = (self.delay_index + 1) % self.delay.len();
+        self.delay_index += 1;
+        if self.delay_index == self.delay.len() {
+            self.delay_index = 0;
+        }
         let room = self.reverb[self.reverb_index];
         self.reverb[self.reverb_index] = [
             music[0] * (0.055 + 0.04 * self.night) + room[1] * 0.48,
             music[1] * (0.055 + 0.04 * self.night) + room[0] * 0.48,
         ];
-        self.reverb_index = (self.reverb_index + 1) % self.reverb.len();
+        self.reverb_index += 1;
+        if self.reverb_index == self.reverb.len() {
+            self.reverb_index = 0;
+        }
         self.engine_gain += (self.frame.engine - self.engine_gain) * dt * 6.0;
         self.boost += (self.frame.boost - self.boost) * dt * 8.0;
         self.ascent += (self.frame.ascent - self.ascent) * dt * 3.0;
