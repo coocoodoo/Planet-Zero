@@ -1,6 +1,6 @@
 [package]
 name = "flight-club"
-version = "0.37.13"
+version = "0.38.0"
 edition = "2024"
 default-run = "flight-club"
 description = "Pixel flight arcade with sprite stacking rendering for desktop and Cardputer Zero"
@@ -36,6 +36,9 @@ libc = "0.2"
 memmap2 = { version = "0.9", optional = true }
 font8x8 = "0.3"
 rayon-core = "1.13"
+
+[build-dependencies]
+png = "0.17.16"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 cpal = { version = "0.15.3", optional = true }

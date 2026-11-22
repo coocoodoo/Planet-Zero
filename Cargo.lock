@@ -303,7 +303,7 @@ dependencies = [
 
 [[package]]
 name = "flight-club"
-version = "0.37.13"
+version = "0.38.0"
 dependencies = [
  "cpal",
  "font8x8",
@@ -311,6 +311,7 @@ dependencies = [
  "libc",
  "macroquad",
  "memmap2",
+ "png",
  "rayon-core",
  "serde",
  "toml",

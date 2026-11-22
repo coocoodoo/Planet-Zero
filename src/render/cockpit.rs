@@ -5,7 +5,7 @@ use crate::world::{SIZE, World, index};
 const HUD: u32 = 0xffdaed6f;
 const AMBER: u32 = 0xff60b0ff;
 const INK: u32 = 0xff160f0e;
-const MODEL: &[u8] = include_bytes!("../../assets/vehicles/falcon.bin");
+const MODEL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/falcon.bin"));
 const GLYPHS: [[u8; 5]; 10] = [
     [7, 5, 5, 5, 7],
     [2, 6, 2, 2, 7],
@@ -46,10 +46,10 @@ pub struct Cockpit {
 impl Cockpit {
     pub fn new() -> Self {
         let sources: [&[u8]; 4] = [
-            include_bytes!("../../assets/cockpit/canopy.bin"),
-            include_bytes!("../../assets/cockpit/panel.bin"),
-            include_bytes!("../../assets/cockpit/deck.bin"),
-            include_bytes!("../../assets/cockpit/rear.bin"),
+            include_bytes!(concat!(env!("OUT_DIR"), "/canopy.bin")),
+            include_bytes!(concat!(env!("OUT_DIR"), "/panel.bin")),
+            include_bytes!(concat!(env!("OUT_DIR"), "/deck.bin")),
+            include_bytes!(concat!(env!("OUT_DIR"), "/rear.bin")),
         ];
         Self {
             layers: sources.map(|bytes| {
@@ -80,7 +80,14 @@ impl Cockpit {
                         })
                     })
                     .collect();
-                let pixels = bytes[2 + count * 4..].to_vec();
+                let pixels: Vec<u8> = bytes[2 + count * 4..]
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
+                    .flat_map(|run| {
+                        std::iter::repeat_n(run[2], u16::from_le_bytes([run[0], run[1]]) as usize)
+                    })
+                    .collect();
                 let runs = pixels
                     .as_chunks::<342>()
                     .0
