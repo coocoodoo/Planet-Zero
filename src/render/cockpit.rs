@@ -89,12 +89,12 @@ impl Cockpit {
                         let mut runs = Vec::new();
                         let mut x = 0;
                         while x < row.len() {
-                            if row[x] == 0 || palette[row[x] as usize] == 0 {
+                            if palette[row[x] as usize] == 0 {
                                 x += 1;
                                 continue;
                             }
                             let start = x;
-                            while x < row.len() && row[x] != 0 && palette[row[x] as usize] != 0 {
+                            while x < row.len() && palette[row[x] as usize] != 0 {
                                 x += 1;
                             }
                             runs.push((start, x));
@@ -630,6 +630,38 @@ fn levers(p: &mut Paint<'_>, f: &Flight) {
 mod tests {
     use super::*;
     use crate::content::weather::Weather;
+
+    #[test]
+    fn rear_frame_has_two_solid_arcs() {
+        let cockpit = Cockpit::new();
+        for (y, runs) in cockpit.layers[3].runs.iter().enumerate() {
+            assert_eq!(runs.len(), if y < 154 { 2 } else { 0 }, "row {y}");
+        }
+    }
+
+    #[test]
+    fn outer_cockpit_windows_stay_clear_during_head_movement() {
+        let world = World::generate(crate::world::MapKind::Islands, 7);
+        let mut flight = Flight::new(&world);
+        flight.weights = [0.0, 0.0, 1.0];
+        let mut cockpit = Cockpit::new();
+        for rate in [-1.25, 0.0, 1.25] {
+            for pitch in [-0.6, 0.0, 0.6] {
+                flight.rate = rate;
+                flight.pitch = pitch;
+                cockpit.prepare(&flight, &world, (320, 170), 0, None);
+                for y in 0..12 {
+                    for x in (0..20).chain(300..320) {
+                        assert!(
+                            !cockpit.opaque(x, y),
+                            "rate={rate}, pitch={pitch}, ({x}, {y})"
+                        );
+                        assert_eq!(cockpit.pixels[y * 320 + x], 0);
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn sunlight_preserves_transparent_cockpit_windows() {
