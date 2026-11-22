@@ -42,16 +42,27 @@ bash scripts/build-cardputer.sh
 python3 scripts/package-cardputer.py
 ```
 
-This produces a static AArch64 binary at `dist/flight-club-cardputer` and an installable package at `dist/flight-club_0.39.0_arm64.deb`.
+This produces a static AArch64 binary at `dist/flight-club-cardputer` and an installable package at `dist/flight-club_0.40.0_arm64.deb`.
 
 The packaging script uses a local `dpkg-deb` installation or runs it through Docker with `ubuntu:22.04`.
 
 Editable artwork lives in `assets/` as lossless PNG images. Cargo converts it into indexed textures and voxel data during the build; the game embeds the generated data and does not decode PNG at runtime. See [the asset format](assets/README.md) before editing dimensions, transparency, or voxel colors.
 
+For profile-guided optimization, build a training executable with `bash scripts/build-cardputer.sh --pgo-generate`. This writes `dist/flight-club-cardputer-pgo-generate`. Run it on the device with `LLVM_PROFILE_FILE=/path/to/profiles/%m-%p.profraw`, exercising representative maps, vehicles, weather, combat, portal travel, and audio through the existing benchmark options and normal play. Copy the profiles back and merge them with the `llvm-profdata` supplied by the same Rust toolchain:
+
+```sh
+rustup component add llvm-tools-preview
+"$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin/llvm-profdata" merge -o target/cardputer.profdata target/profiles/*.profraw
+bash scripts/build-cardputer.sh --pgo-use target/cardputer.profdata
+python3 scripts/package-cardputer.py
+```
+
+Train and compare the same source version and release settings, with separate benchmark seeds for evaluation. The standard build remains available without a profile; training and profile-guided builds use separate target directories.
+
 Copy the package to your Cardputer Zero and install it there:
 
 ```sh
-sudo apt install ./flight-club_0.39.0_arm64.deb
+sudo apt install ./flight-club_0.40.0_arm64.deb
 ```
 
 Launch Flight Club from APPLaunch using the fighter icon.
