@@ -1,5 +1,4 @@
 mod audio;
-pub use audio::ASCENT_MUSIC_ALTITUDE;
 pub(crate) mod chart;
 mod director;
 mod input;

@@ -147,7 +147,7 @@ pub fn soundtrack(directory: &Path) -> io::Result<()> {
         f.engine = f32::from((8.0..90.0).contains(&t));
         f.boost = if (12.0..16.0).contains(&t) { 1.0 } else { 0.0 };
         f.ascent = if (20.0..30.0).contains(&t) { 1.0 } else { 0.0 };
-        f.riser = f.ascent;
+        f.music_suspended = f.ascent > 0.0;
         f.altitude = ((t - 18.0) / 12.0).clamp(0.0, 1.0);
         f.vacuum = (28.0..40.0).contains(&t);
         f.vehicle = if t < 40.0 { 0 } else { 2 };
@@ -175,8 +175,8 @@ pub fn soundtrack(directory: &Path) -> io::Result<()> {
         f.storm = fade(64.0, 66.0) * (1.0 - fade(76.0, 78.0));
         f.rain = f.storm;
         f.wind = f.storm * 0.6;
-        f.riser = f32::from((80.0..94.0).contains(&t));
-        f.ascent = f.riser;
+        f.music_suspended = (80.0..94.0).contains(&t);
+        f.ascent = f32::from(f.music_suspended);
         f.altitude = fade(80.0, 94.0);
         if (64.0..78.0).contains(&t) && (t % 11.0) < 0.06 {
             f.events.push(Sound::Thunder);

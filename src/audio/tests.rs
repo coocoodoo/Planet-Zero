@@ -125,13 +125,13 @@ fn application_routes_results_pause_and_events_to_audio() {
     app.flight.orbital_thrust = 0.9;
     app.flight.position.z = 400.0;
     let f = app.audio_frame();
-    assert_eq!(f.cue, Cue::Flight, "常规飞行高度不叠加升空声部");
+    assert_eq!(f.cue, Cue::Flight);
     assert_eq!(f.ascent, 0.0);
-    assert_eq!(f.riser, 0.0);
-    app.flight.position.z = crate::app::ASCENT_MUSIC_ALTITUDE + 50.0;
+    assert!(f.music_suspended);
+    app.flight.position.z = 1050.0;
     let f = app.audio_frame();
-    assert_eq!(f.cue, Cue::Flight, "升空在探索配乐上叠加声部，不换曲");
-    assert!(f.ascent > 0.8 && f.riser > 0.9);
+    assert_eq!(f.cue, Cue::Flight);
+    assert!(f.ascent > 0.8 && f.music_suspended);
     assert_eq!(f.map, app.world.kind);
     app.flight.orbital_thrust = 0.0;
     assert_eq!(app.audio_frame().cue, Cue::Flight);
@@ -415,12 +415,12 @@ fn combat_layers_rise_quickly_and_release_slowly() {
 }
 
 #[test]
-fn overlays_for_ascent_snow_storm_and_finale_stay_bounded() {
+fn ascent_effects_and_weather_overlays_stay_bounded() {
     for (cue, f) in [
         (
             Cue::Flight,
             Frame {
-                riser: 1.0,
+                music_suspended: true,
                 altitude: 0.9,
                 ascent: 1.0,
                 engine: 1.0,
@@ -584,4 +584,58 @@ fn city_music_crossfades_through_synthwave_and_quiet_night() {
             .iter()
             .all(|track| scores()[*track].cues.contains(&Cue::Victory))
     );
+}
+
+#[test]
+fn ascent_fades_music_keeps_effects_and_delays_space_music() {
+    use crate::world::MapKind;
+    fn render(mixer: &mut Mixer, frame: Frame, blocks: usize) -> f32 {
+        let mut samples = [0.0_f32; 1600];
+        for _ in 0..blocks {
+            mixer.update(frame);
+            mixer.render(&mut samples);
+            assert!(samples.iter().all(|s| s.is_finite() && s.abs() <= 0.881));
+        }
+        samples
+            .iter()
+            .fold(0.0_f32, |peak, value| peak.max(value.abs()))
+    }
+    let mut mixer = Mixer::new(8000);
+    let mut frame = Frame {
+        cue: Cue::Flight,
+        settings: Settings {
+            profile: 1,
+            ..Settings::default()
+        },
+        ..Frame::default()
+    };
+    mixer.update(frame);
+    mixer.start_cue(Cue::Flight);
+    assert!(render(&mut mixer, frame, 20) > 0.001);
+    frame.music_suspended = true;
+    assert!(render(&mut mixer, frame, 20) < 0.000001);
+    frame.settings.profile = 0;
+    frame.engine = 1.0;
+    frame.ascent = 1.0;
+    assert!(render(&mut mixer, frame, 10) > 0.001);
+    frame.settings.profile = 1;
+    assert!(render(&mut mixer, frame, 10) < 0.000001);
+
+    frame.music_suspended = false;
+    frame.map = MapKind::Space;
+    frame.ascent = 0.0;
+    frame.engine = 0.0;
+    assert!(render(&mut mixer, frame, 15) < 0.000001);
+    frame.music_suspended = true;
+    render(&mut mixer, frame, 1);
+    frame.music_suspended = false;
+    assert!(render(&mut mixer, frame, 15) < 0.000001);
+    assert!(render(&mut mixer, frame, 40) > 0.001);
+    assert!(playlist(Cue::Flight, MapKind::Space).contains(&mixer.track()));
+    assert_eq!(mixer.transitions, 1);
+
+    frame.music_suspended = true;
+    render(&mut mixer, frame, 20);
+    frame.cue = Cue::Menu;
+    assert!(render(&mut mixer, frame, 20) > 0.001);
 }

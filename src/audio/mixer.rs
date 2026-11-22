@@ -100,6 +100,8 @@ pub struct Mixer {
     reverb_index: usize,
     master: f32,
     music_gain: f32,
+    orbit_gain: f32,
+    music_wait: f32,
     effects_gain: f32,
     duck: f32,
     limiter: f32,
@@ -154,6 +156,8 @@ impl Mixer {
             reverb_index: 0,
             master: 0.0,
             music_gain: 0.0,
+            orbit_gain: 1.0,
+            music_wait: 0.0,
             effects_gain: 0.0,
             duck: 0.0,
             limiter: 1.0,
@@ -227,6 +231,12 @@ impl Mixer {
         self.decks[self.live].step
     }
     pub fn update(&mut self, frame: Frame) {
+        if frame.cue != Cue::Flight {
+            self.music_wait = 0.0;
+            self.orbit_gain = 1.0;
+        } else if frame.music_suspended {
+            self.music_wait = 2.0;
+        }
         let fits = frame.cue == self.cue
             && score::playlist_for(
                 frame.cue,
@@ -429,7 +439,7 @@ impl Mixer {
         tone.layer = score::OVERLAY;
         self.add_to(tone, d);
     }
-    /// 实时点缀声部：超载琶音、危险节奏、升空上行、雪天钟声、雷暴定音鼓与竞速冲刺
+    /// 实时点缀声部：超载琶音、危险节奏、雪天钟声、雷暴定音鼓与竞速冲刺
     fn overlays(&mut self, d: usize, step: usize, chord: [u8; 4]) {
         let f = self.frame;
         let beat = step % 16;
@@ -447,39 +457,6 @@ impl Mixer {
                 tone.decay = 0.12;
                 tone.sustain = 0.0;
                 self.overlay(tone, d);
-            }
-        }
-        // 升空：鼓点加密，琶音随高度逐级升高，接近入轨时小鼓滚奏
-        if f.riser > 0.01 && self.cue == Cue::Flight {
-            let level = f.riser;
-            let height = f.altitude.clamp(0.0, 1.0);
-            let mut hat = Tone::new(Wave::Noise, 8000.0, 0.03 * level, 0.02);
-            hat.shape = -0.2;
-            hat.sustain = 0.0;
-            hat.decay = 0.02;
-            hat.pan = 0.3;
-            self.overlay(hat, d);
-            if step.is_multiple_of(4) {
-                let mut kick = Tone::new(Wave::Sine, 150.0, 0.34 * level, 0.12);
-                kick.end_hz = 44.0;
-                kick.decay = 0.1;
-                kick.sustain = 0.05;
-                self.overlay(kick, d);
-            }
-            if step.is_multiple_of(2) {
-                let octave = 12 * (1 + (height * 3.0) as u8).min(3);
-                let note = chord[(step / 2) % 4] + octave;
-                let mut arp = Tone::new(Wave::Saw, frequency(note), 0.035 * level, 0.09);
-                arp.pan = if step.is_multiple_of(4) { -0.5 } else { 0.5 };
-                arp.sustain = 0.2;
-                arp.send = 0.2;
-                self.overlay(arp, d);
-            }
-            if height > 0.8 && step % 2 == 1 {
-                let mut roll = Tone::new(Wave::Noise, 1200.0, 0.06 * level * height, 0.05);
-                roll.shape = 0.55;
-                roll.sustain = 0.0;
-                self.overlay(roll, d);
             }
         }
         // 雪天：高音钟声零星落下
@@ -576,6 +553,20 @@ impl Mixer {
             0.0
         };
         self.music_gain += (music_target - self.music_gain) * dt * 18.0;
+        // 升空时一秒淡出，结束后等待两秒，再用三秒淡入
+        if !self.frame.music_suspended {
+            self.music_wait = (self.music_wait - dt).max(0.0);
+        }
+        let orbit_target = f32::from(
+            self.frame.cue != Cue::Flight
+                || (!self.frame.music_suspended && self.music_wait == 0.0),
+        );
+        let fade = if orbit_target < self.orbit_gain {
+            dt
+        } else {
+            dt / 3.0
+        };
+        self.orbit_gain += (orbit_target - self.orbit_gain).clamp(-fade, fade);
         self.effects_gain +=
             (f32::from(self.frame.settings.effects()) - self.effects_gain) * smoothing;
         self.duck = (self.duck - dt * 0.75).max(0.0);
@@ -668,8 +659,9 @@ impl Mixer {
                     // 真空与雾、雪、沙尘让配乐更暗更闷
                     0.65 - self.vacuum * 0.3 - self.haze * 0.22 - self.night * 0.12
                 };
-            let mixed = self.filtered[channel] * self.music_gain * (1.0 - self.duck)
-                + (fx[channel] + engine) * self.effects_gain;
+            let mixed =
+                self.filtered[channel] * self.music_gain * self.orbit_gain * (1.0 - self.duck)
+                    + (fx[channel] + engine) * self.effects_gain;
             let dc = mixed - self.dc_input[channel] + 0.997 * self.dc_output[channel];
             self.dc_input[channel] = mixed;
             self.dc_output[channel] = dc;

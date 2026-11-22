@@ -195,8 +195,8 @@ pub struct Frame {
     pub intensity: f32,
     /// 竞速冲刺段与金币倒计时
     pub finale: f32,
-    /// 升空段落，在探索配乐上叠加上升声部
-    pub riser: f32,
+    /// 轨道上升期间淡出配乐，音效保持独立播放
+    pub music_suspended: bool,
 }
 impl Default for Frame {
     fn default() -> Self {
@@ -225,7 +225,7 @@ impl Default for Frame {
             synthwave: 0.0,
             intensity: 1.0,
             finale: 0.0,
-            riser: 0.0,
+            music_suspended: false,
         }
     }
 }

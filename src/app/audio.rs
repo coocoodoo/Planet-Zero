@@ -3,8 +3,8 @@ use crate::audio::{Cue, Frame, Sound};
 use crate::content::weather::Weather;
 use crate::world::{MapKind, orbit::Body};
 
-/// 升空声部切入高度：冲出低空、接近大气层边缘时才叠加上升段落
-pub const ASCENT_MUSIC_ALTITUDE: f32 = 1000.0;
+/// 火箭轰鸣达到完整强度的高度
+const ASCENT_RUMBLE_FULL_ALTITUDE: f32 = 1000.0;
 /// 火箭轰鸣从这一高度开始逐渐增强
 const ASCENT_RUMBLE_ALTITUDE: f32 = 600.0;
 
@@ -100,10 +100,12 @@ impl App {
         }
         let ascent = self.ascent();
         let altitude_m = self.flight.position.z;
-        let ascending = ascent > 0.3
-            && (altitude_m >= ASCENT_MUSIC_ALTITUDE || self.orbit.transition.is_some());
         // 下降段仍在太空配乐中，落地后切回地表曲目
-        let descending = self.orbit.transition.is_some() && ascent <= 0.3;
+        let descending = self.orbit.transition.is_some() && self.orbit.descending;
+        let ascending = self.mode == Mode::Free
+            && self.world.kind != MapKind::Space
+            && !descending
+            && (self.orbit.boost || ascent > 0.3 || self.orbit.transition.is_some());
         let cue = match self.page {
             Page::Menu => Cue::Menu,
             Page::Help if self.help_return == Page::Menu => Cue::Menu,
@@ -185,7 +187,7 @@ impl App {
             ascent: ascent
                 * f32::from(flying)
                 * ((altitude_m - ASCENT_RUMBLE_ALTITUDE)
-                    / (ASCENT_MUSIC_ALTITUDE - ASCENT_RUMBLE_ALTITUDE))
+                    / (ASCENT_RUMBLE_FULL_ALTITUDE - ASCENT_RUMBLE_ALTITUDE))
                     .clamp(0.0, 1.0),
             altitude,
             vacuum: self.world.kind.vacuum() || descending || altitude > 0.85,
@@ -200,7 +202,7 @@ impl App {
             synthwave: if map == MapKind::City { synthwave } else { 0.0 },
             intensity: intensity.clamp(0.0, 1.0),
             finale,
-            riser: f32::from(ascending) * f32::from(flying),
+            music_suspended: ascending && cue == Cue::Flight,
         }
     }
 }

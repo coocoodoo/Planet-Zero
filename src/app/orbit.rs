@@ -13,6 +13,7 @@ pub const ARM_ALTITUDE: f32 = 1000.0 / 3.0;
 pub struct Orbit {
     pub boost: bool,
     pub transition: Option<Arc<World>>,
+    pub descending: bool,
     pub earth: Option<MapKey>,
     departure: Option<MapKind>,
     pub arrival_notice: f32,
@@ -185,6 +186,7 @@ impl App {
                 self.finish_ascent(space);
                 self.orbit.cooldown = 0.4;
             } else if altitude <= body.surface_altitude() {
+                self.orbit.descending = false;
                 self.sounds.push(crate::audio::Sound::Landing);
                 self.flight.orbital_scenery = None;
                 self.flight.orbit_quiet = false;
@@ -250,6 +252,7 @@ impl App {
                     self.orbit.departure = Some(self.world.kind);
                 }
                 self.auto = false;
+                self.orbit.descending = false;
                 self.orbit.transition = self.network.get(target).cloned();
                 self.sounds.push(crate::audio::Sound::Breakthrough);
                 return true;
@@ -309,10 +312,12 @@ impl App {
             self.navigation.active = true;
         }
         self.auto = false;
+        self.orbit.descending = true;
         self.orbit.transition = Some(previous);
         self.sounds.push(crate::audio::Sound::Reentry);
     }
     fn finish_ascent(&mut self, destination: Arc<World>) {
+        self.orbit.descending = false;
         self.network.take(MapKey::of(&destination));
         let surface = self.flight.surface.unwrap();
         let rotation = surface.basis;

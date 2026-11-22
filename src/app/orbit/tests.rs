@@ -24,6 +24,60 @@ fn ready_ascent(kind: MapKind) -> App {
     app
 }
 
+#[test]
+fn orbital_audio_uses_travel_phase_through_thrust_changes() {
+    for kind in [MapKind::City, MapKind::Moon] {
+        let mut app = ready_ascent(kind);
+        let original = app.world.clone();
+        let body = Body::of(kind);
+        app.orbit.boost = false;
+        for thrust in [0.9, 0.29, 0.31, 0.0, 0.8] {
+            app.flight.orbital_thrust = thrust;
+            let frame = app.audio_frame();
+            assert_eq!(frame.map, kind, "ascent thrust {thrust}");
+            assert!(frame.music_suspended);
+        }
+        app.flight.position.z = body.orbit_altitude();
+        app.step_orbit(0.03);
+        let frame = app.audio_frame();
+        assert_eq!(frame.map, MapKind::Space);
+        assert!(!frame.music_suspended);
+
+        app.network.remember(original);
+        app.begin_descent(
+            body,
+            MapKey {
+                kind,
+                seed: kind.seed(),
+            },
+        );
+        for thrust in [0.0, 0.29, 0.31, 0.8, 0.0] {
+            app.flight.orbital_thrust = thrust;
+            let frame = app.audio_frame();
+            assert_eq!(frame.map, MapKind::Space, "descent thrust {thrust}");
+            assert!(!frame.music_suspended);
+        }
+        app.flight.position.z = body.surface_altitude();
+        app.step_orbit(0.03);
+        let frame = app.audio_frame();
+        assert_eq!(frame.map, kind);
+        assert!(!frame.music_suspended);
+    }
+}
+
+#[test]
+fn aborted_ascent_resumes_surface_music_at_surface_boundary() {
+    let mut app = ready_ascent(MapKind::Islands);
+    app.orbit.boost = false;
+    app.flight.orbital_thrust = 0.0;
+    assert!(app.audio_frame().music_suspended);
+    app.flight.position.z = Body::Earth.surface_altitude();
+    app.step_orbit(0.03);
+    let frame = app.audio_frame();
+    assert_eq!(frame.map, MapKind::Islands);
+    assert!(!frame.music_suspended);
+}
+
 #[cfg(feature = "cardputer")]
 #[test]
 fn steady_imu_pitch_settles_after_ascent_without_keyboard_input() {
