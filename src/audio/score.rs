@@ -92,6 +92,10 @@ struct Definition {
     title: String,
     bpm: u32,
     style: String,
+    #[serde(default)]
+    synthwave: bool,
+    #[serde(default)]
+    night: bool,
     cues: Vec<String>,
     #[serde(default)]
     maps: Vec<String>,
@@ -128,6 +132,8 @@ pub struct Score {
     pub chords: Vec<[u8; 4]>,
     pub cues: Vec<Cue>,
     pub maps: Vec<MapKind>,
+    pub synthwave: bool,
+    pub night: bool,
 }
 impl Score {
     pub fn seconds(&self) -> f32 {
@@ -135,7 +141,7 @@ impl Score {
     }
 }
 
-const SOURCES: [&str; 27] = [
+const SOURCES: [&str; 29] = [
     include_str!("../../content/music/menu.toml"),
     include_str!("../../content/music/hangar-lights.toml"),
     include_str!("../../content/music/glacier-drift.toml"),
@@ -163,6 +169,8 @@ const SOURCES: [&str; 27] = [
     include_str!("../../content/music/clear-skies.toml"),
     include_str!("../../content/music/defeat.toml"),
     include_str!("../../content/music/long-way-home.toml"),
+    include_str!("../../content/music/neon-afterglow.toml"),
+    include_str!("../../content/music/after-hours.toml"),
 ];
 
 pub fn scores() -> &'static [Score] {
@@ -177,8 +185,28 @@ pub fn scores() -> &'static [Score] {
 
 /// 场景曲库：地图专属曲目优先，没有专属时使用通用曲目
 pub fn playlist(cue: Cue, map: MapKind) -> Vec<usize> {
+    playlist_for(cue, map, false, false)
+}
+
+pub(super) fn playlist_for(cue: Cue, map: MapKind, synthwave: bool, night: bool) -> Vec<usize> {
     let tracks = scores();
-    let of_cue = |i: &usize| tracks[*i].cues.contains(&cue);
+    if (synthwave || night) && map == MapKind::City {
+        let special: Vec<usize> = (0..tracks.len())
+            .filter(|i| {
+                let mood = if synthwave {
+                    tracks[*i].synthwave
+                } else {
+                    tracks[*i].night
+                };
+                mood && tracks[*i].cues.contains(&cue)
+            })
+            .collect();
+        if !special.is_empty() {
+            return special;
+        }
+    }
+    let of_cue =
+        |i: &usize| !tracks[*i].synthwave && !tracks[*i].night && tracks[*i].cues.contains(&cue);
     let specific: Vec<usize> = (0..tracks.len())
         .filter(of_cue)
         .filter(|i| tracks[*i].maps.contains(&map))
@@ -759,9 +787,18 @@ fn compile(d: Definition) -> Score {
                 if step == 0 && d.pad > 0.0 {
                     for (i, note) in chord.iter().skip(1).enumerate() {
                         let mut pad = Tone::new(
-                            Wave::Triangle,
-                            frequency(*note + 12),
-                            0.038 * d.pad,
+                            if d.synthwave {
+                                Wave::Saw
+                            } else {
+                                Wave::Triangle
+                            },
+                            frequency(*note + 12)
+                                * if d.synthwave {
+                                    1.0 + (i as f32 - 1.0) * 0.003
+                                } else {
+                                    1.0
+                                },
+                            0.038 * d.pad * if d.synthwave { 0.6 } else { 1.0 },
                             seconds * 13.0,
                         );
                         pad.attack = if soft { 0.25 } else { 0.10 };
@@ -935,6 +972,8 @@ fn compile(d: Definition) -> Score {
         * 128;
     Score {
         title: d.title,
+        synthwave: d.synthwave,
+        night: d.night,
         bpm: d.bpm,
         loop_start: d.loop_start * 16,
         entry,

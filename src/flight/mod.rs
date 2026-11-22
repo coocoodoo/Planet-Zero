@@ -85,6 +85,7 @@ pub struct Flight {
     pub dynamic_lighting: bool,
     pub smooth_sky_gradient: bool,
     pub day_time: f32,
+    pub day_cycle: u32,
     pub vehicle: crate::content::vehicles::Vehicle,
     pub weather: crate::content::weather::WeatherState,
     pub demo_time: f32,
@@ -161,6 +162,7 @@ impl Flight {
             dynamic_lighting: true,
             smooth_sky_gradient: true,
             day_time: 0.0,
+            day_cycle: 0,
             vehicle: crate::content::vehicles::Vehicle::Falcon,
             weather: crate::content::weather::WeatherState::new(
                 crate::content::weather::Weather::Clear,
@@ -225,7 +227,8 @@ impl Flight {
         let cloud_pixel_texture = self.cloud_pixel_texture;
         let smooth_sky_gradient = self.smooth_sky_gradient;
         let portal_preview = self.portal_preview;
-        let (dynamic_lighting, day_time) = (self.dynamic_lighting, self.day_time);
+        let (dynamic_lighting, day_time, day_cycle) =
+            (self.dynamic_lighting, self.day_time, self.day_cycle);
         let vehicle = self.vehicle;
         let (view, weights, demo, wing_count) =
             (self.view, self.weights, self.demo, self.wing_count);
@@ -244,6 +247,7 @@ impl Flight {
         self.portal_preview = portal_preview;
         self.dynamic_lighting = dynamic_lighting;
         self.day_time = day_time;
+        self.day_cycle = day_cycle;
         self.vehicle = vehicle;
     }
 
@@ -439,7 +443,9 @@ impl Flight {
         }
         self.time += dt;
         if self.dynamic_lighting {
-            self.day_time = (self.day_time + dt).rem_euclid(DAY_SECONDS);
+            let elapsed = self.day_time + dt;
+            self.day_cycle = self.day_cycle.wrapping_add((elapsed / DAY_SECONDS) as u32);
+            self.day_time = elapsed.rem_euclid(DAY_SECONDS);
         }
         self.frame_drift *= (-dt * 3.0).exp();
         if let Some(adjustment) = &mut self.camera_adjustment {

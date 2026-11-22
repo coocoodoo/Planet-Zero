@@ -6,6 +6,7 @@ pub(super) struct Lighting {
     pub sun: Vec3,
     pub direction: Vec3,
     weights: [f32; 3],
+    pub synthwave: f32,
 }
 
 impl Default for Lighting {
@@ -15,16 +16,18 @@ impl Default for Lighting {
 }
 
 impl Lighting {
-    pub fn new(flight: &Flight, theme: usize) -> Self {
+    pub fn new(flight: &Flight, world: &World, theme: usize) -> Self {
         let phase = match theme {
             1 => 0.735,
             2 => 0.875,
             _ => 0.1875,
         };
-        Self::at(
-            cycle_phase(phase + flight.day_time / crate::flight::DAY_SECONDS),
-            flight.sky_rotation,
-        )
+        let clock = phase + flight.day_time / crate::flight::DAY_SECONDS;
+        let mut light = Self::at(cycle_phase(clock), flight.sky_rotation);
+        let cycle = flight.day_cycle.wrapping_add(clock.floor() as u32);
+        light.synthwave = synthwave(clock.fract(), cycle, world.kind, world.seed)
+            * smooth(-light.direction.z / 0.04);
+        light
     }
 
     fn at(phase: f32, rotation: glam::Quat) -> Self {
@@ -47,6 +50,7 @@ impl Lighting {
             sun,
             direction,
             weights: [daylight * (1.0 - warmth), daylight * warmth, 1.0 - daylight],
+            synthwave: 0.0,
         }
     }
 
@@ -69,16 +73,43 @@ impl Lighting {
     }
 
     pub fn color(self, color: u32) -> u32 {
-        self.blend([color, grade(color, 1), grade(color, 2)])
+        let normal = self.blend([color, grade(color, 1), grade(color, 2)]);
+        if self.synthwave == 0.0 {
+            return normal;
+        }
+        let [r, g, b, _] = color.to_le_bytes().map(f32::from);
+        let luma = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255.0;
+        let neon = rgb(
+            (8.0 + luma * 78.0 + (r - g) * 0.035) as u8,
+            (6.0 + luma * 43.0) as u8,
+            (24.0 + luma * 112.0 + (b - r) * 0.035) as u8,
+        );
+        mix(normal, neon, self.synthwave)
     }
 
     pub fn haze(self, weather: crate::content::weather::WeatherState) -> u32 {
-        self.blend(std::array::from_fn(|theme| weather.haze(theme)))
+        let normal = self.blend(std::array::from_fn(|theme| weather.haze(theme)));
+        mix(normal, weather.shade(rgb(91, 49, 132)), self.synthwave)
     }
 
     pub fn diffuse(self, normal: Vec3) -> f32 {
         0.45 + 0.55 * normal.dot(self.direction).max(0.0)
     }
+}
+
+fn synthwave(clock: f32, cycle: u32, map: crate::world::MapKind, seed: u32) -> f32 {
+    use crate::world::MapKind;
+    let threshold = match map {
+        MapKind::City => 179,
+        MapKind::Icebergs | MapKind::Islands => 77,
+        _ => return 0.0,
+    };
+    let night = seed ^ cycle.wrapping_mul(0x9e37_79b9) ^ 0x735a_11ce;
+    if hash(night) >= threshold {
+        return 0.0;
+    }
+    // 日落后三秒开始，十二秒渐入，保持二十四秒，再用二十一秒淡出
+    smooth((clock - 0.755) / 0.02) * (1.0 - smooth((clock - 0.815) / 0.035))
 }
 
 fn cycle_phase(time: f32) -> f32 {
@@ -94,6 +125,61 @@ fn cycle_phase(time: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn synthwave_chances_depend_on_map_and_stay_fixed_for_each_night() {
+        use crate::world::MapKind;
+        for map in MapKind::ALL {
+            let count = (0..10000)
+                .filter(|cycle| synthwave(0.79, *cycle, map, 7109) > 0.0)
+                .count();
+            let expected = match map {
+                MapKind::City => 7000,
+                MapKind::Islands | MapKind::Icebergs => 3000,
+                _ => 0,
+            };
+            assert!(count.abs_diff(expected) < 150, "{map:?}: {count}");
+            for cycle in 0..100 {
+                let active = synthwave(0.79, cycle, map, 7109) > 0.0;
+                for clock in [0.756, 0.77, 0.8, 0.83, 0.849] {
+                    assert_eq!(synthwave(clock, cycle, map, 7109) > 0.0, active);
+                }
+                for clock in [0.0, 0.25, 0.70, 0.75, 0.85, 0.9, 0.95, 0.999] {
+                    assert_eq!(synthwave(clock, cycle, map, 7109), 0.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn synthwave_colors_fade_smoothly_and_leave_sunrise_unchanged() {
+        use crate::world::MapKind;
+        let cycle = (0..100)
+            .find(|cycle| synthwave(0.79, *cycle, MapKind::City, 7109) > 0.0)
+            .unwrap();
+        let mut previous = None;
+        for frame in 0..=18000 {
+            let clock = frame as f32 / 18000.0;
+            let normal = Lighting::at(cycle_phase(clock), glam::Quat::IDENTITY);
+            let mut light = normal;
+            light.synthwave =
+                synthwave(clock, cycle, MapKind::City, 7109) * smooth(-light.direction.z / 0.04);
+            let colors =
+                [rgb(238, 220, 164), rgb(246, 250, 255), rgb(42, 122, 54)].map(|c| light.color(c));
+            if !(0.755..0.85).contains(&clock) {
+                assert_eq!(light.synthwave, 0.0);
+                assert_eq!(colors[1], normal.color(rgb(246, 250, 255)));
+            }
+            if let Some(previous) = previous {
+                for (a, b) in colors.into_iter().zip(previous) {
+                    for (a, b) in a.to_le_bytes().into_iter().zip(u32::to_le_bytes(b)) {
+                        assert!(a.abs_diff(b) <= 2, "frame {frame}: {a} -> {b}");
+                    }
+                }
+            }
+            previous = Some(colors);
+        }
+    }
 
     #[test]
     fn sunset_warms_before_the_horizon_and_cools_through_blue_hour() {

@@ -508,3 +508,80 @@ fn every_surface_map_has_its_own_theme() {
         );
     }
 }
+
+#[test]
+fn only_city_visual_events_select_synthwave_music() {
+    use crate::{
+        app::App,
+        world::{MapKind, World},
+    };
+    let mut app = App::new(World::new(7109));
+    app.start();
+    app.theme = 1;
+    app.flight.day_time = 33.0;
+    for map in [MapKind::City, MapKind::Icebergs, MapKind::Islands] {
+        std::sync::Arc::make_mut(&mut app.world).kind = map;
+        app.flight.day_cycle = (0..100)
+            .find(|cycle| {
+                app.flight.day_cycle = *cycle;
+                crate::render::time_of_day(&app.flight, &app.world, app.theme).2 > 0.9
+            })
+            .unwrap();
+        let frame = app.audio_frame();
+        assert_eq!(frame.synthwave > 0.9, map == MapKind::City);
+        let list =
+            super::score::playlist_for(frame.cue, map, frame.synthwave > 0.0, frame.night > 0.85);
+        assert!(
+            list.iter()
+                .all(|track| scores()[*track].synthwave == (map == MapKind::City))
+        );
+        if map != MapKind::City {
+            assert_eq!(list, playlist(frame.cue, map));
+        }
+    }
+}
+
+#[test]
+fn city_music_crossfades_through_synthwave_and_quiet_night() {
+    use crate::world::MapKind;
+    let mut mixer = Mixer::new(8000);
+    let mut frame = Frame {
+        cue: Cue::Flight,
+        map: MapKind::City,
+        ..Frame::default()
+    };
+    mixer.update(frame);
+    mixer.start_cue(Cue::Flight);
+    let day_track = mixer.track();
+    let mut block = [0.0; 1600];
+    for (neon, night) in [(1.0, 1.0), (0.0, 1.0), (0.0, 0.0)] {
+        frame.synthwave = neon;
+        frame.night = night;
+        for index in 0..80 {
+            mixer.update(frame);
+            mixer.render(&mut block);
+            assert!(block.iter().all(|v| v.is_finite() && v.abs() <= 0.881));
+            if index == 10 {
+                assert_eq!(mixer.decks_playing(), 2);
+            }
+        }
+        let track = &scores()[mixer.track()];
+        assert_eq!(track.synthwave, neon > 0.0);
+        assert_eq!(track.night, neon == 0.0 && night > 0.0);
+        assert_eq!(mixer.decks_playing(), 1);
+        assert!(block.iter().any(|v| v.abs() > 0.005));
+    }
+    assert_eq!(mixer.track(), day_track);
+    assert_eq!(mixer.transitions, 3);
+    for map in [MapKind::Icebergs, MapKind::Islands] {
+        assert_eq!(
+            super::score::playlist_for(Cue::Flight, map, true, true),
+            playlist(Cue::Flight, map)
+        );
+    }
+    assert!(
+        super::score::playlist_for(Cue::Victory, MapKind::City, true, true)
+            .iter()
+            .all(|track| scores()[*track].cues.contains(&Cue::Victory))
+    );
+}

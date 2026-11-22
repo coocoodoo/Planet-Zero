@@ -63,6 +63,28 @@ impl Renderer {
                     -s * delta.x + c * delta.y,
                     delta.z,
                 );
+                let seed = (object.position.x as u32)
+                    .wrapping_mul(31)
+                    .wrapping_add((object.position.y as u32).wrapping_mul(17));
+                if self.light.synthwave > 0.0 && hash(seed) < 100 {
+                    let accent = if hash(seed) < 65 {
+                        rgb(242, 74, 247)
+                    } else {
+                        rgb(83, 206, 255)
+                    };
+                    for (a, b) in [
+                        (vec3(-11.1, -14.1, 75.5), vec3(11.1, -14.1, 75.5)),
+                        (vec3(11.1, -14.1, 75.5), vec3(11.1, 14.1, 75.5)),
+                    ] {
+                        self.emissive_line(
+                            camera,
+                            local(a),
+                            local(b),
+                            accent,
+                            self.light.synthwave,
+                        );
+                    }
+                }
                 for floor in 1..12 {
                     let z = floor as f32 * 6.0;
                     let lit = if floor % 3 == 0 {
@@ -72,20 +94,41 @@ impl Renderer {
                     };
                     for side in [-1.0, 1.0] {
                         for window in [-1.0, 0.0, 1.0] {
+                            let lit = if self.light.synthwave > 0.0 {
+                                let id = hash(
+                                    seed.wrapping_add(floor as u32 * 137)
+                                        .wrapping_add(((window + 1.0) * 47.0) as u32)
+                                        .wrapping_add(((side + 1.0) * 67.0) as u32),
+                                );
+                                let neon = if id > 80 {
+                                    self.light.color(color)
+                                } else {
+                                    match id % 11 {
+                                        0..=1 => rgb(255, 100, 223),
+                                        2 => rgb(102, 209, 255),
+                                        _ => rgb(255, 192, 119),
+                                    }
+                                };
+                                mix(lit, neon, self.light.synthwave)
+                            } else {
+                                lit
+                            };
                             if eye.y * side > 14.0 {
-                                self.world_line(
+                                self.emissive_line(
                                     camera,
                                     local(vec3(window * 6.0 - 1.5, side * 14.5, z)),
                                     local(vec3(window * 6.0 + 1.5, side * 14.5, z)),
                                     lit,
+                                    1.0,
                                 );
                             }
                             if eye.x * side > 11.0 {
-                                self.world_line(
+                                self.emissive_line(
                                     camera,
                                     local(vec3(side * 11.5, window * 8.0 - 2.0, z)),
                                     local(vec3(side * 11.5, window * 8.0 + 2.0, z)),
                                     lit,
+                                    1.0,
                                 );
                             }
                         }

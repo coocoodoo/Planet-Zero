@@ -27,7 +27,7 @@ impl Renderer {
                 - weather.weight(Weather::Cloudy) * 0.28)
             * 0.4;
         // 渐变、晨昏光和闪电只随行变化，先逐行算好
-        let rows: Vec<(u32, f32, f32)> = (0..self.h)
+        let rows: Vec<_> = (0..self.h)
             .map(|y| {
                 let (_, ray) = camera.ray(vec2(camera.center.x, y as f32));
                 let elevation = ray.z / ray.length();
@@ -39,7 +39,29 @@ impl Renderer {
                     (gradient * 12.0).floor() / 12.0
                 };
                 let color = mix(mix(low, high, gradient), rgb(225, 234, 255), flash);
-                (color, glow, gradient)
+                let neon = if self.light.synthwave > 0.0 {
+                    let elevation = (elevation * 3.8).clamp(0.0, 1.0);
+                    let elevation = if flight.smooth_sky_gradient {
+                        elevation
+                    } else {
+                        (elevation * 12.0).floor() / 12.0
+                    };
+                    let shade = |low, middle, high| {
+                        if elevation < 0.45 {
+                            mix(low, middle, elevation / 0.45)
+                        } else {
+                            mix(middle, high, (elevation - 0.45) / 0.55)
+                        }
+                    };
+                    weather.sky(
+                        shade(rgb(78, 40, 125), rgb(43, 29, 140), rgb(22, 23, 102)),
+                        shade(rgb(255, 158, 159), rgb(175, 72, 243), rgb(101, 42, 214)),
+                        1,
+                    )
+                } else {
+                    (0, 0)
+                };
+                (color, glow, gradient, neon)
             })
             .collect();
         let stars = night > 0.0 && weather.weight(Weather::Clear) > 0.95;
@@ -61,12 +83,27 @@ impl Renderer {
             let column = x * self.h;
             let star_column = (x + self.x_origin).is_multiple_of(3);
             let star_seed = ((x + self.x_origin) as u32).wrapping_add(yaw_seed);
+            let neon_facing = if self.light.synthwave > 0.0 {
+                let ray = camera.ray(vec2(x as f32, camera.center.y)).1;
+                ((ray.with_z(0.0).normalize_or_zero().dot(sun_azimuth) + 1.0) * 0.5).powi(2)
+            } else {
+                0.0
+            };
             for y in span(self.visible[x].0, self.visible[x].1, self.h) {
                 let at = column + y;
                 if self.pixels[at] != 0 || self.depth[at] != f32::INFINITY {
                     continue;
                 }
-                let (color, glow, gradient) = rows[y];
+                let (color, glow, gradient, neon) = rows[y];
+                let color = if self.light.synthwave > 0.0 {
+                    mix(
+                        color,
+                        mix(neon.0, neon.1, neon_facing),
+                        self.light.synthwave,
+                    )
+                } else {
+                    color
+                };
                 let ray = if glow > 0.001 || rainbow > 0.0 {
                     camera.ray(vec2(x as f32, y as f32)).1
                 } else {

@@ -189,6 +189,8 @@ pub struct Frame {
     /// 黄昏与夜晚的程度，探索配乐夜晚更安静
     pub twilight: f32,
     pub night: f32,
+    /// 城市入夜的合成器浪潮强度，0 到 1
+    pub synthwave: f32,
     /// 竞速与战斗的激烈程度，0 到 1，决定加入哪些编配层
     pub intensity: f32,
     /// 竞速冲刺段与金币倒计时
@@ -220,6 +222,7 @@ impl Default for Frame {
             storm: 0.0,
             twilight: 0.0,
             night: 0.0,
+            synthwave: 0.0,
             intensity: 1.0,
             finale: 0.0,
             riser: 0.0,

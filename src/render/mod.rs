@@ -13,6 +13,7 @@ mod palette;
 mod portals;
 mod primitives;
 mod settlements;
+mod synthwave;
 mod terrain;
 mod terrain_cache;
 mod tilted;
@@ -134,14 +135,15 @@ pub struct Renderer {
     column: Vec<i32>,
     pub rgba: Vec<u8>,
     output: Vec<u32>,
+    bloom: Vec<[u16; 3]>,
     voxels: Vec<Vec<(f32, f32, usize, bool)>>,
     pub detail: [f64; 4],
 }
 
-/// 当前光照对应的黄昏与夜晚程度，供配乐按时间段调整
-pub fn time_of_day(flight: &Flight, theme: usize) -> (f32, f32) {
-    let light = lighting::Lighting::new(flight, theme);
-    (light.twilight(), light.night())
+/// 当前光照的黄昏、夜晚与合成器浪潮程度，供配乐同步过渡
+pub fn time_of_day(flight: &Flight, world: &World, theme: usize) -> (f32, f32, f32) {
+    let light = lighting::Lighting::new(flight, world, theme);
+    (light.twilight(), light.night(), light.synthwave)
 }
 
 /// 列的可见行区间，裁剪到画布高度
@@ -328,6 +330,7 @@ impl Renderer {
             column: vec![],
             rgba: vec![],
             output: vec![],
+            bloom: vec![],
             voxels,
             detail: [0.0; 4],
         }
@@ -390,6 +393,18 @@ impl Renderer {
         let has_panel = cockpit > 0.55;
         if has_panel {
             self.cockpit.prepare(flight, world, size, theme, network);
+            let strength = lighting::Lighting::new(flight, world, theme).synthwave;
+            if strength > 0.0 {
+                for color in &mut self.cockpit.pixels {
+                    if *color == 0 {
+                        continue;
+                    }
+                    let [r, g, b, _] = color.to_le_bytes();
+                    if r.abs_diff(g) < 28 && g.abs_diff(b) < 35 {
+                        *color = mix(*color, rgb(44, 20, 81), 0.42 * strength);
+                    }
+                }
+            }
         }
         self.visible.resize(self.w, (self.h as i32, 0));
         self.mapping.resize(width * height, 0);
@@ -551,6 +566,9 @@ impl Renderer {
             self.precipitation(world, flight, &camera);
         }
         self.speed_lines(flight, &camera);
+        if world.kind == crate::world::MapKind::City && self.light.synthwave > 0.0 {
+            self.synthwave_glow();
+        }
         if rolled {
             // 按映射从画布随机取像素，访存占主导，分段并行
             let panel = has_panel.then_some(self.cockpit.pixels.as_slice());
@@ -673,6 +691,7 @@ impl Renderer {
             let (start, end) = flight.weather.visibility(camera.position.z);
             let bend = self.warp.map_or(0.0, |warp| warp.bend) * 10000.0;
             let (start, end) = (start.min(3900.0) + bend, end.min(4200.0) + bend);
+            let start = start + (650.0 - start) * self.light.synthwave;
             self.scenery_fog = Some((start, 1.0 / (end - start), self.light.haze(flight.weather)));
         }
         self.scenery(world, camera, flight.time, 1.0);
@@ -703,7 +722,7 @@ impl Renderer {
         {
             return;
         }
-        self.light = lighting::Lighting::new(flight, theme);
+        self.light = lighting::Lighting::new(flight, world, theme);
         if self.workers.is_empty() {
             self.layer(world, flight, camera, clouds);
         } else {

@@ -34,6 +34,8 @@ fn wav(
     let score = &scores()[track];
     let mut frame = Frame {
         cue: score.cues[0],
+        synthwave: f32::from(score.synthwave),
+        night: f32::from(score.night),
         map: score
             .maps
             .first()

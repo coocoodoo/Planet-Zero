@@ -156,10 +156,11 @@ impl Renderer {
         });
         let mut palette = [0_u32; 96];
         for &(i, r, g, b) in JET {
-            palette[i] =
-                flight
-                    .weather
-                    .shade(mix(rgb(r, g, b), self.light.color(rgb(r, g, b)), 0.4));
+            palette[i] = flight.weather.shade(mix(
+                rgb(r, g, b),
+                self.light.color(rgb(r, g, b)),
+                0.4 + 0.53 * self.light.synthwave,
+            ));
         }
         if flight.vehicle != crate::content::vehicles::Vehicle::Falcon {
             let [r, g, b] = flight.vehicle.tint();

@@ -14,7 +14,12 @@ pub(super) fn layer_targets(cue: Cue, frame: &Frame) -> [f32; LAYERS] {
     let mut g = [1.0; LAYERS];
     match cue {
         Cue::Flight => {
-            let (dusk, night) = (frame.twilight, frame.night);
+            let neon = if frame.map == crate::world::MapKind::City {
+                frame.synthwave
+            } else {
+                0.0
+            };
+            let (dusk, night) = (frame.twilight * (1.0 - neon), frame.night * (1.0 - neon));
             g[score::DRUMS as usize] = (1.0 - 0.45 * dusk - 0.9 * night) * (1.0 - 0.7 * frame.snow);
             g[score::HATS as usize] = (1.0 - 0.3 * dusk - 0.55 * night) * (1.0 - 0.4 * frame.snow);
             g[score::ARP as usize] = 1.0 - 0.2 * dusk - 0.6 * night;
@@ -205,7 +210,12 @@ impl Mixer {
     }
     /// 从场景曲库随机选曲，曲库多于一首时避开正在播放的曲目
     fn choose(&mut self, cue: Cue, exclude: Option<usize>) -> usize {
-        let mut list = playlist(cue, self.frame.map);
+        let mut list = score::playlist_for(
+            cue,
+            self.frame.map,
+            self.frame.synthwave > 0.0,
+            self.frame.night > 0.85,
+        );
         if list.len() > 1
             && let Some(current) = exclude
         {
@@ -217,7 +227,14 @@ impl Mixer {
         self.decks[self.live].step
     }
     pub fn update(&mut self, frame: Frame) {
-        let fits = frame.cue == self.cue && playlist(frame.cue, frame.map).contains(&self.track());
+        let fits = frame.cue == self.cue
+            && score::playlist_for(
+                frame.cue,
+                frame.map,
+                frame.synthwave > 0.0,
+                frame.night > 0.85,
+            )
+            .contains(&self.track());
         // 场景变化在下一拍、换地图立即开始交叉淡化
         self.pending = (!fits).then_some(frame.cue);
         self.immediate = frame.cue == self.cue;
@@ -258,8 +275,19 @@ impl Mixer {
     }
     /// 旧曲在原有节拍上继续演奏并淡出，新曲从主题段淡入
     fn crossfade(&mut self, next: Cue) {
+        let current = &scores()[self.track()];
+        let candidates = score::playlist_for(
+            next,
+            self.frame.map,
+            self.frame.synthwave > 0.0,
+            self.frame.night > 0.85,
+        );
+        let target = &scores()[candidates[0]];
+        let mood_change = (current.synthwave, current.night) != (target.synthwave, target.night);
         let (fade_out, fade_in) = if next.urgent() {
             (0.6, 0.2)
+        } else if mood_change {
+            (6.0, 6.0)
         } else if next == self.cue {
             (0.8, 0.6)
         } else {
@@ -269,7 +297,13 @@ impl Mixer {
         let new = 1 - old;
         // 淡出中的曲目正好属于新场景（例如穿回上一张地图）：直接淡回，不从头重播
         if self.decks[new].playing
-            && playlist(next, self.frame.map).contains(&self.decks[new].track)
+            && score::playlist_for(
+                next,
+                self.frame.map,
+                self.frame.synthwave > 0.0,
+                self.frame.night > 0.85,
+            )
+            .contains(&self.decks[new].track)
         {
             self.decks[old].fade = -1.0 / fade_out;
             self.decks[new].fade = 1.0 / fade_in;
@@ -359,7 +393,17 @@ impl Mixer {
         let live = d == self.live;
         if self.decks[d].step >= scores()[self.decks[d].track].steps.len() {
             // 整首播完后换一首同场景曲目，结算曲循环尾段
-            if live && self.cue.rotates() && playlist(self.cue, self.frame.map).len() > 1 {
+            if live
+                && self.cue.rotates()
+                && score::playlist_for(
+                    self.cue,
+                    self.frame.map,
+                    self.frame.synthwave > 0.0,
+                    self.frame.night > 0.85,
+                )
+                .len()
+                    > 1
+            {
                 let track = self.choose(self.cue, Some(self.decks[d].track));
                 self.decks[d].track = track;
                 self.decks[d].started = self.clock;

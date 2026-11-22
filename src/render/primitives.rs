@@ -41,6 +41,21 @@ impl Renderer {
     }
 
     pub(super) fn world_line(&mut self, camera: &Camera, a: Vec3, b: Vec3, color: u32) {
+        let color = if self.light.synthwave > 0.0 {
+            mix(color, self.light.color(color), self.light.synthwave)
+        } else {
+            color
+        };
+        self.emissive_line(camera, a, b, color, 1.0);
+    }
+    pub(super) fn emissive_line(
+        &mut self,
+        camera: &Camera,
+        a: Vec3,
+        b: Vec3,
+        color: u32,
+        opacity: f32,
+    ) {
         let (a, b) = self
             .warp
             .map_or((a, b), |warp| (warp.point(a), warp.point(b)));
@@ -54,7 +69,19 @@ impl Renderer {
                 .clamp(1.0, self.full_width.max(400) as f32 * 2.0) as usize;
             for i in 0..=steps {
                 let t = i as f32 / steps as f32;
-                self.point(a.lerp(b, t), da + (db - da) * t, color, 0, 0);
+                let p = a.lerp(b, t);
+                let depth = da + (db - da) * t;
+                if opacity >= 1.0 {
+                    self.point(p, depth, color, 0, 0);
+                } else {
+                    let (x, y) = (p.x.round() as i32, p.y.round() as i32);
+                    if x >= 0 && y >= 0 && x < self.w as i32 && y < self.h as i32 {
+                        let at = x as usize * self.h + y as usize;
+                        let color =
+                            mix(self.pixels[at], self.fogged_scenery(color, depth), opacity);
+                        self.plot(x, y, depth, color, 0);
+                    }
+                }
             }
         }
     }

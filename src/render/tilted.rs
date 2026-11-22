@@ -29,6 +29,7 @@ impl Renderer {
         let footprint_scale = self.warp.map_or(1.0, |warp| {
             1.0 + (warp.body.radius() / crate::world::orbit::UV_SCALE - 1.0).max(0.0) * bend
         });
+        fog_start += (650.0 - fog_start) * self.light.synthwave;
         fog_start += bend * 10000.0;
         let fog_end = far + bend * 10000.0;
         let colors = TOP.map(|c| weather.shade(self.light.color(rgb(c[0], c[1], c[2]))));

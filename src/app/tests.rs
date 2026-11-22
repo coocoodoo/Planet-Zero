@@ -658,6 +658,7 @@ fn daylight_pauses_freezes_and_keeps_phase_across_maps() {
     app.start();
     app.auto = false;
     app.flight.day_time = 100.0;
+    app.flight.day_cycle = 3;
     app.flight.dynamic_lighting = true;
     app.step(0.1, None);
     assert!(app.flight.day_time > 100.0);
@@ -671,11 +672,17 @@ fn daylight_pauses_freezes_and_keeps_phase_across_maps() {
     assert_eq!(app.flight.day_time, phase);
     app.flight.change_world(&app.world);
     assert_eq!(app.flight.day_time, phase);
+    assert_eq!(app.flight.day_cycle, 3);
     assert!(!app.flight.dynamic_lighting);
     app.key(crate::keys::TIME, 1);
     app.key(crate::keys::TIME, 0);
     assert_eq!(app.theme, 1);
     assert_eq!(app.flight.day_time, 0.0);
+    app.flight.dynamic_lighting = true;
+    app.flight.day_time = crate::flight::DAY_SECONDS - 0.05;
+    app.step(0.1, None);
+    assert_eq!(app.flight.day_cycle, 4);
+    assert!(app.flight.day_time < 0.1);
     let settings: super::settings::Settings = toml::from_str("dynamic_lighting = false").unwrap();
     assert!(!settings.dynamic_lighting);
 }

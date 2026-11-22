@@ -151,10 +151,10 @@ impl App {
         let weather = self.flight.weather;
         let w = |kind| weather.weight(kind).min(1.0);
         let air = f32::from(!self.world.kind.vacuum() && !descending);
-        let (twilight, night) = if air > 0.0 {
-            crate::render::time_of_day(&self.flight, self.theme)
+        let (twilight, night, synthwave) = if air > 0.0 {
+            crate::render::time_of_day(&self.flight, &self.world, self.theme)
         } else {
-            (0.0, 0.0)
+            (0.0, 0.0, 0.0)
         };
         let (intensity, finale) = self.intensity();
         let altitude = if self.world.kind == MapKind::Space {
@@ -197,6 +197,7 @@ impl App {
             storm: air * w(Weather::Storm),
             twilight,
             night,
+            synthwave: if map == MapKind::City { synthwave } else { 0.0 },
             intensity: intensity.clamp(0.0, 1.0),
             finale,
             riser: f32::from(ascending) * f32::from(flying),
