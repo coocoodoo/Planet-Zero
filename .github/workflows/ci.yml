@@ -21,6 +21,24 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Check release versions
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import tomllib
+
+          version = tomllib.loads(Path("Cargo.toml").read_text())["package"]["version"]
+          store_version = json.loads(Path("app-builder.json").read_text())["version"]
+          if store_version != version:
+              raise SystemExit(f"app-builder.json version: expected {version}, got {store_version}")
+          if os.environ["GITHUB_REF_TYPE"] == "tag":
+              tag = os.environ["GITHUB_REF_NAME"]
+              if tag != f"v{version}":
+                  raise SystemExit(f"Release tag: expected v{version}, got {tag}")
+          print(f"Release versions match: {version}")
+          PY
       - name: Install check dependencies
         run: |
           sudo apt-get update
