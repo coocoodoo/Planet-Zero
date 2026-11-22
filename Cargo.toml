@@ -1,6 +1,6 @@
 [package]
 name = "flight-club"
-version = "0.37.11"
+version = "0.37.12"
 edition = "2024"
 default-run = "flight-club"
 description = "Pixel flight arcade with sprite stacking rendering for desktop and Cardputer Zero"
@@ -44,5 +44,8 @@ cpal = { version = "0.15.3", optional = true }
 opt-level = 2
 
 [profile.release]
-lto = "thin"
+lto = "fat"
 codegen-units = 1
+panic = "abort"
+strip = "symbols"
+opt-level = 3

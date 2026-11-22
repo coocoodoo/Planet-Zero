@@ -303,7 +303,7 @@ dependencies = [
 
 [[package]]
 name = "flight-club"
-version = "0.37.11"
+version = "0.37.12"
 dependencies = [
  "cpal",
  "font8x8",

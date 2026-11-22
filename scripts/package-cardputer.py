@@ -39,7 +39,7 @@ for name in ["README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]:
     " Race, coin rush and aerial combat with Rust rendering, RGB565 output and IMU controls\n"
 )
 package = ROOT / f"dist/flight-club_{version}_arm64.deb"
-command = ["dpkg-deb", "--root-owner-group", "--build", str(stage), str(package)]
+command = ["dpkg-deb", "--root-owner-group", "-Zxz", "-z6", "--build", str(stage), str(package)]
 if not shutil.which("dpkg-deb"):
     command = ["docker", "run", "--rm", "--user", f"{os.getuid()}:{os.getgid()}", "--volume", f"{ROOT}:{ROOT}", "ubuntu:22.04", *command]
 subprocess.run(command, check=True)
