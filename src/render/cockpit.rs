@@ -1,3 +1,4 @@
+use crate::content::vehicles::Vehicle;
 use crate::flight::Flight;
 use crate::render::{mix, rgb};
 use crate::world::{SIZE, World, index};
@@ -27,12 +28,13 @@ struct Layer {
 
 #[derive(PartialEq, Eq)]
 struct BaseKey {
-    shifts: [(i32, i32); 4],
+    shifts: [(i32, i32); 3],
     palette: usize,
     weather: [u8; 8],
 }
 pub struct Cockpit {
-    layers: [Layer; 4],
+    layers: [Layer; 3],
+    vehicle: Vehicle,
     pub pixels: Vec<u32>,
     native: Vec<u32>,
     base: Vec<u32>,
@@ -45,76 +47,9 @@ pub struct Cockpit {
 
 impl Cockpit {
     pub fn new() -> Self {
-        let sources: [&[u8]; 4] = [
-            include_bytes!(concat!(env!("OUT_DIR"), "/canopy.bin")),
-            include_bytes!(concat!(env!("OUT_DIR"), "/panel.bin")),
-            include_bytes!(concat!(env!("OUT_DIR"), "/deck.bin")),
-            include_bytes!(concat!(env!("OUT_DIR"), "/rear.bin")),
-        ];
         Self {
-            layers: sources.map(|bytes| {
-                let count = u16::from_le_bytes([bytes[0], bytes[1]]) as usize;
-                let palette: Vec<u32> = bytes[2..2 + count * 4]
-                    .as_chunks::<4>()
-                    .0
-                    .iter()
-                    .map(|v| u32::from_le_bytes(*v))
-                    .collect();
-                let mut colors = [[0; 256]; 6];
-                for (i, &color) in palette.iter().enumerate() {
-                    if color == 0 {
-                        continue;
-                    }
-                    colors[0][i] = color;
-                    colors[1][i] = mix(color, rgb(255, 231, 178), 0.16);
-                    colors[2][i] = color;
-                    colors[3][i] = mix(color, rgb(255, 162, 87), 0.16);
-                    colors[4][i] = mix(color, rgb(12, 24, 49), 0.45);
-                    colors[5][i] = colors[4][i];
-                }
-                let colors = crate::content::weather::Weather::ALL
-                    .into_iter()
-                    .flat_map(|weather| {
-                        colors.map(|palette| {
-                            palette.map(|color| if color == 0 { 0 } else { weather.shade(color) })
-                        })
-                    })
-                    .collect();
-                let pixels: Vec<u8> = bytes[2 + count * 4..]
-                    .as_chunks::<3>()
-                    .0
-                    .iter()
-                    .flat_map(|run| {
-                        std::iter::repeat_n(run[2], u16::from_le_bytes([run[0], run[1]]) as usize)
-                    })
-                    .collect();
-                let runs = pixels
-                    .as_chunks::<342>()
-                    .0
-                    .iter()
-                    .map(|row| {
-                        let mut runs = Vec::new();
-                        let mut x = 0;
-                        while x < row.len() {
-                            if palette[row[x] as usize] == 0 {
-                                x += 1;
-                                continue;
-                            }
-                            let start = x;
-                            while x < row.len() && palette[row[x] as usize] != 0 {
-                                x += 1;
-                            }
-                            runs.push((start, x));
-                        }
-                        runs
-                    })
-                    .collect();
-                Layer {
-                    pixels,
-                    colors,
-                    runs,
-                }
-            }),
+            layers: Self::load_layers(Vehicle::Falcon),
+            vehicle: Vehicle::Falcon,
             pixels: Vec::new(),
             native: Vec::new(),
             base: Vec::new(),
@@ -124,6 +59,88 @@ impl Cockpit {
             revision: 0,
             hud: Vec::new(),
         }
+    }
+
+    fn load_layers(vehicle: Vehicle) -> [Layer; 3] {
+        macro_rules! assets {
+            ($name:literal) => {
+                [
+                    include_bytes!(concat!(env!("OUT_DIR"), "/", $name, "-canopy.bin")) as &[u8],
+                    include_bytes!(concat!(env!("OUT_DIR"), "/", $name, "-panel.bin")),
+                    include_bytes!(concat!(env!("OUT_DIR"), "/", $name, "-deck.bin")),
+                ]
+            };
+        }
+        let sources = match vehicle {
+            Vehicle::Falcon => assets!("falcon"),
+            Vehicle::Dart => assets!("dart"),
+            Vehicle::Atlas => assets!("atlas"),
+            Vehicle::Wasp => assets!("wasp"),
+            Vehicle::Paper => assets!("paper"),
+        };
+        sources.map(|bytes| {
+            let count = u16::from_le_bytes([bytes[0], bytes[1]]) as usize;
+            let palette: Vec<u32> = bytes[2..2 + count * 4]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|v| u32::from_le_bytes(*v))
+                .collect();
+            let mut colors = [[0; 256]; 6];
+            for (i, &color) in palette.iter().enumerate() {
+                if color == 0 {
+                    continue;
+                }
+                colors[0][i] = color;
+                colors[1][i] = mix(color, rgb(255, 231, 178), 0.16);
+                colors[2][i] = color;
+                colors[3][i] = mix(color, rgb(255, 162, 87), 0.16);
+                colors[4][i] = mix(color, rgb(12, 24, 49), 0.45);
+                colors[5][i] = colors[4][i];
+            }
+            let colors = crate::content::weather::Weather::ALL
+                .into_iter()
+                .flat_map(|weather| {
+                    colors.map(|palette| {
+                        palette.map(|color| if color == 0 { 0 } else { weather.shade(color) })
+                    })
+                })
+                .collect();
+            let pixels: Vec<u8> = bytes[2 + count * 4..]
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .flat_map(|run| {
+                    std::iter::repeat_n(run[2], u16::from_le_bytes([run[0], run[1]]) as usize)
+                })
+                .collect();
+            let runs = pixels
+                .as_chunks::<342>()
+                .0
+                .iter()
+                .map(|row| {
+                    let mut runs = Vec::new();
+                    let mut x = 0;
+                    while x < row.len() {
+                        if palette[row[x] as usize] == 0 {
+                            x += 1;
+                            continue;
+                        }
+                        let start = x;
+                        while x < row.len() && palette[row[x] as usize] != 0 {
+                            x += 1;
+                        }
+                        runs.push((start, x));
+                    }
+                    runs
+                })
+                .collect();
+            Layer {
+                pixels,
+                colors,
+                runs,
+            }
+        })
     }
 
     pub(super) fn opaque(&self, x: usize, y: usize) -> bool {
@@ -138,6 +155,11 @@ impl Cockpit {
         theme: usize,
         network: Option<&crate::world::network::Network>,
     ) {
+        if self.vehicle != flight.vehicle {
+            self.layers = Self::load_layers(flight.vehicle);
+            self.vehicle = flight.vehicle;
+            self.base_key = None;
+        }
         let (w, h) = size;
         let head = flight.rate * 2.2 + (flight.time * 9.0).sin() * flight.boost * 0.4;
         let lift = flight.pitch.sin() * 5.0;
@@ -154,10 +176,6 @@ impl Cockpit {
             (
                 -(head * 1.6).round() as i32,
                 -(lift * 1.6).round() as i32 + (away * 90.0) as i32,
-            ),
-            (
-                -(head * 2.0).round() as i32,
-                -(lift * 2.0).round() as i32 - (away * 153.0) as i32,
             ),
         ];
         let key = BaseKey {
@@ -237,7 +255,12 @@ impl Cockpit {
             if layer == 1 {
                 instruments(&mut paint, flight, world, network);
             } else {
-                levers(&mut paint, flight);
+                if flight.vehicle == Vehicle::Falcon {
+                    levers(&mut paint, flight);
+                } else if flight.vehicle == Vehicle::Paper {
+                    paint.number(108, 164, flight.speed as i32, 3, rgb(83, 103, 94));
+                    paint.number(207, 164, flight.position.z as i32, 3, rgb(83, 103, 94));
+                }
             }
         }
         self.pixels.resize(w * h, 0);
@@ -254,39 +277,48 @@ impl Cockpit {
 
     pub fn glass(&mut self, output: &mut [u32], w: usize, h: usize, flight: &Flight) {
         let (s, c) = (flight.bank + flight.spin).sin_cos();
-        for y in 40..96 {
-            let half = 49 - (y - 40) / 8;
-            for x in 160 - half..=160 + half {
-                if w == 320 && h == 170 {
-                    let i = y * 320 + x;
-                    if self.pixels[i] == 0 {
-                        output[i] = mix(
-                            output[i],
-                            rgb(112, 204, 181),
-                            if x == 160 - half || x == 160 + half || y == 40 {
-                                0.5
-                            } else {
-                                0.06
-                            },
-                        );
-                    }
-                    continue;
-                }
-                let sx = x * w / 320;
-                let sy = y * h / 170;
-                for yy in sy..((y + 1) * h / 170).max(sy + 1).min(h) {
-                    for xx in sx..((x + 1) * w / 320).max(sx + 1).min(w) {
-                        let i = yy * w + xx;
+        let (hud, tint) = match flight.vehicle {
+            Vehicle::Falcon => (HUD, rgb(112, 204, 181)),
+            Vehicle::Dart => (rgb(132, 230, 250), rgb(92, 173, 214)),
+            Vehicle::Atlas => (rgb(242, 204, 125), rgb(188, 159, 95)),
+            Vehicle::Wasp => (rgb(164, 237, 139), rgb(124, 193, 136)),
+            Vehicle::Paper => (rgb(128, 150, 133), rgb(0, 0, 0)),
+        };
+        if flight.vehicle != Vehicle::Paper {
+            for y in 40..96 {
+                let half = 49 - (y - 40) / 8;
+                for x in 160 - half..=160 + half {
+                    if w == 320 && h == 170 {
+                        let i = y * 320 + x;
                         if self.pixels[i] == 0 {
                             output[i] = mix(
                                 output[i],
-                                rgb(112, 204, 181),
+                                tint,
                                 if x == 160 - half || x == 160 + half || y == 40 {
                                     0.5
                                 } else {
                                     0.06
                                 },
                             );
+                        }
+                        continue;
+                    }
+                    let sx = x * w / 320;
+                    let sy = y * h / 170;
+                    for yy in sy..((y + 1) * h / 170).max(sy + 1).min(h) {
+                        for xx in sx..((x + 1) * w / 320).max(sx + 1).min(w) {
+                            let i = yy * w + xx;
+                            if self.pixels[i] == 0 {
+                                output[i] = mix(
+                                    output[i],
+                                    tint,
+                                    if x == 160 - half || x == 160 + half || y == 40 {
+                                        0.5
+                                    } else {
+                                        0.06
+                                    },
+                                );
+                            }
                         }
                     }
                 }
@@ -307,10 +339,10 @@ impl Cockpit {
             dy: 0,
         };
         for side in [-1, 1] {
-            p.line(160 + side * 5, 70, 160 + side * 3, 70, HUD);
-            p.line(160 + side * 5, 76, 160 + side * 3, 76, HUD);
-            p.line(160 + side * 5, 70, 160 + side * 5, 72, HUD);
-            p.line(160 + side * 5, 76, 160 + side * 5, 74, HUD);
+            p.line(160 + side * 5, 70, 160 + side * 3, 70, hud);
+            p.line(160 + side * 5, 76, 160 + side * 3, 76, hud);
+            p.line(160 + side * 5, 70, 160 + side * 5, 72, hud);
+            p.line(160 + side * 5, 76, 160 + side * 5, 74, hud);
         }
         for deg in [-20.0_f32, -10.0, 0.0, 10.0, 20.0] {
             let dy = (crate::flight::angle(flight.pitch - deg.to_radians()))
@@ -323,7 +355,7 @@ impl Cockpit {
                     (73.0 - s * side * a + c * dy) as i32,
                     (160.0 + c * side * b + s * dy) as i32,
                     (73.0 - s * side * b + c * dy) as i32,
-                    HUD,
+                    hud,
                 );
             }
         }
@@ -418,14 +450,157 @@ fn instruments(
     world: &World,
     network: Option<&crate::world::network::Network>,
 ) {
+    if f.vehicle == Vehicle::Falcon {
+        falcon_instruments(p, f, world, network);
+        return;
+    }
+    let (x, y, accent) = match f.vehicle {
+        Vehicle::Dart => (42, 129, rgb(98, 216, 245)),
+        Vehicle::Atlas => (36, 127, rgb(236, 183, 86)),
+        Vehicle::Wasp => (62, 137, rgb(148, 226, 126)),
+        Vehicle::Paper => return,
+        Vehicle::Falcon => unreachable!(),
+    };
     let crt = [
-        rgb(3, 16, 17),
-        rgb(5, 27, 25),
-        rgb(13, 56, 41),
-        rgb(24, 91, 54),
-        rgb(71, 158, 82),
-        rgb(169, 242, 142),
+        rgb(3, 12, 17),
+        mix(INK, accent, 0.08),
+        mix(INK, accent, 0.2),
+        mix(INK, accent, 0.4),
+        mix(INK, accent, 0.65),
+        accent,
     ];
+    p.dx += x - 47;
+    p.dy += y - 112;
+    radar(p, f, world, network, crt);
+    p.dx -= x - 47;
+    p.dy -= y - 112;
+    match f.vehicle {
+        Vehicle::Dart => {
+            horizon(p, f, (160, 128), (47, 11), false, accent);
+            p.line(114, 141, 205, 141, crt[3]);
+            p.number(115, 146, f.speed as i32, 3, accent);
+            p.number(177, 146, f.position.z as i32, 4, accent);
+            for engine in 0..2 {
+                let x = 236 + engine * 19;
+                let fill = (17.0 * (0.55 + f.boost * 0.45)) as i32;
+                p.rect(x, 135, 9, 18, crt[1]);
+                p.rect(x, 153 - fill, 9, fill, accent);
+                for y in (135..153).step_by(4) {
+                    p.line(x, y, x + 8, y, INK);
+                }
+            }
+        }
+        Vehicle::Atlas => {
+            horizon(p, f, (160, 127), (16, 16), true, accent);
+            gauge(p, (122, 129), 13, f.speed / 160.0, accent);
+            gauge(p, (199, 129), 13, f.position.z / 600.0, accent);
+            gauge(p, (121, 157), 6, 0.6 + f.boost * 0.4, accent);
+            gauge(
+                p,
+                (199, 157),
+                6,
+                (f.rate / f.vehicle.turn() + 1.0) * 0.5,
+                accent,
+            );
+            p.number(113, 138, f.speed as i32, 3, accent);
+            p.number(190, 138, f.position.z as i32, 4, accent);
+            for engine in 0..4 {
+                let x = 240 + engine * 10;
+                let fill = (15.0 * (0.6 + f.boost * 0.4)) as i32;
+                p.rect(x, 134, 6, 17, crt[1]);
+                p.rect(x, 151 - fill, 6, fill, crt[4]);
+                p.put(x + 2, 131, accent);
+            }
+            p.number(246, 153, (f.speed * 4.2) as i32, 3, accent);
+        }
+        Vehicle::Wasp => {
+            horizon(p, f, (160, 138), (31, 10), false, accent);
+            p.number(129, 153, f.speed as i32, 3, accent);
+            p.number(177, 153, f.position.z as i32, 4, accent);
+            for rotor in 0..2 {
+                gauge(p, (221 + rotor * 24, 148), 7, 0.65 + f.boost * 0.3, accent);
+            }
+            p.number(213, 159, (85.0 + f.boost * 15.0) as i32, 3, accent);
+            p.number(239, 159, (85.0 + f.boost * 15.0) as i32, 3, accent);
+        }
+        Vehicle::Falcon | Vehicle::Paper => unreachable!(),
+    }
+}
+
+fn horizon(
+    p: &mut Paint<'_>,
+    f: &Flight,
+    center: (i32, i32),
+    half: (i32, i32),
+    round: bool,
+    accent: u32,
+) {
+    let (s, c) = (f.bank + f.spin).sin_cos();
+    let pitch = f.pitch.sin() * 19.0;
+    for y in -half.1..=half.1 {
+        for x in -half.0..=half.0 {
+            if round && x * x + y * y > half.0 * half.0 {
+                continue;
+            }
+            let height = s * x as f32 + c * y as f32 - pitch;
+            let color = if height.abs() < 0.7 {
+                accent
+            } else if height > 0.0 {
+                rgb(91, 66, 42)
+            } else {
+                rgb(24, 75, 98)
+            };
+            p.put(center.0 + x, center.1 + y, color);
+        }
+    }
+    for side in [-1, 1] {
+        p.line(
+            center.0 + side * 3,
+            center.1,
+            center.0 + side * 10,
+            center.1,
+            INK,
+        );
+        p.line(
+            center.0 + side * 3,
+            center.1 - 1,
+            center.0 + side * 10,
+            center.1 - 1,
+            accent,
+        );
+    }
+    p.rect(center.0 - 1, center.1 - 1, 3, 3, INK);
+}
+
+fn gauge(p: &mut Paint<'_>, center: (i32, i32), radius: i32, value: f32, accent: u32) {
+    for step in 0..7 {
+        let (s, c) = (-225.0 + step as f32 * 45.0).to_radians().sin_cos();
+        p.put(
+            center.0 + (c * radius as f32) as i32,
+            center.1 + (s * radius as f32) as i32,
+            accent,
+        );
+    }
+    let (s, c) = (-225.0 + value.clamp(0.0, 1.0) * 270.0)
+        .to_radians()
+        .sin_cos();
+    p.line(
+        center.0,
+        center.1,
+        center.0 + (c * (radius - 2) as f32) as i32,
+        center.1 + (s * (radius - 2) as f32) as i32,
+        accent,
+    );
+    p.rect(center.0, center.1, 2, 2, rgb(220, 225, 210));
+}
+
+fn radar(
+    p: &mut Paint<'_>,
+    f: &Flight,
+    world: &World,
+    network: Option<&crate::world::network::Network>,
+    crt: [u32; 6],
+) {
     let (sy, cy) = f.yaw.sin_cos();
     let (sweep_s, sweep_c) = (f.time * 1.6).sin_cos();
     for y in 0..29 {
@@ -515,6 +690,23 @@ fn instruments(
     }
     p.line(69, 127, 71, 124, crt[5]);
     p.line(71, 124, 73, 127, crt[5]);
+}
+
+fn falcon_instruments(
+    p: &mut Paint<'_>,
+    f: &Flight,
+    world: &World,
+    network: Option<&crate::world::network::Network>,
+) {
+    let crt = [
+        rgb(3, 16, 17),
+        rgb(5, 27, 25),
+        rgb(13, 56, 41),
+        rgb(24, 91, 54),
+        rgb(71, 158, 82),
+        rgb(169, 242, 142),
+    ];
+    radar(p, f, world, network, crt);
     for y in 0..29 {
         p.rect(224, 112 + y, 49, 1, crt[y as usize & 1]);
     }
@@ -639,11 +831,37 @@ mod tests {
     use crate::content::weather::Weather;
 
     #[test]
-    fn rear_frame_has_two_solid_arcs() {
-        let cockpit = Cockpit::new();
-        for (y, runs) in cockpit.layers[3].runs.iter().enumerate() {
-            assert_eq!(runs.len(), if y < 154 { 2 } else { 0 }, "row {y}");
+    fn vehicle_switch_refreshes_cockpit_and_occlusion() {
+        let world = World::generate(crate::world::MapKind::Islands, 7);
+        let mut flight = Flight::new(&world);
+        flight.weights = [0.0, 0.0, 1.0];
+        let mut cockpit = Cockpit::new();
+        let mut frames = Vec::new();
+        for vehicle in Vehicle::ALL.into_iter().chain([Vehicle::Falcon]) {
+            flight.vehicle = vehicle;
+            let revision = cockpit.revision;
+            cockpit.prepare(&flight, &world, (320, 170), 0, None);
+            assert!(cockpit.revision > revision);
+            let mut fresh = Cockpit::new();
+            fresh.prepare(&flight, &world, (320, 170), 0, None);
+            assert_eq!(cockpit.pixels, fresh.pixels);
+            assert_eq!(cockpit.base, fresh.base);
+            frames.push(cockpit.pixels.clone());
         }
+        assert_eq!(frames.first(), frames.last());
+        for i in 0..5 {
+            for j in i + 1..5 {
+                assert_ne!(frames[i], frames[j]);
+            }
+        }
+    }
+
+    #[test]
+    fn canopy_frames_share_one_layer() {
+        let cockpit = Cockpit::new();
+        let row = &cockpit.layers[0].runs[60];
+        assert_eq!(row.len(), 4);
+        assert!(row.iter().all(|&(start, end)| end > start));
     }
 
     #[test]

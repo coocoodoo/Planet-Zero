@@ -387,8 +387,7 @@ impl Renderer {
         let mut camera = Camera::new(flight, width, height);
         camera.center += offset;
         let started = std::time::Instant::now();
-        let has_panel =
-            cockpit > 0.55 && flight.vehicle != crate::content::vehicles::Vehicle::Paper;
+        let has_panel = cockpit > 0.55;
         if has_panel {
             self.cockpit.prepare(flight, world, size, theme, network);
         }

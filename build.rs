@@ -68,13 +68,15 @@ fn cockpit(path: &Path) -> Vec<u8> {
 
 fn main() {
     let output = std::path::PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    for name in ["canopy", "panel", "deck", "rear"] {
-        let path = format!("assets/cockpit/{name}.png");
-        fs::write(
-            output.join(format!("{name}.bin")),
-            cockpit(Path::new(&path)),
-        )
-        .unwrap();
+    for vehicle in ["falcon", "dart", "atlas", "wasp", "paper"] {
+        for layer in ["canopy", "panel", "deck"] {
+            let path = format!("assets/cockpit/{vehicle}/{layer}.png");
+            fs::write(
+                output.join(format!("{vehicle}-{layer}.bin")),
+                cockpit(Path::new(&path)),
+            )
+            .unwrap();
+        }
     }
     println!("cargo:rerun-if-changed=src/render/palette.rs");
     let materials: HashMap<_, _> = palette::JET

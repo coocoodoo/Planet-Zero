@@ -12,7 +12,7 @@ content/
   maps/                   # 十二类地图及特色地标、虫洞布局
   music/                  # 27 首分层编配的配乐，每张地图一首专属主题
 assets/
-  cockpit/                # 座舱四层索引色美术
+  cockpit/                # 各载具三层 PNG 座舱素材
   vehicles/               # 战机体素切片
 src/
   app/                    # 会话生命周期、跨地图旅行、输入、成绩存储和流程测试
