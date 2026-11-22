@@ -202,7 +202,7 @@ impl App {
             synthwave: if map == MapKind::City { synthwave } else { 0.0 },
             intensity: intensity.clamp(0.0, 1.0),
             finale,
-            music_suspended: ascending && cue == Cue::Flight,
+            music_ducked: ascending && cue == Cue::Flight,
         }
     }
 }

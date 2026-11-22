@@ -195,8 +195,8 @@ pub struct Frame {
     pub intensity: f32,
     /// 竞速冲刺段与金币倒计时
     pub finale: f32,
-    /// 轨道上升期间淡出配乐，音效保持独立播放
-    pub music_suspended: bool,
+    /// 轨道上升期间压低配乐，音效保持独立播放
+    pub music_ducked: bool,
 }
 impl Default for Frame {
     fn default() -> Self {
@@ -225,7 +225,7 @@ impl Default for Frame {
             synthwave: 0.0,
             intensity: 1.0,
             finale: 0.0,
-            music_suspended: false,
+            music_ducked: false,
         }
     }
 }

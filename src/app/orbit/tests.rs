@@ -35,13 +35,13 @@ fn orbital_audio_uses_travel_phase_through_thrust_changes() {
             app.flight.orbital_thrust = thrust;
             let frame = app.audio_frame();
             assert_eq!(frame.map, kind, "ascent thrust {thrust}");
-            assert!(frame.music_suspended);
+            assert!(frame.music_ducked);
         }
         app.flight.position.z = body.orbit_altitude();
         app.step_orbit(0.03);
         let frame = app.audio_frame();
         assert_eq!(frame.map, MapKind::Space);
-        assert!(!frame.music_suspended);
+        assert!(!frame.music_ducked);
 
         app.network.remember(original);
         app.begin_descent(
@@ -55,13 +55,13 @@ fn orbital_audio_uses_travel_phase_through_thrust_changes() {
             app.flight.orbital_thrust = thrust;
             let frame = app.audio_frame();
             assert_eq!(frame.map, MapKind::Space, "descent thrust {thrust}");
-            assert!(!frame.music_suspended);
+            assert!(!frame.music_ducked);
         }
         app.flight.position.z = body.surface_altitude();
         app.step_orbit(0.03);
         let frame = app.audio_frame();
         assert_eq!(frame.map, kind);
-        assert!(!frame.music_suspended);
+        assert!(!frame.music_ducked);
     }
 }
 
@@ -70,12 +70,12 @@ fn aborted_ascent_resumes_surface_music_at_surface_boundary() {
     let mut app = ready_ascent(MapKind::Islands);
     app.orbit.boost = false;
     app.flight.orbital_thrust = 0.0;
-    assert!(app.audio_frame().music_suspended);
+    assert!(app.audio_frame().music_ducked);
     app.flight.position.z = Body::Earth.surface_altitude();
     app.step_orbit(0.03);
     let frame = app.audio_frame();
     assert_eq!(frame.map, MapKind::Islands);
-    assert!(!frame.music_suspended);
+    assert!(!frame.music_ducked);
 }
 
 #[cfg(feature = "cardputer")]

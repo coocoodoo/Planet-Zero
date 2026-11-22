@@ -234,7 +234,7 @@ impl Mixer {
         if frame.cue != Cue::Flight {
             self.music_wait = 0.0;
             self.orbit_gain = 1.0;
-        } else if frame.music_suspended {
+        } else if frame.music_ducked {
             self.music_wait = 2.0;
         }
         let fits = frame.cue == self.cue
@@ -553,18 +553,21 @@ impl Mixer {
             0.0
         };
         self.music_gain += (music_target - self.music_gain) * dt * 18.0;
-        // 升空时一秒淡出，结束后等待两秒，再用三秒淡入
-        if !self.frame.music_suspended {
+        // 升空时一秒降至六成音量，结束后保持两秒，再用三秒恢复
+        if !self.frame.music_ducked {
             self.music_wait = (self.music_wait - dt).max(0.0);
         }
-        let orbit_target = f32::from(
-            self.frame.cue != Cue::Flight
-                || (!self.frame.music_suspended && self.music_wait == 0.0),
-        );
-        let fade = if orbit_target < self.orbit_gain {
-            dt
+        let orbit_target = if self.frame.cue == Cue::Flight
+            && (self.frame.music_ducked || self.music_wait > 0.0)
+        {
+            0.6
         } else {
-            dt / 3.0
+            1.0
+        };
+        let fade = if orbit_target < self.orbit_gain {
+            dt * 0.4
+        } else {
+            dt * 0.4 / 3.0
         };
         self.orbit_gain += (orbit_target - self.orbit_gain).clamp(-fade, fade);
         self.effects_gain +=

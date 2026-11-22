@@ -127,11 +127,11 @@ fn application_routes_results_pause_and_events_to_audio() {
     let f = app.audio_frame();
     assert_eq!(f.cue, Cue::Flight);
     assert_eq!(f.ascent, 0.0);
-    assert!(f.music_suspended);
+    assert!(f.music_ducked);
     app.flight.position.z = 1050.0;
     let f = app.audio_frame();
     assert_eq!(f.cue, Cue::Flight);
-    assert!(f.ascent > 0.8 && f.music_suspended);
+    assert!(f.ascent > 0.8 && f.music_ducked);
     assert_eq!(f.map, app.world.kind);
     app.flight.orbital_thrust = 0.0;
     assert_eq!(app.audio_frame().cue, Cue::Flight);
@@ -420,7 +420,7 @@ fn ascent_effects_and_weather_overlays_stay_bounded() {
         (
             Cue::Flight,
             Frame {
-                music_suspended: true,
+                music_ducked: true,
                 altitude: 0.9,
                 ascent: 1.0,
                 engine: 1.0,
@@ -587,20 +587,27 @@ fn city_music_crossfades_through_synthwave_and_quiet_night() {
 }
 
 #[test]
-fn ascent_fades_music_keeps_effects_and_delays_space_music() {
+fn ascent_ducks_music_keeps_effects_and_restores_space_music() {
     use crate::world::MapKind;
-    fn render(mixer: &mut Mixer, frame: Frame, blocks: usize) -> f32 {
+    fn render(mixer: &mut Mixer, reference: &mut Mixer, frame: Frame, blocks: usize) -> f32 {
         let mut samples = [0.0_f32; 1600];
+        let mut normal = [0.0_f32; 1600];
         for _ in 0..blocks {
             mixer.update(frame);
+            reference.update(Frame {
+                music_ducked: false,
+                ..frame
+            });
             mixer.render(&mut samples);
+            reference.render(&mut normal);
             assert!(samples.iter().all(|s| s.is_finite() && s.abs() <= 0.881));
         }
-        samples
-            .iter()
-            .fold(0.0_f32, |peak, value| peak.max(value.abs()))
+        let energy = |samples: &[f32]| samples.iter().map(|v| v * v).sum::<f32>();
+        assert!(energy(&samples) > 0.0001);
+        (energy(&samples) / energy(&normal)).sqrt()
     }
     let mut mixer = Mixer::new(8000);
+    let mut reference = Mixer::new(8000);
     let mut frame = Frame {
         cue: Cue::Flight,
         settings: Settings {
@@ -609,33 +616,35 @@ fn ascent_fades_music_keeps_effects_and_delays_space_music() {
         },
         ..Frame::default()
     };
-    mixer.update(frame);
-    mixer.start_cue(Cue::Flight);
-    assert!(render(&mut mixer, frame, 20) > 0.001);
-    frame.music_suspended = true;
-    assert!(render(&mut mixer, frame, 20) < 0.000001);
-    frame.settings.profile = 0;
+    for player in [&mut mixer, &mut reference] {
+        player.update(frame);
+        player.start_cue(Cue::Flight);
+    }
+    assert!((render(&mut mixer, &mut reference, frame, 20) - 1.0).abs() < 0.01);
+    frame.music_ducked = true;
+    assert!((0.55..0.65).contains(&render(&mut mixer, &mut reference, frame, 20)));
+    frame.settings.profile = 2;
     frame.engine = 1.0;
     frame.ascent = 1.0;
-    assert!(render(&mut mixer, frame, 10) > 0.001);
+    assert!((render(&mut mixer, &mut reference, frame, 10) - 1.0).abs() < 0.01);
     frame.settings.profile = 1;
-    assert!(render(&mut mixer, frame, 10) < 0.000001);
+    assert!((0.55..0.65).contains(&render(&mut mixer, &mut reference, frame, 10)));
 
-    frame.music_suspended = false;
+    frame.music_ducked = false;
     frame.map = MapKind::Space;
     frame.ascent = 0.0;
     frame.engine = 0.0;
-    assert!(render(&mut mixer, frame, 15) < 0.000001);
-    frame.music_suspended = true;
-    render(&mut mixer, frame, 1);
-    frame.music_suspended = false;
-    assert!(render(&mut mixer, frame, 15) < 0.000001);
-    assert!(render(&mut mixer, frame, 40) > 0.001);
+    assert!((0.55..0.65).contains(&render(&mut mixer, &mut reference, frame, 15)));
+    frame.music_ducked = true;
+    render(&mut mixer, &mut reference, frame, 1);
+    frame.music_ducked = false;
+    assert!((0.55..0.65).contains(&render(&mut mixer, &mut reference, frame, 15)));
+    assert!((render(&mut mixer, &mut reference, frame, 40) - 1.0).abs() < 0.01);
     assert!(playlist(Cue::Flight, MapKind::Space).contains(&mixer.track()));
     assert_eq!(mixer.transitions, 1);
 
-    frame.music_suspended = true;
-    render(&mut mixer, frame, 20);
+    frame.music_ducked = true;
+    render(&mut mixer, &mut reference, frame, 20);
     frame.cue = Cue::Menu;
-    assert!(render(&mut mixer, frame, 20) > 0.001);
+    assert!((render(&mut mixer, &mut reference, frame, 20) - 1.0).abs() < 0.01);
 }
