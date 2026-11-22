@@ -142,6 +142,26 @@ impl Renderer {
         else {
             return;
         };
+        self.raster_projected(
+            camera,
+            points,
+            [(a, da), (b, db), (c, dc)],
+            color,
+            stone,
+            cloud,
+        );
+    }
+    /// 已投影三角形的光栅化：`projected` 为各顶点的屏幕坐标与深度
+    pub(super) fn raster_projected(
+        &mut self,
+        camera: &Camera,
+        points: [Vec3; 3],
+        projected: [(Vec2, f32); 3],
+        color: u32,
+        stone: bool,
+        cloud: Option<super::clouds::CloudSurface<'_>>,
+    ) {
+        let [(a, da), (b, db), (c, dc)] = projected;
         let area = (b - a).perp_dot(c - a);
         if area.abs() < 0.1 {
             return;

@@ -12,6 +12,14 @@ pub(super) struct CloudSurface<'a> {
     pub relief_light: Vec4,
 }
 
+/// 一个云网格顶点本帧的世界坐标、是否在近裁剪面前方与投影结果
+#[derive(Clone, Copy)]
+pub(super) struct CachedVertex {
+    point: Vec3,
+    in_front: bool,
+    projected: Option<(Vec2, f32)>,
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct CloudPixel {
     pub depth: f32,
@@ -135,12 +143,42 @@ impl Renderer {
             visible.push((cloud, center, scale, level, depth));
         }
         visible.sort_unstable_by(|a, b| b.4.total_cmp(&a.4));
+        // 与 surface 相同的近裁剪面，用于判断三角形能否跳过裁剪直接光栅化
+        let near = camera.position
+            + camera.forward
+                * if camera.q > 0.00001 {
+                    -0.879 / camera.q
+                } else {
+                    -1e8
+                }
+                .max(self.near_depth);
+        let mut cache = std::mem::take(&mut self.cloud_vertices);
         for (cloud, center, scale, level, depth) in visible {
             let fog = ((depth - far * 0.7) / (far * 0.3)).clamp(0.0, 1.0);
             let palette: [u32; 8] =
                 std::array::from_fn(|i| mix(mix(dark, light, i as f32 / 7.0), haze, fog));
             let local_eye = (eye - center) / scale;
-            for face in &cloud.shape.faces[level] {
+            // 共享顶点按需变换、投影一次，供相邻的面复用
+            cache.clear();
+            cache.resize(cloud.shape.vertices[level].len(), None);
+            let vertex = |i: u32| {
+                let p = cloud.shape.vertices[level][i as usize];
+                let point = center
+                    + if flight.dynamic_clouds {
+                        p
+                    } else {
+                        p.with_z(0.0)
+                    } * scale;
+                CachedVertex {
+                    point,
+                    in_front: (point - near).dot(camera.forward) >= 0.0,
+                    projected: camera.project(point).map(|(p, depth, _)| (p, depth)),
+                }
+            };
+            for (face, index) in cloud.shape.faces[level]
+                .iter()
+                .zip(&cloud.shape.indices[level])
+            {
                 let toward = if camera.q > 0.00001 {
                     local_eye - face.points[0]
                 } else {
@@ -153,44 +191,52 @@ impl Renderer {
                 } {
                     continue;
                 }
-                self.surface(
-                    camera,
-                    face.points.map(|p| {
-                        center
-                            + if flight.dynamic_clouds {
-                                p
+                let vertices = index.map(|i| *cache[i as usize].get_or_insert_with(|| vertex(i)));
+                let points = vertices.map(|v| v.point);
+                let surface = |light: Vec3| CloudSurface {
+                    attributes: std::array::from_fn(|i| {
+                        let normal =
+                            Vec3::from_array(face.shade_normals[i].map(|v| v as f32 / 127.0));
+                        let shade = (normal.dot(light) * 0.7 + 0.3).clamp(0.0, 1.0);
+                        let thickness = face.thickness[i]
+                            * scale
+                            * if cloud.shape.layer {
+                                layer_strength * opacity
                             } else {
-                                p.with_z(0.0)
-                            } * scale
+                                1.0
+                            };
+                        let texture = (face.points[i].truncate() + cloud.shape.extent) / 4.0;
+                        Vec4::new(thickness, shade, texture.x, texture.y)
                     }),
-                    0,
-                    false,
-                    Some(CloudSurface {
-                        attributes: std::array::from_fn(|i| {
-                            let normal =
-                                Vec3::from_array(face.shade_normals[i].map(|v| v as f32 / 127.0));
-                            let shade =
-                                (normal.dot(self.light.direction) * 0.7 + 0.3).clamp(0.0, 1.0);
-                            let thickness = face.thickness[i]
-                                * scale
-                                * if cloud.shape.layer {
-                                    layer_strength * opacity
-                                } else {
-                                    1.0
-                                };
-                            let texture = (face.points[i].truncate() + cloud.shape.extent) / 4.0;
-                            Vec4::new(thickness, shade, texture.x, texture.y)
-                        }),
-                        palette: &palette,
-                        pixel_texture: flight.cloud_pixel_texture,
-                        relief: if flight.dynamic_clouds && face.normal.z > 0.0 {
-                            &cloud.shape.relief
-                        } else {
-                            &[]
-                        },
-                        relief_light: (self.light.direction * 0.7).extend(-0.18) / 127.0,
-                    }),
-                );
+                    palette: &palette,
+                    pixel_texture: flight.cloud_pixel_texture,
+                    relief: if flight.dynamic_clouds && face.normal.z > 0.0 {
+                        &cloud.shape.relief
+                    } else {
+                        &[]
+                    },
+                    relief_light: (light * 0.7).extend(-0.18) / 127.0,
+                };
+                // 没有曲面变形且三个顶点都在近裁剪面前方时，surface 会直接投影光栅化，这里改用缓存的投影
+                if self.warp.is_none() && vertices.iter().all(|v| v.in_front) {
+                    self.triangles = self.triangles.wrapping_add(1);
+                    let [Some(a), Some(b), Some(c)] = vertices.map(|v| v.projected) else {
+                        continue;
+                    };
+                    // 光栅化会放弃的面（面积过小、整体落在本条带左右两侧之外）不必计算顶点属性
+                    let (left, right) = (a.0.x.min(b.0.x).min(c.0.x), a.0.x.max(b.0.x).max(c.0.x));
+                    if (b.0 - a.0).perp_dot(c.0 - a.0).abs() < 0.1
+                        || right < -1.0
+                        || left >= self.w as f32
+                    {
+                        continue;
+                    }
+                    let surface = surface(self.light.direction);
+                    self.raster_projected(camera, points, [a, b, c], 0, false, Some(surface));
+                } else {
+                    let surface = surface(self.light.direction);
+                    self.surface(camera, points, 0, false, Some(surface));
+                }
             }
             for at in self.cloud_touched.drain(..) {
                 let sample = &mut self.cloud_pixels[at];
@@ -198,6 +244,7 @@ impl Renderer {
                 sample.depth = f32::INFINITY;
             }
         }
+        self.cloud_vertices = cache;
         if immersion > 0.0 {
             let color = mix(dark, light, 0.45);
             for (x, &(y0, y1)) in self.visible.iter().enumerate() {

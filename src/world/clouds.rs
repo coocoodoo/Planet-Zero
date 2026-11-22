@@ -15,6 +15,10 @@ pub struct CloudShape {
     pub thin: bool,
     pub layer: bool,
     pub faces: [Vec<CloudFace>; 3],
+    /// 每个细节层级去重后的顶点，与 `faces` 一一对应的顶点下标；
+    /// 渲染时共享顶点只变换、投影一次
+    pub vertices: [Vec<Vec3>; 3],
+    pub indices: [Vec<[u32; 3]>; 3],
     // 云顶 64×64 纹理，前三项为法线偏移，末项为凹处遮蔽，分量缩放 127 倍
     pub relief: Vec<[i8; 4]>,
 }
@@ -138,11 +142,14 @@ impl CloudShape {
             faces.shrink_to_fit();
             faces
         });
+        let (vertices, indices) = shared_vertices(&faces);
         Self {
             extent,
             thin,
             layer,
             faces,
+            vertices,
+            indices,
             relief: Vec::new(),
         }
     }
@@ -204,6 +211,31 @@ impl CloudShape {
             });
         }
     }
+}
+
+/// 按坐标的二进制位去重：只有完全相同的顶点才共享，变换与投影结果与逐面计算一致
+#[allow(clippy::type_complexity)]
+fn shared_vertices(faces: &[Vec<CloudFace>; 3]) -> ([Vec<Vec3>; 3], [Vec<[u32; 3]>; 3]) {
+    let mut vertices: [Vec<Vec3>; 3] = Default::default();
+    let mut indices: [Vec<[u32; 3]>; 3] = Default::default();
+    for level in 0..3 {
+        let mut lookup = std::collections::HashMap::new();
+        indices[level] = faces[level]
+            .iter()
+            .map(|face| {
+                face.points.map(|p| {
+                    *lookup
+                        .entry(p.to_array().map(f32::to_bits))
+                        .or_insert_with(|| {
+                            vertices[level].push(p);
+                            vertices[level].len() as u32 - 1
+                        })
+                })
+            })
+            .collect();
+        vertices[level].shrink_to_fit();
+    }
+    (vertices, indices)
 }
 
 fn smooth_normals<'a>(faces: impl Iterator<Item = (&'a mut CloudFace, Vec2)>) {
