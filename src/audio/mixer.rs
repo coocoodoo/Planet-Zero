@@ -509,7 +509,7 @@ impl Mixer {
         }
         self.night += (self.frame.night - self.night) * dt * 0.5;
         let mut gains = [0.0; 2];
-        for d in 0..2 {
+        for (d, gain) in gains.iter_mut().enumerate() {
             let deck = &mut self.decks[d];
             deck.gain = (deck.gain + deck.fade * dt).clamp(0.0, 1.0);
             if deck.fade > 0.0 && deck.gain >= 1.0 {
@@ -521,7 +521,7 @@ impl Mixer {
             }
             // 等功率曲线，交叉过程中总响度保持平稳
             let g = self.decks[d].gain;
-            gains[d] = g * (2.0 - g);
+            *gain = g * (2.0 - g);
         }
         self.clock += dt as f64;
         let smoothing = dt * 65.0;
