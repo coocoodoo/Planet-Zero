@@ -256,6 +256,7 @@ impl Cockpit {
                 instruments(&mut paint, flight, world, network);
             } else {
                 if flight.vehicle == Vehicle::Falcon {
+                    paint.dy += 12;
                     levers(&mut paint, flight);
                 } else if flight.vehicle == Vehicle::Paper {
                     paint.number(108, 164, flight.speed as i32, 3, rgb(83, 103, 94));
@@ -451,7 +452,9 @@ fn instruments(
     network: Option<&crate::world::network::Network>,
 ) {
     if f.vehicle == Vehicle::Falcon {
+        p.dy += 12;
         falcon_instruments(p, f, world, network);
+        p.dy -= 12;
         return;
     }
     let (x, y, accent) = match f.vehicle {
@@ -476,10 +479,10 @@ fn instruments(
     p.dy -= y - 112;
     match f.vehicle {
         Vehicle::Dart => {
-            horizon(p, f, (160, 128), (47, 11), false, accent);
-            p.line(114, 141, 205, 141, crt[3]);
-            p.number(115, 146, f.speed as i32, 3, accent);
-            p.number(177, 146, f.position.z as i32, 4, accent);
+            horizon(p, f, (160, 133), (42, 10), false, accent);
+            p.line(120, 146, 199, 146, crt[3]);
+            p.number(120, 151, f.speed as i32, 3, accent);
+            p.number(182, 151, f.position.z as i32, 4, accent);
             for engine in 0..2 {
                 let x = 236 + engine * 19;
                 let fill = (17.0 * (0.55 + f.boost * 0.45)) as i32;
@@ -537,14 +540,24 @@ fn horizon(
 ) {
     let (s, c) = (f.bank + f.spin).sin_cos();
     let pitch = f.pitch.sin() * 19.0;
+    let digital = f.vehicle == Vehicle::Dart;
     for y in -half.1..=half.1 {
         for x in -half.0..=half.0 {
             if round && x * x + y * y > half.0 * half.0 {
                 continue;
             }
             let height = s * x as f32 + c * y as f32 - pitch;
+            let horizontal = c * x as f32 - s * y as f32;
             let color = if height.abs() < 0.7 {
                 accent
+            } else if digital {
+                if horizontal.abs() < 6.0 && ((height / 5.0).round() * 5.0 - height).abs() < 0.45 {
+                    rgb(73, 148, 174)
+                } else if y % 3 == 0 {
+                    rgb(10, 30, 43)
+                } else {
+                    rgb(7, 23, 35)
+                }
             } else if height > 0.0 {
                 rgb(91, 66, 42)
             } else {
