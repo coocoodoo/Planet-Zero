@@ -195,11 +195,14 @@ impl StarSystem {
             planets,
             space_seed: ((seed >> 8) as u32 & 0x7fff_ffff) | 1,
             station: earth.center() + station_dir * (earth.radius() + 3400.0),
+            // the belt lies out past the station, so the flight there stays clear of the
+            // planet's atmosphere
             asteroid_center: earth.center()
-                + vec3(-station_dir.y, station_dir.x, -station_dir.z * 0.5)
+                + station_dir * (earth.radius() + 4400.0)
+                + vec3(-station_dir.y, station_dir.x, 0.0)
                     .try_normalize()
                     .unwrap_or(Vec3::Y)
-                    * (earth.radius() + 3900.0),
+                    * 1500.0,
             asteroid_count: 26 + rng.below(18),
             market: rng.range(0.8, 1.2),
         }

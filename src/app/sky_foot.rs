@@ -1,5 +1,5 @@
 //! Cardputer Sky on foot: weapons, guard drones, interactions, the weapons view, lore, and the
-//! station armory and contracts. `app::sky` calls into this from its key and frame handlers.
+//! station armory. `app::sky` calls into this from its key and frame handlers.
 use super::*;
 use crate::audio::Sound;
 use crate::flight::heading;
@@ -9,12 +9,12 @@ use crate::sky::combat::{
     Effect, EffectKind, MAX_EFFECTS, MAX_PROJECTILES, PLAYER_RADIUS, Projectile, push_capped,
     ray_sphere, terrain_hit,
 };
-use crate::sky::contracts::{Contract, Goal};
 use crate::sky::drones::{Drone, DroneKind, MAX_DRONES};
 use crate::sky::inventory::Item;
+use crate::sky::missions::Event;
 use crate::sky::props::{self, Prop, PropKind};
 use crate::sky::walker::{Walker, ground};
-use crate::sky::{LOCKER, Location, Overlay, Phase};
+use crate::sky::{LOCKER, Overlay, Phase};
 use glam::{Vec2, Vec3, vec2, vec3};
 
 const CYAN: [u8; 3] = [111, 237, 218];
@@ -36,6 +36,8 @@ pub enum Context {
     Open(Prop),
     Read(Prop),
     Signal(Prop),
+    /// Aboard a station: someone to talk to
+    Talk(usize),
     Swap,
 }
 impl Context {
@@ -45,6 +47,7 @@ impl Context {
             Self::Open(_) => "OPEN",
             Self::Read(_) => "READ",
             Self::Signal(_) => "SIGNAL",
+            Self::Talk(_) => "TALK",
             Self::Swap => "SWAP",
         }
     }
@@ -141,6 +144,13 @@ impl App {
     // ----- context key ------------------------------------------------------------------------
 
     pub fn sky_context(&self) -> Context {
+        if self.sky.phase == Phase::Station {
+            // the pad comes first: the traveller's walk passes close by it
+            if self.near_pad() {
+                return Context::Board;
+            }
+            return self.station_listener().map_or(Context::Swap, Context::Talk);
+        }
         let here = self.sky.walker.position;
         if self
             .sky
@@ -171,7 +181,9 @@ impl App {
     }
     pub(super) fn sky_interact(&mut self) {
         match self.sky_context() {
+            Context::Board if self.sky.phase == Phase::Station => self.sky_undock(),
             Context::Board => self.sky_board_ship(),
+            Context::Talk(i) => self.talk(i),
             Context::Open(prop) => self.open_prop(prop),
             Context::Read(prop) => self.read_prop(prop),
             Context::Signal(prop) => self.signal(prop),
@@ -206,6 +218,7 @@ impl App {
                 self.spawn_drone(kind, at);
             }
             self.sky.notice("GUARDIANS AWAKE", RED);
+            self.mission_event(Event::CacheOpened);
             self.sounds.push(Sound::Boss);
             return;
         }
@@ -226,12 +239,14 @@ impl App {
         }
         self.sky.alert.raise(0.15);
         self.sounds.push(Sound::Upgrade);
+        self.mission_event(Event::PodOpened);
     }
     fn read_prop(&mut self, prop: Prop) {
         let lines = crate::sky::lore::fragment(prop.id);
         self.sky.lore = Some((prop.kind.label().to_owned(), lines));
         self.sky.overlay = Overlay::Lore;
         self.sounds.push(Sound::Scan);
+        self.mission_event(Event::Read);
         if self.sky.scanned.insert(prop.id ^ 0x10e) {
             self.sky.credits += 50;
             self.sky.data += 3;
@@ -261,6 +276,7 @@ impl App {
         found.retain(|p| p.kind.is_poi() && p.id != prop.id);
         let n = found.len();
         self.sky.marked = found;
+        self.mission_event(Event::BeaconSignalled);
         if self.sky.scanned.insert(prop.id ^ 0xbea) {
             self.sky.credits += 30;
         }
@@ -617,11 +633,7 @@ impl App {
         self.sounds
             .push(Sound::Explosion(drone.kind != DroneKind::Scout));
         self.sky.drones_destroyed += 1;
-        if let Some(c) = &mut self.sky.contract
-            && let Goal::Drones(_) = c.goal
-        {
-            c.progress += 1;
-        }
+        self.mission_event(Event::DroneDown);
         let rng = &mut self.sky.combat_rng;
         let credits = (spec.credits as f32 * loot) as u32;
         let iron = (rng.range(4.0, 10.0) * loot) as u16;
@@ -922,7 +934,7 @@ impl App {
 
     // ----- station ----------------------------------------------------------------------------
 
-    /// On docking: new armory stock and a contract offer.
+    /// On docking: new armory stock.
     pub(super) fn stock_station(&mut self) {
         self.sky.visits += 1;
         let seed = self.sky.system.seed ^ (self.sky.visits as u64).wrapping_mul(0x9e37_79b9);
@@ -934,45 +946,6 @@ impl App {
             };
             Some(Weapon::roll(seed ^ k as u64, floor, 0.0))
         });
-    }
-    /// Contract shown at the station: the active one, or today's offer.
-    pub fn station_contract(&self) -> Contract {
-        self.sky
-            .contract
-            .unwrap_or_else(|| Contract::offer(&self.sky.system, self.sky.visits))
-    }
-    pub fn contract_done(&self, c: &Contract) -> bool {
-        match c.goal {
-            Goal::Deliver { item, amount } => self.sky.inventory.count(item) >= amount,
-            _ => c.progress >= c.target(),
-        }
-    }
-    pub(super) fn contract_row(&mut self) {
-        let Some(c) = self.sky.contract else {
-            let offer = self.station_contract();
-            self.sky.contract = Some(offer);
-            self.sky.notice("CONTRACT ACCEPTED", CYAN);
-            self.sounds.push(Sound::Confirm);
-            return;
-        };
-        if !self.contract_done(&c) {
-            self.sky.notice(
-                format!("{} {}/{}", c.text(&self.sky.system), c.progress, c.target()),
-                WHITE,
-            );
-            return;
-        }
-        if let Goal::Deliver { item, amount } = c.goal {
-            self.sky.inventory.take(item, amount);
-        }
-        self.sky.credits += c.reward;
-        self.sky
-            .notice(format!("CONTRACT DONE +{} CR", c.reward), GOLD);
-        if c.weapon {
-            self.give_weapon(Weapon::roll(c.seed as u64, Rarity::Uncommon, 0.5));
-        }
-        self.sky.contract = None;
-        self.sounds.push(Sound::Upgrade);
     }
     pub(super) fn buy_armory(&mut self, k: usize) {
         let Some(weapon) = self.sky.armory[k] else {
@@ -993,17 +966,6 @@ impl App {
         self.sky.armory[k] = None;
         self.give_weapon(weapon);
     }
-    /// Count a new flora scan toward a scanning contract.
-    pub(super) fn contract_scan(&mut self, flora: u16) {
-        let here = (self.sky.system.id, self.sky.location);
-        if let Some(c) = &mut self.sky.contract
-            && let Goal::Flora { planet, .. } = c.goal
-            && here == (c.system, Location::Planet(planet as usize))
-        {
-            c.progress += flora;
-        }
-    }
-
     // ----- scene ------------------------------------------------------------------------------
 
     /// Drones, projectiles and bursts for the renderer.
@@ -1244,28 +1206,5 @@ mod tests {
         app.tilt_aim = false;
         app.sky_tilt(0.9, 0.9, true);
         assert_eq!(app.sky.aim, Vec2::ZERO);
-    }
-    #[test]
-    fn contracts_are_accepted_progress_and_pay() {
-        let mut app = on_foot();
-        app.sky.contract = Some(Contract {
-            system: app.sky.system.id,
-            goal: Goal::Drones(1),
-            reward: 500,
-            weapon: true,
-            seed: 3,
-            progress: 0,
-        });
-        drone_ahead(&mut app, DroneKind::Scout, 10.0);
-        let stats = Weapon::starter().stats();
-        app.damage_drone(0, 999.0, &stats);
-        let c = app.sky.contract.unwrap();
-        assert!(app.contract_done(&c));
-        let credits = app.sky.credits;
-        let weapons = app.sky.loadout.count();
-        app.contract_row();
-        assert!(app.sky.credits >= credits + 500);
-        assert_eq!(app.sky.loadout.count(), weapons + 1);
-        assert!(app.sky.contract.is_none());
     }
 }

@@ -35,8 +35,13 @@
 //! | `face-drone` | on foot: turn and look at the nearest drone with the arrow keys |
 //! | `fight N S` | on foot: face the nearest drone and hold 5 until N drones are destroyed |
 //! | `goto-poi KIND S` | on foot: walk to the nearest point of interest of a kind (cache, ruin…) |
-//! | `goto-ship` | on foot: turn and walk to the parked ship with the arrow keys |
+//! | `goto-ship` | on foot: turn and walk to the parked ship (aboard a station: to the landing pad) |
 //! | `aim` | on foot: walk to the nearest prop with the arrow keys until it is under the crosshair |
+//! | `talk ROLE` | aboard a station: walk to someone (agent, trader, outfitter, technician, traveller) and press 7 |
+//! | `accept KIND` | on the mission board: move down to an offer of a kind (bounty, asteroid…) and press 4 |
+//! | `claim` | in the mission panel: open ACTIVE and press 4 on every finished mission |
+//! | `dogfight N S` | in space: steer at the nearest pirate by tilting the device and hold 5 until N are down |
+//! | `mine-asteroids N S` | in space: steer at the nearest asteroid by tilting and hold 5 until N are mined |
 //!
 //! KEY is a key cap name: `0`–`9`, `a`–`z`, `ok`/`enter`, `esc`, `space`, `tab`, `shift`, `alt`,
 //! `f1`, or `up`/`down`/`left`/`right` (sent as the physical F/X/Z/C keys).
@@ -304,6 +309,7 @@ impl Device {
                 Phase::Takeoff { .. } => "takeoff",
                 Phase::Docking { .. } => "docking",
                 Phase::Docked => "docked",
+                Phase::Station => "station",
             }
             .into(),
             "overlay" => format!("{:?}", sky.overlay).to_lowercase(),
@@ -333,7 +339,12 @@ impl Device {
             "weapons" => sky.loadout.count() as f32,
             "alert" => sky.alert.level,
             "suit" => sky.vitals.suit,
-            "contract" => f32::from(sky.contract.is_some()),
+            "missions" => sky.missions.len() as f32,
+            "missions_done" => sky.missions_done as f32,
+            "standing" => sky.standing as f32,
+            "pirates" => sky.pirates.len() as f32,
+            "pirates_down" => sky.pirates_down as f32,
+            "asteroids_mined" => sky.asteroids_mined as f32,
             "discoveries" => sky.discoveries as f32,
             "systems" => sky.visited.len() as f32,
             "altitude" => {
@@ -506,6 +517,41 @@ impl Device {
                 }
             }
         }
+    }
+    /// Press and release a key over a few frames.
+    fn tap(&mut self, code: u16) {
+        self.key(code, 1);
+        self.frame();
+        self.key(code, 0);
+        self.wait(0.15);
+    }
+    /// One frame of steering the ship toward a point by tilting the device, as a player would.
+    fn steer_at(&mut self, target: Vec3) -> bool {
+        let camera = flight_club::flight::Camera::new(&self.game.flight, WIDTH, HEIGHT);
+        let (roll, pitch, ahead) = match camera.project(target) {
+            Some((p, depth, _)) if depth > 0.0 && (0.0..320.0).contains(&p.x) => {
+                let (dx, dy) = (p.x - 160.0, p.y - 73.0);
+                // past the gyroscope's dead zone, in proportion to the error
+                let tilt = |e: f32, max: f32| {
+                    if e.abs() < 2.0 {
+                        0.0
+                    } else {
+                        e.signum() * (e.abs() * 0.6).clamp(6.0, max)
+                    }
+                };
+                (
+                    tilt(dx, 30.0),
+                    tilt(-dy, 25.0),
+                    dx.abs() < 12.0 && dy.abs() < 12.0,
+                )
+            }
+            _ => (30.0, 0.0, false),
+        };
+        self.tilt_from = self.tilt;
+        self.tilt_to = (roll, pitch);
+        self.tilt_time = (0.0, 0.15);
+        self.frame();
+        ahead
     }
     /// Walk with the arrow keys (as the player would) until within `stop` units of `target`.
     fn walk_to(&mut self, target: Vec3, stop: f32, seconds: f32) {
@@ -838,6 +884,12 @@ impl Device {
                         extra / frames as u64
                     );
                 }
+                "goto-ship" if self.field("phase") == "station" => {
+                    // aboard a station the ship waits on the landing pad
+                    self.walk_to(flight_club::sky::interior::ORIGIN, 10.0, number(1, 30.0));
+                    let ok = self.game.near_pad();
+                    self.check(ok, "walked back to the landing pad".into());
+                }
                 "goto-ship" => {
                     let Some(ship) = self.game.sky.parked.map(|p| p.position) else {
                         self.check(false, "goto-ship: no parked ship".into());
@@ -902,6 +954,174 @@ impl Device {
                         }
                     }
                     self.check(aimed, "a prop is under the crosshair".into());
+                }
+                "talk" => {
+                    let role = arg(1).to_lowercase();
+                    let people = self.game.station_people();
+                    let Some((i, npc)) = people
+                        .iter()
+                        .enumerate()
+                        .find(|(_, p)| format!("{:?}", p.role).to_lowercase() == role)
+                    else {
+                        self.check(false, format!("talk: no {role} aboard"));
+                        continue;
+                    };
+                    println!("     walking to {} the {role}", npc.name);
+                    // the traveller walks a loop, so head for where they are now
+                    for _ in 0..(number(2, 30.0) * 4.0) as usize {
+                        if self.game.station_listener() == Some(i) {
+                            break;
+                        }
+                        let people = self.game.station_people();
+                        let spot = flight_club::sky::interior::talk_spot(&people[i]);
+                        self.walk_to(spot, 1.5, 0.25);
+                    }
+                    if self.game.station_listener() == Some(i) {
+                        self.key(8, 1);
+                        self.frame();
+                        self.key(8, 0);
+                        self.frame();
+                    }
+                    let ok = self.field("overlay") == "talk" && self.game.sky.talking == i;
+                    self.check(ok, format!("talking to the {role}"));
+                }
+                "accept" => {
+                    let kind = arg(1).to_uppercase().replace('_', " ");
+                    let before = self.game.sky.missions.len();
+                    let Some(i) = self
+                        .game
+                        .sky
+                        .board
+                        .iter()
+                        .position(|m| m.kind.title().contains(kind.as_str()))
+                    else {
+                        self.check(false, format!("accept: no {kind} offer on the board"));
+                        continue;
+                    };
+                    if self.game.sky.mission_tab != 0 {
+                        self.tap(7);
+                    }
+                    let mut guard = 0;
+                    while self.game.sky.mission_select != i && guard < 12 {
+                        self.tap(45);
+                        guard += 1;
+                    }
+                    self.tap(5);
+                    let ok = self.game.sky.missions.len() == before + 1;
+                    self.check(ok, format!("accepted a {kind} mission"));
+                }
+                "claim" => {
+                    let before = self.game.sky.missions_done;
+                    if self.game.sky.mission_tab != 1 {
+                        self.tap(7);
+                    }
+                    for _ in 0..3 {
+                        let sky = &self.game.sky;
+                        let Some(i) = sky.missions.iter().position(|m| m.done(&sky.inventory))
+                        else {
+                            break;
+                        };
+                        let mut guard = 0;
+                        while self.game.sky.mission_select != i && guard < 6 {
+                            self.tap(45);
+                            guard += 1;
+                        }
+                        self.tap(5);
+                        self.wait(0.3);
+                    }
+                    let done = self.game.sky.missions_done;
+                    self.check(
+                        done > before,
+                        format!("claimed {} mission(s)", done - before),
+                    );
+                }
+                "dogfight" => {
+                    let goal = self.game.sky.pirates_down + number(1, 1.0) as u32;
+                    let limit = (number(2, 60.0) * FPS) as usize;
+                    let mut frames = 0;
+                    while self.game.sky.pirates_down < goal && frames < limit {
+                        let here = self.game.flight.position;
+                        let target = self
+                            .game
+                            .sky
+                            .pirates
+                            .iter()
+                            .map(|p| p.position)
+                            .min_by(|a, b| a.distance(here).total_cmp(&b.distance(here)));
+                        frames += 1;
+                        let Some(target) = target else {
+                            self.key(6, 0);
+                            self.frame();
+                            continue;
+                        };
+                        self.steer_at(target);
+                        // fire when the pirate is inside the cannons' aim assist, and let the
+                        // guns cool before they overheat, as a player would
+                        let forward = self.game.flight.axes()[1];
+                        let d = target.distance(here);
+                        let lined = (target - here).normalize_or_zero().dot(forward) > 0.94;
+                        let v = self.game.sky.vitals;
+                        let cool = v.heat < 0.8 && v.overheat <= 0.0;
+                        self.key(6, i32::from(lined && d < 1000.0 && cool));
+                    }
+                    self.key(6, 0);
+                    self.tilt_from = self.tilt;
+                    self.tilt_to = (0.0, 0.0);
+                    self.tilt_time = (0.0, 0.4);
+                    self.wait(0.5);
+                    let done = self.game.sky.pirates_down;
+                    self.check(
+                        done >= goal,
+                        format!(
+                            "downed {done} pirates (goal {goal}) in {:.1}s",
+                            frames as f32 / FPS
+                        ),
+                    );
+                }
+                "mine-asteroids" => {
+                    let goal = self.game.sky.asteroids_mined + number(1, 1.0) as u32;
+                    let limit = (number(2, 60.0) * FPS) as usize;
+                    let mut frames = 0;
+                    let mut retreat = false;
+                    while self.game.sky.asteroids_mined < goal && frames < limit {
+                        let here = self.game.flight.position;
+                        let sky = &self.game.sky;
+                        let target = (0..sky.system.asteroid_count)
+                            .filter(|i| !sky.destroyed.contains(i))
+                            .map(|i| sky.system.asteroid(i).0)
+                            .min_by(|a, b| a.distance(here).total_cmp(&b.distance(here)));
+                        frames += 1;
+                        let Some(target) = target else { break };
+                        // too close to turn onto it: fly on and come round again
+                        let d = target.distance(here);
+                        let aimed = self.game.space_aim_rock();
+                        if d < 220.0 && !aimed {
+                            retreat = true;
+                        } else if d > 480.0 {
+                            retreat = false;
+                        }
+                        if retreat {
+                            let on = here + self.game.flight.axes()[1] * 1000.0;
+                            self.steer_at(on);
+                        } else {
+                            self.steer_at(target);
+                        }
+                        let close = target.distance(here) < 700.0;
+                        self.key(6, i32::from(close && self.game.space_aim_rock()));
+                    }
+                    self.key(6, 0);
+                    self.tilt_from = self.tilt;
+                    self.tilt_to = (0.0, 0.0);
+                    self.tilt_time = (0.0, 0.4);
+                    self.wait(0.5);
+                    let done = self.game.sky.asteroids_mined;
+                    self.check(
+                        done >= goal,
+                        format!(
+                            "mined {done} asteroids (goal {goal}) in {:.1}s",
+                            frames as f32 / FPS
+                        ),
+                    );
                 }
                 other => panic!("line {}: unknown command {other}", n + 1),
             }

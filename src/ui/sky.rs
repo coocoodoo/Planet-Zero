@@ -9,7 +9,9 @@ use crate::app::sky::{BOARD_DISTANCE, CROSSHAIR, DOCK_DISTANCE, LAND_ALTITUDE, S
 use crate::app::{HEIGHT, WIDTH};
 use crate::keys::BAR;
 use crate::sky::combat::EffectKind;
+use crate::sky::interior::{self, Role};
 use crate::sky::inventory::{Item, RECIPES};
+use crate::sky::missions;
 use crate::sky::props::Prop;
 use crate::sky::station::{self, Upgrade};
 use crate::sky::{Location, Overlay, Phase};
@@ -43,14 +45,24 @@ pub(super) fn draw(app: &mut App) {
     };
     match app.sky.overlay {
         Overlay::None => match app.sky.phase {
-            Phase::OnFoot => on_foot(&mut c, app),
-            _ => flying(&mut c, app),
+            Phase::OnFoot => {
+                on_foot(&mut c, app);
+                tracker(&mut c, app, 68);
+            }
+            Phase::Station => station_hud(&mut c, app),
+            _ => {
+                flying(&mut c, app);
+                space_hud(&mut c, app);
+                tracker(&mut c, app, 96);
+            }
         },
         Overlay::Galaxy => galaxy(&mut c, app),
         Overlay::System => system(&mut c, app),
         Overlay::Inventory => inventory(&mut c, app),
         Overlay::Station => station_panel(&mut c, app),
         Overlay::Lore => lore_panel(&mut c, app),
+        Overlay::Talk => talk_panel(&mut c, app),
+        Overlay::Missions => missions_panel(&mut c, app),
     }
     notices(&mut c, app);
     key_bar(&mut c, app, &keys(app));
@@ -108,12 +120,65 @@ fn keys(app: &App) -> [Key; 5] {
             key("MAP", Icon::Map, true),
             key("CLOSE", Icon::Close, true),
         ],
+        Overlay::Talk => {
+            let people = app.station_people();
+            let role = people.get(sky.talking).map_or(Role::Traveller, |n| n.role);
+            let icon = match role {
+                Role::Agent => Icon::Read,
+                Role::Trader => Icon::Sell,
+                Role::Outfitter => Icon::Fire,
+                Role::Technician => Icon::Upgrade,
+                Role::Traveller => Icon::Talk,
+            };
+            [
+                key(
+                    role.service(),
+                    icon,
+                    role != Role::Traveller || !sky.traveller_gift,
+                ),
+                key("CHAT", Icon::Talk, true),
+                BLANK,
+                BLANK,
+                key("LEAVE", Icon::Close, true),
+            ]
+        }
+        Overlay::Missions => {
+            let board = sky.mission_tab == 0;
+            let primary = if board {
+                key(
+                    "ACCEPT",
+                    Icon::Confirm,
+                    !sky.board.is_empty() && sky.missions.len() < missions::MAX_ACTIVE,
+                )
+            } else {
+                let done = sky
+                    .missions
+                    .get(sky.mission_select)
+                    .is_some_and(|m| m.done(&sky.inventory));
+                key(
+                    "CLAIM",
+                    Icon::Confirm,
+                    done && app.sky.phase == Phase::Station,
+                )
+            };
+            [
+                primary,
+                key("ABANDON", Icon::Scrap, !board && !sky.missions.is_empty()),
+                key(if board { "ACTIVE" } else { "BOARD" }, Icon::Grid, true),
+                BLANK,
+                key("CLOSE", Icon::Close, true),
+            ]
+        }
         Overlay::Station => [
             key("SELL", Icon::Sell, true),
             key("BUY", Icon::Buy, true),
             key("UPGRADE", Icon::Upgrade, true),
             key("OK", Icon::Confirm, true),
-            key("UNDOCK", Icon::Undock, true),
+            if sky.phase == Phase::Station {
+                key("LEAVE", Icon::Close, true)
+            } else {
+                key("UNDOCK", Icon::Undock, true)
+            },
         ],
         Overlay::None => match sky.phase {
             Phase::OnFoot => {
@@ -124,6 +189,7 @@ fn keys(app: &App) -> [Key; 5] {
                     Context::Read(_) => Icon::Read,
                     Context::Signal(_) => Icon::Signal,
                     Context::Swap => Icon::Swap,
+                    Context::Talk(_) => Icon::Talk,
                 };
                 let swap_ready = sky.loadout.equipped.iter().flatten().count() > 1;
                 let ready =
@@ -140,6 +206,21 @@ fn keys(app: &App) -> [Key; 5] {
                     key("BAG", Icon::Bag, true),
                 ]
             }
+            Phase::Station => {
+                let context = app.sky_context();
+                let near = match context {
+                    Context::Talk(_) => key("TALK", Icon::Talk, true),
+                    Context::Board => key("UNDOCK", Icon::Board, true),
+                    _ => key("TALK", Icon::Talk, false),
+                };
+                [
+                    key("LOG", Icon::Read, true),
+                    BLANK,
+                    BLANK,
+                    near,
+                    key("BAG", Icon::Bag, true),
+                ]
+            }
             Phase::Flying => {
                 let third = if sky.location == Location::Space {
                     key(if sky.autodock { "AUTO" } else { "DOCK" }, Icon::Dock, true)
@@ -148,11 +229,13 @@ fn keys(app: &App) -> [Key; 5] {
                 };
                 [
                     key("SCAN", Icon::Scan, true),
-                    key(
-                        "MINE",
-                        Icon::Mine,
-                        sky.location == Location::Space && sky.vitals.tool_ready(),
-                    ),
+                    if sky.location != Location::Space {
+                        key("FIRE", Icon::Fire, false)
+                    } else if app.space_aim_rock() {
+                        key("MINE", Icon::Mine, sky.vitals.tool_ready())
+                    } else {
+                        key("FIRE", Icon::Fire, sky.vitals.overheat <= 0.0)
+                    },
                     third,
                     key("MAP", Icon::Map, true),
                     key("BAG", Icon::Bag, true),
@@ -373,6 +456,10 @@ fn marker(
             base.y as i32,
             color,
         );
+    }
+    // the left edge belongs to the flight panel; its arrow speaks for itself
+    if tip.x < 80.0 && tip.y < 110.0 {
+        return;
     }
     let w = Canvas::osd_width(label);
     let at = tip - v * 14.0;
@@ -784,7 +871,7 @@ fn on_foot(c: &mut Canvas, app: &App) {
         }
     }
     let prompt = match context {
-        Context::Swap => None,
+        Context::Swap | Context::Talk(_) => None,
         Context::Board => Some("7 BOARD SHIP".to_owned()),
         Context::Open(p) | Context::Read(p) | Context::Signal(p) => {
             Some(format!("7 {} {}", context.label(), p.kind.label()))
@@ -1249,24 +1336,14 @@ fn inventory(c: &mut Canvas, app: &App) {
             &format!("DISCOVERIES {}", sky.discoveries),
             MUTED,
         );
-        let line = match sky.contract {
-            Some(contract) => {
-                let done = app.contract_done(&contract);
-                (
-                    format!(
-                        "CONTRACT {}/{}",
-                        contract.progress.min(contract.target()),
-                        contract.target()
-                    ),
-                    if done { GOLD } else { CYAN },
-                )
-            }
+        let rank = missions::RANKS[missions::rank(sky.standing)].0;
+        let line = match sky.missions.first() {
+            Some(m) => (
+                missions::tracker(m, &sky.inventory),
+                if m.done(&sky.inventory) { GOLD } else { CYAN },
+            ),
             None => (
-                format!(
-                    "SYSTEMS {}  DRONES {}",
-                    sky.visited.len(),
-                    sky.drones_destroyed
-                ),
+                format!("RANK {rank}  JOBS DONE {}", sky.missions_done),
                 MUTED,
             ),
         };
@@ -1405,24 +1482,6 @@ fn station_panel(c: &mut Canvas, app: &App) {
             }
         }
         1 => {
-            let contract = app.station_contract();
-            let text = contract.text(&sky.system);
-            let (label, value, color) = match sky.contract {
-                None => (
-                    format!("NEW: {text}"),
-                    format!("+{}", contract.reward),
-                    CYAN,
-                ),
-                Some(c) if app.contract_done(&c) => {
-                    (format!("CLAIM: {text}"), format!("+{}", c.reward), GOLD)
-                }
-                Some(c) => (
-                    format!("ACTIVE: {text}"),
-                    format!("{}/{}", c.progress.min(c.target()), c.target()),
-                    MUTED,
-                ),
-            };
-            rows.push((label, value, color));
             for weapon in sky.armory {
                 match weapon {
                     Some(w) => {
@@ -1494,4 +1553,268 @@ fn lore_panel(c: &mut Canvas, app: &App) {
         "SURVEY DATA RECORDED",
         MUTED,
     );
+}
+
+/// First active missions in the corner of the HUD.
+fn tracker(c: &mut Canvas, app: &App, y: i32) {
+    for (i, m) in app.sky.missions.iter().take(2).enumerate() {
+        let done = m.done(&app.sky.inventory);
+        let text = missions::tracker(m, &app.sky.inventory);
+        c.osd(
+            4,
+            y + i as i32 * 9,
+            &text,
+            if done { GOLD } else { [150, 200, 210] },
+        );
+    }
+}
+
+/// Pirates, the asteroid field and hits on the ship, over the flight HUD in space.
+fn space_hud(c: &mut Canvas, app: &App) {
+    let sky = &app.sky;
+    if sky.location != Location::Space {
+        return;
+    }
+    let camera = crate::flight::Camera::new(&app.flight, WIDTH, HEIGHT);
+    let ship = app.flight.position;
+    // only the nearest raider (and an ace) is named, so labels do not pile up
+    let nearest = sky
+        .pirates
+        .iter()
+        .map(|p| p.position.distance(ship))
+        .fold(f32::INFINITY, f32::min);
+    for p in &sky.pirates {
+        let d = p.position.distance(ship);
+        let named = p.ace || d <= nearest;
+        let label = if p.ace {
+            format!("{} {}", p.name, distance_label(d))
+        } else {
+            format!("RAIDER {}", distance_label(d))
+        };
+        match camera.project(p.position) {
+            Some((q, depth, _))
+                if depth > 0.0 && (4.0..316.0).contains(&q.x) && (20.0..124.0).contains(&q.y) =>
+            {
+                let hp = (p.health / p.max_health).clamp(0.0, 1.0);
+                let (x, y) = (q.x as i32, q.y as i32);
+                c.rect(x - 9, y - 9, 18, 2, [70, 20, 26]);
+                c.rect(x - 9, y - 9, (hp * 18.0) as i32, 2, RED);
+                for (dx, dy) in [(-6, -6), (4, -6), (-6, 4), (4, 4)] {
+                    c.rect(x + dx, y + dy, 3, 1, RED);
+                }
+                if named {
+                    c.osd(
+                        x - Canvas::osd_width(&label) / 2,
+                        y + 8,
+                        &label,
+                        if p.ace { GOLD } else { RED },
+                    );
+                }
+            }
+            _ => marker(c, &camera, p.position, if named { &label } else { "" }, RED),
+        }
+    }
+    if !sky.pirates.is_empty() && (sky.time * 2.0).fract() < 0.6 {
+        centered(c, 34, "PIRATES", RED);
+    }
+    let field = sky.system.asteroid_center;
+    let d = field.distance(ship);
+    if (1200.0..9000.0).contains(&d) && sky.pirates.is_empty() {
+        marker(
+            c,
+            &camera,
+            field,
+            &format!("ASTEROIDS {}", distance_label(d)),
+            [200, 180, 150],
+        );
+    }
+    if !sky.hurt.is_empty() || sky.vitals.shield < 0.25 {
+        c.rect(0, 0, 2, BAR_TOP, RED);
+        c.rect(318, 0, 2, BAR_TOP, RED);
+    }
+    if sky.hit_marker > 0.0 {
+        for (dx, dy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
+            c.line(160 + dx * 5, 73 + dy * 5, 160 + dx * 8, 73 + dy * 8, WHITE);
+        }
+    }
+}
+
+/// Walking the station: who is who, what key 7 does.
+fn station_hud(c: &mut Canvas, app: &App) {
+    let sky = &app.sky;
+    let camera = crate::flight::Camera::new(&app.flight, WIDTH, HEIGHT);
+    c.osd(4, 4, &format!("{} STATION", sky.system.name), CYAN);
+    let rank = missions::RANKS[missions::rank(sky.standing)].0;
+    c.osd(4, 13, &format!("GUILD {rank}"), MUTED);
+    credits(c, app);
+    heading_tape(c, sky.walker.yaw);
+    let here = sky.walker.position;
+    for npc in app.station_people() {
+        let head = npc.position + Vec3::Z * 3.2;
+        if npc.position.distance(here) > 40.0 {
+            continue;
+        }
+        if let Some((p, depth, _)) = camera.project(head)
+            && depth > -3.0
+            && (0.0..320.0).contains(&p.x)
+            && (16.0..124.0).contains(&p.y)
+        {
+            let [r, g, b, _] = npc.role.sign().to_le_bytes();
+            let title = npc.role.title();
+            c.osd(
+                p.x as i32 - Canvas::osd_width(title) / 2,
+                p.y as i32 - 10,
+                title,
+                [r, g, b],
+            );
+            c.osd(
+                p.x as i32 - Canvas::osd_width(&npc.name) / 2,
+                p.y as i32 - 1,
+                &npc.name,
+                WHITE,
+            );
+        }
+    }
+    reticle(c, CROSSHAIR, WHITE);
+    let prompt = match app.sky_context() {
+        Context::Talk(i) => app
+            .station_people()
+            .get(i)
+            .map(|n| format!("7 TALK TO {}", n.role.title())),
+        Context::Board => Some("7 BOARD AND UNDOCK".to_owned()),
+        _ => None,
+    };
+    if let Some(prompt) = prompt {
+        c.osd(160 - Canvas::osd_width(&prompt) / 2, 84, &prompt, CYAN);
+    }
+    tracker(c, app, 26);
+}
+
+/// A conversation: portrait by species, what they say, what they offer.
+fn talk_panel(c: &mut Canvas, app: &App) {
+    let sky = &app.sky;
+    let people = app.station_people();
+    let Some(npc) = people.get(sky.talking) else {
+        return;
+    };
+    let [r, g, b, _] = npc.role.sign().to_le_bytes();
+    panel(c, &format!("{} / {}", npc.role.title(), npc.name));
+    // portrait: the person's voxel bust, turning a little as they talk
+    c.rect(8, 20, 72, 96, [18, 26, 38]);
+    for row in 0..24 {
+        let t = row as f32 / 24.0;
+        c.rect(
+            8,
+            92 + row,
+            72,
+            1,
+            interior_blend([18, 26, 38], [r, g, b], t * 0.18),
+        );
+    }
+    let bust = crate::sky::bust::bust(npc);
+    super::sky_bust::portrait(c, &bust, sky.time, 8, 20, 72, 96);
+    c.osd(8, 120, SPECIES_LABEL[npc.species as usize % 3], MUTED);
+    // words
+    let greeting = interior::greeting(npc, sky.visits);
+    c.osd(90, 24, &format!("\"{greeting}\""), [r, g, b]);
+    if sky.chat > 0 {
+        let line = interior::chat(npc, sky.chat - 1);
+        c.osd(90, 40, &format!("\"{line}\""), WHITE);
+    }
+    let offer = match npc.role {
+        Role::Agent => format!("4 MISSIONS: {} ON THE BOARD", sky.board.len()),
+        Role::Trader => "4 TRADE ELEMENTS AND DATA".to_owned(),
+        Role::Outfitter => "4 WEAPONS FOR SALE".to_owned(),
+        Role::Technician => "4 SHIP AND SUIT UPGRADES".to_owned(),
+        Role::Traveller if sky.traveller_gift => "NOTHING MORE TODAY".to_owned(),
+        Role::Traveller => "4 ASK ABOUT THE ROAD".to_owned(),
+    };
+    c.osd(90, 72, &offer, CYAN);
+    c.osd(90, 84, "5 CHAT", MUTED);
+    if npc.role == Role::Agent {
+        let rank = missions::rank(sky.standing);
+        c.osd(
+            90,
+            100,
+            &format!("GUILD RANK {}", missions::RANKS[rank].0),
+            GOLD,
+        );
+        if let Some(&(_, need)) = missions::RANKS.get(rank + 1) {
+            c.osd(90, 110, &format!("STANDING {}/{need}", sky.standing), MUTED);
+        }
+    }
+}
+
+const SPECIES_LABEL: [&str; 3] = interior::SPECIES;
+
+fn interior_blend(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
+    std::array::from_fn(|i| (a[i] as f32 + (b[i] as f32 - a[i] as f32) * t) as u8)
+}
+
+/// The mission board and your active missions.
+fn missions_panel(c: &mut Canvas, app: &App) {
+    let sky = &app.sky;
+    let rank = missions::RANKS[missions::rank(sky.standing)].0;
+    panel(c, &format!("MISSIONS / GUILD {rank}"));
+    c.osd_right(316, 4, &format!("{} CR", sky.credits), GOLD);
+    let board = sky.mission_tab == 0;
+    let tabs = [
+        format!("BOARD {}", sky.board.len()),
+        format!("ACTIVE {}/{}", sky.missions.len(), missions::MAX_ACTIVE),
+    ];
+    for (i, tab) in tabs.iter().enumerate() {
+        let x = 6 + i as i32 * 90;
+        let active = (i == 0) == board;
+        if active {
+            c.rect(x - 2, 17, Canvas::osd_width(tab) + 4, 10, SELECT);
+        }
+        c.osd(x, 18, tab, if active { GOLD } else { MUTED });
+    }
+    let list = if board { &sky.board } else { &sky.missions };
+    if list.is_empty() {
+        let text = if board {
+            "NO WORK LEFT TODAY"
+        } else if app.sky.phase == Phase::Station {
+            "TALK TO THE MISSION AGENT"
+        } else {
+            "NO ACTIVE MISSIONS"
+        };
+        centered(c, 60, text, MUTED);
+        return;
+    }
+    for (i, m) in list.iter().enumerate().take(6) {
+        let y = 30 + i as i32 * 15;
+        let selected = i == sky.mission_select;
+        if selected {
+            c.rect(4, y - 2, 312, 15, SELECT);
+        }
+        let done = !board && m.done(&sky.inventory);
+        let title = if board {
+            m.kind.title().to_owned()
+        } else {
+            format!("{} {}/{}", m.kind.title(), m.shown(&sky.inventory), m.count)
+        };
+        c.osd(
+            8,
+            y,
+            &title,
+            if done {
+                GOLD
+            } else if selected {
+                WHITE
+            } else {
+                CYAN
+            },
+        );
+        let prize = match m.prize {
+            missions::Prize::Weapon => " +W",
+            missions::Prize::Item(..) => " +I",
+            missions::Prize::None => "",
+        };
+        c.osd_right(312, y, &format!("{}{prize}", m.reward), GOLD);
+        c.osd(14, y + 7, &m.describe(&sky.galaxy), MUTED);
+    }
+    if !board && app.sky.phase != Phase::Station {
+        c.osd(8, 121, "CLAIM REWARDS ABOARD ANY STATION", MUTED);
+    }
 }

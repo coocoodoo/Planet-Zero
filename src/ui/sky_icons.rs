@@ -32,6 +32,7 @@ pub(super) enum Icon {
     Arms,
     Equip,
     Scrap,
+    Talk,
     Blank,
 }
 
@@ -427,6 +428,19 @@ pub(super) fn bitmap(icon: Icon) -> [&'static str; 11] {
             "...#...#...",
             "....###....",
         ],
+        Icon::Talk => [
+            ".#########.",
+            "#.........#",
+            "#.##.#.##.#",
+            "#.........#",
+            "#.#####...#",
+            "#.........#",
+            ".####.####.",
+            ".....##....",
+            ".....#.....",
+            "...........",
+            "...........",
+        ],
         Icon::Blank => [""; 11],
     }
 }
@@ -467,6 +481,7 @@ mod tests {
             Icon::Arms,
             Icon::Equip,
             Icon::Scrap,
+            Icon::Talk,
         ];
         let mut seen = std::collections::HashSet::new();
         for icon in all {

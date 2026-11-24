@@ -112,9 +112,24 @@ own key and gyroscope code with 17 checks plus a save-and-resume script. See `do
 | Arsenal | 7 archetypes, 4 rarities, 16 perks, deterministic from `(archetype, seed, rarity)`; loadout of 3 plus a locker of 6, per-slot heat | `sky/arsenal.rs`, `sky/mod.rs` (`Loadout`) |
 | Combat | Beams, bolts, lances, ballistic mortar, chain arcs; projectiles with splash, ricochet, homing and pierce; a hit trace that honours the aimed prop | `sky/combat.rs`, `app/sky_foot.rs` |
 | Guard drones | Scout, warden, hive; alert level, patrols, line-of-sight fire with a telegraph, suit shield, drops | `sky/drones.rs`, `sky/survival.rs` |
-| Content | Weapon caches, ruins, beacons, lore, station contracts and armory, drone cores, reroll and shield cells, suit and jetpack upgrades | `sky/props.rs`, `sky/lore.rs`, `sky/contracts.rs`, `sky/inventory.rs`, `sky/station.rs` |
+| Content | Weapon caches, ruins, beacons, lore, station armory, drone cores, reroll and shield cells, suit and jetpack upgrades | `sky/props.rs`, `sky/lore.rs`, `sky/inventory.rs`, `sky/station.rs` |
 | UI | Weapon card, radar and alert meter, drone health, hit markers, damage arcs, weapons view, inscription panel, 8 new icons, settings rows | `ui/sky.rs`, `ui/sky_icons.rs`, `ui/menus.rs`, `app/settings.rs` |
-| Save | Version 2 (weapons, locker, contract, counters); version 1 files still load | `sky/save.rs` |
+| Save | Version 2 (weapons, locker, counters); version 1 files still load | `sky/save.rs` |
 
 Verification: 213 tests (desktop) and 224 (device feature) pass, clippy is clean for both, the device
 binary cross-builds, and three emulator scripts pass (`tour.txt`, `continue.txt`, `combat.txt`).
+
+## Version 3: stations aboard, missions, pirates, ship mining
+
+| Part | What exists | Where |
+| --- | --- | --- |
+| Station interior | `Phase::Station`: docking ends on foot in a hangar built on the space map's flat zero plane at `interior::ORIGIN`, far from every body. The walker uses `Walker::step_on` with flat ground and `interior::clamp`; the ship is drawn on the pad as a `Flight` clone. Five people (agent, trader, outfitter, technician, a walking traveller) of one of three original species, drawn as extra triangles | `sky/interior.rs`, `app/sky_space.rs`, `sky/walker.rs` |
+| Missions | 16 kinds, tiers, rewards and prizes; a board of six per visit, three active; event-driven progress (`missions::Event` from scans, kills, landings, arrivals, docking and more); guild standing and ranks. Replaces the v2 single contract | `sky/missions.rs`, `app/sky_space.rs` |
+| Pirates | `Pirate::step` (attack and break-off with a limited turn rate, lead-aimed bolts); random raids every 30 min to 3 h of play (`pirates::RAID_MIN/MAX`, timer saved), bounty and ace waves; drawn as engine aircraft through `render::Extras` ships; ship shield damage and towing | `sky/pirates.rs`, `app/sky_space.rs` |
+| Ship weapons and mining | Key 5 mines the asteroid under the crosshair, otherwise fires cannons with lead and a 20 degree assist; rock kinds (common, rich, rare) with veins; belts out past the station so the flight there stays clear of the atmosphere; regrowth every 300 s | `app/sky_space.rs`, `sky/galaxy.rs` |
+| Voxel portraits | Each person's bust is a 16×12×22 voxel grid built from species and role (`sky::bust`), ray-traced into the talk panel with per-face light, glowing cubes and seams between cubes (`ui::sky_bust`); about 1 ms a frame on a PC, only while talking | `sky/bust.rs`, `ui/sky_bust.rs` |
+| UI | Hangar HUD, talk panel, mission board and log, mission tracker, pirate markers and health, TALK icon, two help pages | `ui/sky.rs`, `ui/sky_icons.rs`, `ui/menus.rs` |
+| Save | Version 3 (missions, standing, missions done, raid timer); versions 1 and 2 still load | `sky/save.rs` |
+
+Emulator: new `talk`, `accept`, `claim`, `dogfight` and `mine-asteroids` commands, and
+`scripts/emulator/station.txt` for the whole loop.

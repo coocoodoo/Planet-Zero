@@ -9,6 +9,7 @@ mod orbit;
 mod osd;
 mod perf;
 mod sky;
+mod sky_bust;
 mod sky_icons;
 use crate::app::{App, Page};
 use crate::flight::angle;

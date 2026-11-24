@@ -1,0 +1,70 @@
+# Stations, missions, asteroid mining and pirates on the emulated Cardputer Zero.
+# Run: cargo run --release --no-default-features --features cardputer --bin flight-club-emulator -- --script scripts/emulator/station.txt --out target/emulator-station
+
+fresh
+start
+wait 2
+
+# fly to orbit and take the autopilot (6) to the station
+tilt 0 32 0.6
+down shift
+until location space 120
+up shift
+tilt 0 0 0.6
+wait 2
+press 6
+until phase station 150
+wait 0.5
+shot s01-hangar
+expect location space
+
+# the mission agent: 7 talks, 4 opens the board
+talk agent
+shot s02-agent
+press 4
+wait 0.3
+shot s03-board
+accept asteroid
+accept bounty
+expect-min missions 2
+press 6
+wait 0.3
+shot s04-active
+press 8
+
+# a traveller passing through sometimes has a gift
+talk traveller
+press 5
+wait 0.3
+shot s05-traveller
+press 8
+
+# back to the pad and undock (7)
+goto-ship
+press 7
+until phase flying 3
+
+# mine asteroids with the ship (hold 5 on a rock)
+mine-asteroids 4 120
+shot s06-mined
+log
+
+# bounty targets come once you are away from the station
+until-min pirates 1 40
+wait 1.5
+shot s07-pirates
+dogfight 3 180
+log
+
+# dock again and claim
+press 6
+until phase station 150
+talk agent
+press 4
+wait 0.3
+claim
+shot s08-claimed
+expect-min missions_done 1
+expect-min standing 1
+press 8
+log

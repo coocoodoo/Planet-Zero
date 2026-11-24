@@ -2,10 +2,10 @@
 //! hand. Stored next to Flight Club's records (`~/.local/share/flight-club/sky-save-v1.txt`), or
 //! at `$FLIGHT_CLUB_SKY_SAVE`.
 use super::arsenal::{Archetype, Rarity, Weapon};
-use super::contracts::{Contract, Goal};
 use super::galaxy::SystemId;
 use super::inventory::Inventory;
 use super::inventory::Item;
+use super::missions::{Kind, Mission, Prize};
 use super::station::Upgrades;
 use super::survival::Vitals;
 use glam::Vec3;
@@ -40,7 +40,12 @@ pub struct SaveData {
     pub active: usize,
     /// Drones destroyed in total
     pub destroyed: u32,
-    pub contract: Option<Contract>,
+    /// Active missions (version 3)
+    pub missions: Vec<Mission>,
+    pub standing: u32,
+    pub missions_done: u32,
+    /// Seconds of play until the next random pirate raid (0 or less: roll a new one)
+    pub raid: f32,
     /// Station dockings (rotates armory stock and contracts)
     pub visits: u32,
 }
@@ -83,7 +88,7 @@ fn v3(v: Vec3) -> String {
 
 impl SaveData {
     pub fn to_text(&self) -> String {
-        let mut s = String::from("cardputer-sky 2\n");
+        let mut s = String::from("cardputer-sky 3\n");
         s += &format!("galaxy {}\n", self.galaxy);
         s += &format!(
             "system {} {} {}\n",
@@ -128,21 +133,32 @@ impl SaveData {
             "\nactive {}\ndestroyed {}\nvisits {}\n",
             self.active, self.destroyed, self.visits
         );
-        if let Some(c) = self.contract {
-            let (kind, a, b) = match c.goal {
-                Goal::Drones(n) => (0, n as u32, 0),
-                Goal::Flora { planet, count } => (1, planet as u32, count as u32),
-                Goal::Deliver { item, amount } => (2, item.index() as u32, amount as u32),
+        s += &format!(
+            "standing {}\nmissions_done {}\nraid {:.0}\n",
+            self.standing, self.missions_done, self.raid
+        );
+        for m in &self.missions {
+            let (prize, prize_item, prize_n) = match m.prize {
+                Prize::None => (0, 0, 0),
+                Prize::Item(item, n) => (1, item.index(), n),
+                Prize::Weapon => (2, 0, 0),
             };
             s += &format!(
-                "contract {} {} {} {kind} {a} {b} {} {} {} {}\n",
-                c.system.x,
-                c.system.y,
-                c.system.z,
-                c.reward,
-                u8::from(c.weapon),
-                c.seed,
-                c.progress
+                "mission {} {} {} {} {} {} {} {} {} {} {} {} {prize} {prize_item} {prize_n} {} {}\n",
+                Kind::ALL.iter().position(|k| *k == m.kind).unwrap_or(0),
+                m.origin.x,
+                m.origin.y,
+                m.origin.z,
+                m.target.x,
+                m.target.y,
+                m.target.z,
+                m.planet,
+                m.item.index(),
+                m.count,
+                m.progress,
+                m.reward,
+                m.seed,
+                m.tier
             );
         }
         s
@@ -150,7 +166,10 @@ impl SaveData {
     pub fn from_text(text: &str) -> Option<Self> {
         let mut lines = text.lines();
         let version = lines.next()?.trim();
-        if version != "cardputer-sky 1" && version != "cardputer-sky 2" {
+        if !matches!(
+            version,
+            "cardputer-sky 1" | "cardputer-sky 2" | "cardputer-sky 3"
+        ) {
             return None;
         }
         let mut save = Self {
@@ -170,7 +189,10 @@ impl SaveData {
             locker: vec![],
             active: 0,
             destroyed: 0,
-            contract: None,
+            missions: vec![],
+            standing: 0,
+            missions_done: 0,
+            raid: 0.0,
             visits: 0,
         };
         for line in lines {
@@ -249,25 +271,31 @@ impl SaveData {
                 "active" => save.active = (u(0)? as usize).min(2),
                 "destroyed" => save.destroyed = u(0)? as u32,
                 "visits" => save.visits = u(0)? as u32,
-                "contract" => {
-                    let goal = match u(3)? {
-                        0 => Goal::Drones(u(4)? as u16),
-                        1 => Goal::Flora {
-                            planet: u(4)? as u8,
-                            count: u(5)? as u16,
-                        },
-                        _ => Goal::Deliver {
-                            item: *Item::ALL.get(u(4)? as usize)?,
-                            amount: u(5)? as u16,
-                        },
+                "standing" => save.standing = u(0)? as u32,
+                "missions_done" => save.missions_done = u(0)? as u32,
+                "raid" => save.raid = f(0)?,
+                "mission" if save.missions.len() < super::missions::MAX_ACTIVE => {
+                    let item = |i: usize| {
+                        *Item::ALL
+                            .get(u(i).unwrap_or(0) as usize)
+                            .unwrap_or(&Item::Carbon)
                     };
-                    save.contract = Some(Contract {
-                        system: SystemId::new(u(0)? as i32, u(1)? as i32, u(2)? as i32),
-                        goal,
-                        reward: u(6)? as u32,
-                        weapon: u(7)? != 0,
-                        seed: u(8)? as u32,
-                        progress: u(9)? as u16,
+                    save.missions.push(Mission {
+                        kind: *Kind::ALL.get(u(0)? as usize)?,
+                        origin: SystemId::new(u(1)? as i32, u(2)? as i32, u(3)? as i32),
+                        target: SystemId::new(u(4)? as i32, u(5)? as i32, u(6)? as i32),
+                        planet: u(7)? as u8,
+                        item: item(8),
+                        count: u(9)? as u16,
+                        progress: u(10)? as u16,
+                        reward: u(11)? as u32,
+                        prize: match u(12)? {
+                            1 => Prize::Item(item(13), u(14)? as u16),
+                            2 => Prize::Weapon,
+                            _ => Prize::None,
+                        },
+                        seed: u(15)? as u32,
+                        tier: u(16)? as u8,
                     });
                 }
                 _ => {}
@@ -327,17 +355,17 @@ mod tests {
             locker: vec![Weapon::roll(9, Rarity::Common, 0.0)],
             active: 2,
             destroyed: 7,
-            contract: Some(Contract {
-                system: SystemId::new(-3, 12, 1),
-                goal: Goal::Deliver {
-                    item: Item::Sodium,
-                    amount: 40,
-                },
-                reward: 1440,
-                weapon: true,
-                seed: 77,
-                progress: 3,
-            }),
+            missions: {
+                let galaxy = super::super::galaxy::Galaxy::default();
+                let system = galaxy.system(galaxy.start());
+                let mut m = Mission::new(Kind::Delivery, &system, &galaxy, 7, 2);
+                m.progress = 3;
+                m.prize = Prize::Item(Item::JumpCell, 1);
+                vec![m, Mission::new(Kind::Courier, &system, &galaxy, 9, 0)]
+            },
+            standing: 12,
+            missions_done: 4,
+            raid: 4321.0,
             visits: 4,
         };
         let back = SaveData::from_text(&save.to_text()).unwrap();

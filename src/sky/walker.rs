@@ -81,6 +81,19 @@ impl Walker {
             look_idle: 0.0,
         }
     }
+    /// A walker on a flat deck (station hangar) at `position`.
+    pub fn new_flat(position: Vec3, yaw: f32) -> Self {
+        Self {
+            position,
+            yaw,
+            pitch: -0.08,
+            velocity: Vec3::ZERO,
+            grounded: true,
+            turn_hold: 0.0,
+            quick_turn: 0.0,
+            look_idle: 0.0,
+        }
+    }
     /// Start turning around (double tap back).
     pub fn turn_around(&mut self) {
         if self.quick_turn == 0.0 {
@@ -102,6 +115,22 @@ impl Walker {
     /// Advance one step. `jet_fuel` says whether the jetpack has charge. Returns true while
     /// the jetpack fires.
     pub fn step(&mut self, world: &World, input: WalkInput, dt: f32, jet_fuel: bool) -> bool {
+        let limit = 8.0;
+        let bounds = (
+            glam::Vec2::splat(limit),
+            glam::Vec2::splat(SIZE as f32 - limit),
+        );
+        self.step_on(&|x, y| ground(world, x, y), bounds, input, dt, jet_fuel)
+    }
+    /// Walk over any ground (a planet's mesh, a station's flat deck) inside `bounds` (x, y).
+    pub fn step_on(
+        &mut self,
+        ground_at: &dyn Fn(f32, f32) -> f32,
+        bounds: (glam::Vec2, glam::Vec2),
+        input: WalkInput,
+        dt: f32,
+        jet_fuel: bool,
+    ) -> bool {
         if input.turn != 0.0 {
             if self.turn_hold == 0.0 {
                 self.yaw += input.turn.signum() * TURN_NUDGE;
@@ -140,9 +169,8 @@ impl Walker {
             self.grounded = false;
         }
         self.velocity.z -= GRAVITY * dt;
-        let limit = 8.0;
         let horizontal = vec3(self.velocity.x, self.velocity.y, 0.0) * dt;
-        let here = Self::ground(world, self.position.x, self.position.y);
+        let here = ground_at(self.position.x, self.position.y);
         let mut next = self.position;
         // move each axis separately so the walker slides along walls and steep slopes
         for axis in [Vec3::X, Vec3::Y] {
@@ -152,10 +180,10 @@ impl Walker {
             }
             let candidate = next + step;
             let (cx, cy) = (
-                candidate.x.clamp(limit, SIZE as f32 - limit),
-                candidate.y.clamp(limit, SIZE as f32 - limit),
+                candidate.x.clamp(bounds.0.x, bounds.1.x),
+                candidate.y.clamp(bounds.0.y, bounds.1.y),
             );
-            let ground = Self::ground(world, cx, cy);
+            let ground = ground_at(cx, cy);
             let rise = ground - next.z;
             let steep = rise > MAX_RISE.max(step.length() * MAX_SLOPE) && ground > here + 0.05;
             if !steep || !self.grounded && next.z > ground {
@@ -164,7 +192,7 @@ impl Walker {
             }
         }
         next.z += self.velocity.z * dt;
-        let ground = Self::ground(world, next.x, next.y);
+        let ground = ground_at(next.x, next.y);
         if next.z <= ground {
             next.z = ground;
             self.velocity.z = 0.0;

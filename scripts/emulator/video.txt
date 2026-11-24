@@ -76,23 +76,38 @@ wait 2
 press 6
 wait 4
 record off
-until phase docked 150
+until phase station 150
 record on
-caption STATION: TRADE / ARMORY / CONTRACTS
+caption ABOARD THE STATION
+wait 1.5
+caption 7: TALK TO THE MISSION AGENT
+talk agent
+wait 1.5
+caption 4: MISSION BOARD
+press 4
+wait 1.5
+press down
+wait 0.6
+caption 4: ACCEPT
+press 4
+wait 1.5
+press 8
+caption TRADER: SELL / BUY / UPGRADES
+talk trader
+press 4
 wait 1.5
 press 5
-wait 2
-press down
+wait 1.5
 press down
 press down
 press down
 wait 1
 press 7
 wait 1
-press 6
-wait 2
-caption 8: UNDOCK
 press 8
+caption WALK TO THE PAD, 7: UNDOCK
+goto-ship
+press 7
 wait 1.5
 caption CRAFT A JUMP CELL
 press 8

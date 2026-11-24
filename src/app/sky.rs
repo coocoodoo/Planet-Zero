@@ -224,7 +224,7 @@ impl App {
             return;
         }
         let place = match self.sky.phase {
-            Phase::Docking { .. } | Phase::Docked => {
+            Phase::Docking { .. } | Phase::Docked | Phase::Station => {
                 Place::Space(self.sky.system.station + vec3(420.0, 0.0, 0.0), 0.0)
             }
             _ => self.sky_place(),
@@ -247,7 +247,7 @@ impl App {
 
     // ----- location tracking ------------------------------------------------------------
 
-    fn sky_sync_location(&mut self) {
+    pub(super) fn sky_sync_location(&mut self) {
         let key = MapKey::of(&self.world);
         let mut arrived_system = None;
         let location = if key.kind == MapKind::Space {
@@ -269,6 +269,7 @@ impl App {
         };
         if let Some(id) = arrived_system {
             let new = self.sky.enter_system(id);
+            self.mission_event(crate::sky::missions::Event::Arrived { new });
             self.network.close_warp();
             self.flight.planet_maps = [None, None];
             let system = &self.sky.system;
@@ -326,6 +327,8 @@ impl App {
             Overlay::System => return self.system_key(code),
             Overlay::Inventory => return self.inventory_key(code),
             Overlay::Station => return self.station_key(code),
+            Overlay::Talk => return self.talk_key(code),
+            Overlay::Missions => return self.missions_key(code),
             Overlay::Lore => {
                 if matches!(code, KEY8 | ENTER | KEY4 | KEY_E) {
                     self.sky.overlay = Overlay::None;
@@ -395,6 +398,21 @@ impl App {
                 _ => false,
             },
             Phase::Docked => true,
+            Phase::Station => {
+                match code {
+                    KEY7 | KEY_E => self.sky_interact(),
+                    KEY4 => {
+                        self.open_overlay(Overlay::Missions);
+                        self.sky.mission_tab = 1;
+                        self.sky.mission_select = 0;
+                    }
+                    KEY8 | TAB => self.open_overlay(Overlay::Inventory),
+                    KEY_G => self.open_overlay(Overlay::Galaxy),
+                    PAUSE | CHART => return false,
+                    _ => {}
+                }
+                true
+            }
             _ => !matches!(code, PAUSE),
         }
     }
@@ -422,7 +440,7 @@ impl App {
         }
         match self.sky.overlay {
             Overlay::None => false,
-            Overlay::Station => {
+            Overlay::Station if self.sky.phase != Phase::Station => {
                 self.sky_undock();
                 true
             }
@@ -511,6 +529,7 @@ impl App {
             UP => self.sky.station_select = (self.sky.station_select + rows - 1) % rows,
             DOWN => self.sky.station_select = (self.sky.station_select + 1) % rows,
             KEY7 | ENTER => self.station_confirm(),
+            KEY8 if self.sky.phase == Phase::Station => self.sky.overlay = Overlay::None,
             KEY8 => self.sky_undock(),
             _ => return !matches!(code, PAUSE),
         }
@@ -557,6 +576,10 @@ impl App {
                 true
             }
             Phase::Docked => true,
+            Phase::Station => {
+                self.step_station(dt);
+                true
+            }
         }
     }
     /// Adjust flight controls before the engine's flight step.
@@ -629,14 +652,20 @@ impl App {
                 break;
             }
         }
-        // mining asteroids
-        if self.keys.contains(&KEY5) {
+        // key 5: mine the asteroid under the crosshair, otherwise fire the cannons
+        if self.keys.contains(&KEY5) && self.space_aim_rock() {
             self.mine_asteroid(dt);
         } else {
             self.sky.mining = false;
             self.sky.beam = None;
-            self.sky.vitals.cool(dt);
+            if self.keys.contains(&KEY5) {
+                self.fire_cannon(dt);
+            } else {
+                self.sky.vitals.cool(dt);
+            }
         }
+        self.pirate_step(dt);
+        self.regrow_asteroids(dt);
         // docking
         let distance = position.distance(self.sky.system.station);
         if distance < DOCK_DISTANCE && self.orbit.transition.is_none() {
@@ -668,6 +697,7 @@ impl App {
             };
             self.park(planet, to, self.flight.yaw);
             self.sounds.push(Sound::Landing);
+            self.mission_event(crate::sky::missions::Event::Landed);
             let hash = self.sky.system.seed ^ ((planet as u64 + 1) * 0x9e37);
             if self.sky.scanned.insert(hash) {
                 self.sky.credits += 300;
@@ -710,11 +740,9 @@ impl App {
         let world = self.world.clone();
         self.flight.update_visuals(dt, &world);
         if t >= 1.0 {
-            self.sky.phase = Phase::Docked;
-            self.stock_station();
-            self.sky.overlay = Overlay::Station;
             self.sky.station_tab = 0;
             self.sky.station_select = 0;
+            self.enter_station();
             let v = &mut self.sky.vitals;
             v.pulse = 1.0;
             v.life = 1.0;
@@ -725,9 +753,11 @@ impl App {
             self.sky.phase = Phase::Docking { t, from };
         }
     }
-    fn sky_undock(&mut self) {
+    pub(super) fn sky_undock(&mut self) {
         self.sky.overlay = Overlay::None;
         self.sky.phase = Phase::Flying;
+        self.flight.eye = None;
+        self.sky.ship = None;
         let exit = self.sky.system.station + vec3(380.0, 0.0, 0.0);
         self.flight.translate(exit - self.flight.position);
         // face away from the station along +X
@@ -987,12 +1017,15 @@ impl App {
                 }
                 let mut data = 0;
                 let mut flora = 0;
+                let mut minerals = 0;
                 let revealed = std::mem::take(&mut self.sky.revealed);
                 for prop in &revealed {
                     if self.sky.scanned.insert(prop.id) {
                         credits += prop.kind.discovery();
                         found += 1;
                         flora += u16::from(prop.kind == PropKind::Flora);
+                        minerals +=
+                            u16::from(matches!(prop.kind, PropKind::Rock | PropKind::Crystal));
                         if prop.kind == PropKind::Flora || prop.kind.is_poi() {
                             data += 1;
                         }
@@ -1002,7 +1035,7 @@ impl App {
                     }
                 }
                 self.sky.revealed = revealed;
-                self.contract_scan(flora);
+                self.mission_event(crate::sky::missions::Event::Scanned { flora, minerals });
                 if found > 0 {
                     self.sky.credits += credits;
                     self.sky.data += data;
@@ -1069,17 +1102,6 @@ impl App {
         }
         best.map(|(_, p)| p)
     }
-    fn collect(&mut self, item: Item, amount: u16) {
-        let added = self.sky.inventory.add(item, amount);
-        if added > 0 {
-            self.sky
-                .notice(format!("+{added} {}", item.name()), item.color());
-            self.sounds.push(Sound::Pickup);
-        }
-        if added < amount {
-            self.sky.notice("INVENTORY FULL", RED);
-        }
-    }
     fn mine_asteroid(&mut self, dt: f32) {
         if !self.sky.vitals.tool_ready() {
             self.sky.mining = false;
@@ -1130,8 +1152,7 @@ impl App {
             self.sky.target = None;
             self.sky.mine_progress = 0.0;
             self.sounds.push(Sound::Explosion(false));
-            self.collect(Item::Tritium, (radius * 0.9) as u16);
-            self.collect(Item::Iron, (radius * 0.3) as u16);
+            self.rock_yield(i, radius);
         }
     }
     fn set_course(&mut self, index: usize) {
@@ -1252,7 +1273,7 @@ impl App {
     pub fn station_rows(&self) -> usize {
         match self.sky.station_tab {
             0 => 1 + Item::ALL.len(),
-            1 => 1 + 3 + STATION_STOCK.len() + 1,
+            1 => 3 + STATION_STOCK.len() + 1,
             _ => Upgrade::ALL.len(),
         }
     }
@@ -1292,10 +1313,9 @@ impl App {
                 );
                 self.sounds.push(Sound::Coin(3));
             }
-            1 if row == 0 => self.contract_row(),
-            1 if row <= 3 => self.buy_armory(row - 1),
+            1 if row <= 2 => self.buy_armory(row),
             1 => {
-                let row = row - 4;
+                let row = row - 3;
                 if row == STATION_STOCK.len() {
                     // shield repair service
                     let cost = ((1.0 - self.sky.vitals.shield) * 400.0).ceil() as u32;
@@ -1415,6 +1435,15 @@ impl App {
                 }
             }
             Location::Elsewhere => {}
+        }
+        if self.sky.location == Location::Space {
+            if self.sky.phase == Phase::Station {
+                self.renderer.extras.triangles.clear();
+                self.renderer.extras.ships.clear();
+                self.station_scene();
+            } else {
+                self.space_scene();
+            }
         }
     }
     /// Whether a surface/space transition is in progress (for tools and tests).

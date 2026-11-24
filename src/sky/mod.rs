@@ -3,13 +3,16 @@
 //! draws them, and the renderer's `Extras` shows props, ships, stations and asteroids.
 pub mod arsenal;
 pub mod biome;
+pub mod bust;
 pub mod combat;
-pub mod contracts;
 pub mod drones;
 pub mod galaxy;
+pub mod interior;
 pub mod inventory;
 pub mod lore;
+pub mod missions;
 pub mod names;
+pub mod pirates;
 pub mod png;
 pub mod props;
 pub mod rng;
@@ -50,6 +53,8 @@ pub enum Phase {
         from: Vec3,
     },
     Docked,
+    /// On foot inside a station's hangar
+    Station,
 }
 pub const LANDING_SECONDS: f32 = 3.0;
 pub const TAKEOFF_SECONDS: f32 = 2.4;
@@ -65,6 +70,10 @@ pub enum Overlay {
     Station,
     /// An inscription read at a monolith or ruin
     Lore,
+    /// Talking to someone aboard a station
+    Talk,
+    /// The mission board and your active missions
+    Missions,
 }
 
 /// The HUD key bar: slides down after a few idle seconds so only the key labels show, rises
@@ -346,7 +355,33 @@ pub struct Sky {
     pub hit_marker: f32,
     /// Recent hits on the player: where they came from and how long ago
     pub hurt: Vec<(Vec3, f32)>,
-    pub contract: Option<contracts::Contract>,
+    /// Active missions (at most three)
+    pub missions: Vec<missions::Mission>,
+    /// Offers at the station you are docked at
+    pub board: Vec<missions::Mission>,
+    pub missions_done: u32,
+    /// Guild standing points (missions raise it; see `missions::RANKS`)
+    pub standing: u32,
+    pub mission_tab: usize,
+    pub mission_select: usize,
+    /// Person you are talking to, and which line of small talk
+    pub talking: usize,
+    pub chat: u32,
+    pub traveller_gift: bool,
+    pub pirates: Vec<pirates::Pirate>,
+    /// Seconds of play until the next random pirate raid
+    pub raid: f32,
+    /// Bounty or ace targets on their way: (system, ace, seconds)
+    pub bounty: Option<(SystemId, bool, f32)>,
+    /// Template aircraft for drawing pirate ships
+    pub pirate_model: Option<crate::flight::Flight>,
+    /// Ship cannon cooldown
+    pub cannon: f32,
+    /// Seconds since the asteroid field last grew back
+    pub regrow: f32,
+    /// Pirates and asteroids destroyed this session (for the HUD and tests)
+    pub pirates_down: u32,
+    pub asteroids_mined: u32,
     pub visits: u32,
     /// Weapons for sale at the docked station
     pub armory: [Option<Weapon>; 3],
@@ -439,7 +474,23 @@ impl Default for Sky {
             prop_damage: std::collections::HashMap::new(),
             hit_marker: 0.0,
             hurt: Vec::new(),
-            contract: None,
+            missions: Vec::new(),
+            board: Vec::new(),
+            missions_done: 0,
+            standing: 0,
+            mission_tab: 0,
+            mission_select: 0,
+            talking: 0,
+            chat: 0,
+            traveller_gift: false,
+            pirates: Vec::new(),
+            raid: pirates::next_raid(&mut rng::Rng::new(id.y as u64 ^ 0x9a7e)),
+            bounty: None,
+            pirate_model: None,
+            cannon: 0.0,
+            regrow: 0.0,
+            pirates_down: 0,
+            asteroids_mined: 0,
             visits: 0,
             armory: [None; 3],
             lore: None,
@@ -519,7 +570,10 @@ impl Sky {
             locker: self.loadout.locker.clone(),
             active: self.loadout.active,
             destroyed: self.drones_destroyed,
-            contract: self.contract,
+            missions: self.missions.clone(),
+            standing: self.standing,
+            missions_done: self.missions_done,
+            raid: self.raid,
             visits: self.visits,
         }
     }
@@ -539,7 +593,12 @@ impl Sky {
         self.discoveries = save.discoveries;
         self.loadout = Loadout::new(save.equipped, save.locker.clone(), save.active);
         self.drones_destroyed = save.destroyed;
-        self.contract = save.contract;
+        self.missions = save.missions.clone();
+        self.standing = save.standing;
+        self.missions_done = save.missions_done;
+        if save.raid > 0.0 {
+            self.raid = save.raid;
+        }
         self.visits = save.visits;
     }
     /// Leaving a planet: drones, shots and beacon marks stay behind.
@@ -551,11 +610,14 @@ impl Sky {
         self.alert = drones::Alert::default();
         self.prop_damage.clear();
         self.hurt.clear();
+        self.pirates.clear();
     }
     /// Time-based bookkeeping that does not depend on the engine.
     pub fn tick(&mut self, dt: f32) {
         self.time += dt;
         self.scan_age += dt;
+        self.raid -= dt;
+        self.cannon = (self.cannon - dt).max(0.0);
         self.hit_marker = (self.hit_marker - dt).max(0.0);
         for hurt in &mut self.hurt {
             hurt.1 += dt;

@@ -10,8 +10,10 @@ mod records;
 mod settings;
 pub(crate) mod sky;
 mod sky_foot;
+mod sky_space;
 pub(crate) use settings::SettingsSection;
 pub use sky_foot::{Context, Hit};
+pub use sky_space::{Rock, rock_kind};
 pub mod telemetry;
 #[cfg(test)]
 mod tests;

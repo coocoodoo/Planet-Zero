@@ -86,7 +86,14 @@ wait 0.5
 
 # autopilot to the station (key 6) and dock
 press 6
-until phase docked 150
+until phase station 150
+wait 0.5
+shot 12-hangar
+# walk to the trader's counter and talk (7), then 4 opens the trade panel
+talk trader
+shot 12-talk
+press 4
+wait 0.3
 shot 12-station
 press 7
 wait 0.3
@@ -98,12 +105,15 @@ press 5
 press down
 press down
 press down
-press down
 wait 0.2
 press 7
 wait 0.2
 shot 15-station-buy
+# 8 leaves the panel; walk back to the pad and board (7) to undock
 press 8
+expect phase station
+goto-ship
+press 7
 until phase flying 3
 
 # craft a jump cell, open the galaxy map and warp

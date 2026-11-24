@@ -1,6 +1,6 @@
 use super::*;
 
-const HELP_PAGES: [[&str; 8]; 16] = [
+const HELP_PAGES: [[&str; 8]; 18] = [
     [
         "FLIGHT",
         "UP / DOWN PITCH",
@@ -159,13 +159,33 @@ const HELP_PAGES: [[&str; 8]; 16] = [
         "EACH RARITY ADDS A PERK",
         "CACHES HOLD RARE WEAPONS",
         "REROLL CELL REROLLS PERKS",
-        "STATIONS: ARMORY + CONTRACT",
+        "STATIONS: ARMORY + MISSIONS",
+    ],
+    [
+        "SKY / STATIONS AND MISSIONS",
+        "6 AUTOPILOT DOCKS YOU",
+        "WALK UP TO SOMEONE: 7 TALK",
+        "AGENT: MISSION BOARD",
+        "TRADER OUTFITTER TECHNICIAN",
+        "THREE MISSIONS AT A TIME",
+        "CLAIM DONE JOBS AT ANY AGENT",
+        "4 LOG  7 AT THE SHIP: UNDOCK",
+    ],
+    [
+        "SKY / PIRATES AND ASTEROIDS",
+        "RAIDS ARE RARE: 30M TO 3H",
+        "BOUNTY JOBS CALL TARGETS",
+        "5 FIRES THE SHIP CANNONS",
+        "TILT TO TURN ONTO THEM",
+        "5 ON AN ASTEROID MINES IT",
+        "BLUE VEINS RICH  GOLD RARE",
+        "NO SHIELD: TOWED, CARGO LOST",
     ],
 ];
 
 fn help_pages(mode: Mode) -> &'static [usize] {
     match mode {
-        Mode::Explore => &[9, 10, 14, 15, 11, 12, 13, 1, 2],
+        Mode::Explore => &[9, 10, 14, 15, 11, 16, 17, 12, 13, 1, 2],
         Mode::Free => &[0, 1, 2, 3, 4, 8],
         Mode::Combat => &[0, 1, 2, 5],
         Mode::Race => &[0, 1, 2, 6],

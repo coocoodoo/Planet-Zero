@@ -61,7 +61,7 @@ expect-min weapons 3
 fight 1 60
 log
 
-# station: dock, take a contract, browse the armory
+# station: dock, take a mission from the agent, browse the armory
 goto-ship
 press 7
 until phase flying 5
@@ -72,15 +72,23 @@ up shift
 tilt 0 0 0.6
 wait 2
 press 6
-until phase docked 150
-press 5
+until phase station 150
+talk agent
+press 4
+wait 0.2
+shot c10-missions
+press 4
+expect-min missions 1
+press 8
+talk outfitter
+press 4
 wait 0.2
 shot c10-station-buy
-press 7
-expect-min contract 1
 press down
 wait 0.2
 shot c11-armory
 press 8
+goto-ship
+press 7
 until phase flying 3
 log
