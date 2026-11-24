@@ -1,54 +1,84 @@
-# Flight Club
+# Planet Zero
 
-<img src="docs/media/flight-club-demo.webp" alt="Flight Club 30-second gameplay demo" width="316" />
+**Cardputer Sky: a procedural space exploration and survival game for the M5Stack Cardputer Zero.**
 
-Flight Club is a pixel flight game for Cardputer Zero. Pilot a fighter through wormholes to the other side of the world, fly from the surface into space, then approach a planet and land. Explore freely, race through checkpoints, collect coins, and fight aerial battles.
+Fly a ship by tilting the device, land on generated planets, explore them on foot, mine and scan,
+fight guard drones with randomly rolled weapons, walk aboard space stations to take work from the
+people there, mine asteroids, fight off pirates, and warp across a galaxy of 14,260 star systems.
+It runs on the Cardputer Zero's 320×170 screen with its keyboard and BMI270 gyroscope, fully
+offline.
 
 [简体中文](README_zh.md)
 
-[![CI](https://github.com/journey-ad/M5CardputerZero-FlightClub/actions/workflows/ci.yml/badge.svg)](https://github.com/journey-ad/M5CardputerZero-FlightClub/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 2024](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
 
-## Cardputer Sky
+<img src="docs/media/sky/flight.png" alt="Flying over a lush planet" width="420" />
 
-**Cardputer Sky** is a procedural space exploration and survival mode built on this engine and
-selected by default in the menu. Pilot your ship with the gyroscope, land on generated planets in
-seven biomes, explore on foot, scan and mine, fight guard drones with seven weapon types rolled with
-random perks, survive heat, cold, toxicity and radiation, trade and upgrade at space stations, and warp
-between 14,260 star systems. Keys 4–8 under the screen carry the
-main actions, with icons above each key, following M5Stack's Recommended Key Mapping Design.
+| Gyroscope banking | On foot beside the ship | Scanner |
+| --- | --- | --- |
+| ![Gyro](docs/media/sky/gyro-bank.png) | ![Landed](docs/media/sky/landed.png) | ![Scanner](docs/media/sky/scanner.png) |
 
-See [the Cardputer Sky guide](docs/cardputer-sky.md) for controls, gameplay, the save file and the PC
-emulator, and [the architecture notes](docs/sky-architecture.md) for how it fits the engine.
+| Guard drones inbound | Aboard a station | Talking to the mission agent |
+| --- | --- | --- |
+| ![Drones](docs/media/sky/drones.png) | ![Hangar](docs/media/sky/hangar.png) | ![Agent](docs/media/sky/agent.png) |
 
-<img src="docs/media/sky/flight.png" alt="Cardputer Sky in the emulator" width="420" />
+| Mission board | Pirates inbound | Galaxy map |
+| --- | --- | --- |
+| ![Missions](docs/media/sky/missions.png) | ![Pirates](docs/media/sky/pirates.png) | ![Galaxy](docs/media/sky/galaxy-map.png) |
 
-## Gameplay
+All screenshots come from the PC emulator, which runs the device build's own code.
 
-- Four modes: Free Flight, Checkpoint Race, Coin Rush, and Sky Assault
-- Five aircraft with different speed, shields, weapons, and handling
-- Ten surface maps, eight weather types, and day and night settings, with wormholes connecting the maps
-- Seamless flight from the surface into space and back down to Earth or the Moon
-- Motion controls, two wingmen, aerobatics, and a flight demonstration
+## What you do
 
-## On-device screenshots
+- **Fly by tilting.** Bank left and right to turn, raise the top edge to climb. Fly from a planet's
+  surface straight up into space and back down to any planet in the system.
+- **Land and explore on foot.** Seven biomes (lush, desert, frozen, toxic, volcanic, exotic and
+  barren moons), each with its own terrain, colours, plants, minerals and hazard. First-person
+  movement, a jetpack, and a tilt fine-aim.
+- **Scan, mine and survive.** Scan plants and minerals for survey data, mine elements, keep life
+  support and hazard protection up, and craft jump cells, hull patches and lift cells in a 16-slot
+  inventory.
+- **Fight.** Seven weapon types (mining beam, pulse laser, scatter blaster, rail lance, plasma
+  mortar, arc caster, cryo beam), four rarities and sixteen random perks. Mining and shooting raise
+  an alert that brings guard drones; weapon caches have guardians.
+- **Walk aboard stations.** Docking puts you on foot in the hangar. Talk to the mission agent, the
+  trader, the outfitter, the technician and a passing traveller; each is a voxel bust shaped by
+  their species and dressed for their job.
+- **Take missions.** Sixteen kinds (bounties, ace hunts, drone purges, surveys, relic hunts,
+  asteroid mining, supply runs, couriers, scouting, rescues, long hauls and more), six offers per
+  visit, three at a time, and a guild rank from ROOKIE to LEGEND that brings better-paid work.
+- **Pirates and asteroids.** Raiders turn up every 30 minutes to 3 hours of flying, and bounty
+  missions call their own. The ship's cannons lead their shots; key 5 mines the asteroid under the
+  crosshair instead. Asteroid belts lie out past every station.
+- **Warp.** Craft a jump cell, pick a star in range on the galaxy map and fly into the warp tunnel.
+  Nothing is stored about the galaxy; every system comes from its coordinates.
 
-| Free Flight | Wormhole to the city |
-| --- | --- |
-| ![Free Flight](store/screenshots/free-flight.png) | ![A city visible through a wormhole above the islands](store/screenshots/portal.png) |
+Progress saves on its own (landing, take-off, docking, purchases, warps and every 45 seconds).
 
-| Checkpoint Race | Sky Assault |
-| --- | --- |
-| ![Checkpoint Race](store/screenshots/race.png) | ![Sky Assault](store/screenshots/combat.png) |
+## Controls
 
-| Space cockpit | Moon approach |
-| --- | --- |
-| ![Space cockpit](store/screenshots/space-cockpit.png) | ![Moon approach](store/screenshots/moon-approach.png) |
+The layout follows M5Stack's *Recommended Key Mapping Design*: the five most frequent actions sit on
+keys **4–8** under the screen, with an icon over each key. The bar changes with what you are doing
+and slides out of the way when you don't need it. **F / X / Z / C** are the arrow keys.
+
+| Situation | 4 | 5 | 6 | 7 | 8 |
+| --- | --- | --- | --- | --- | --- |
+| Flying over a planet | SCAN | | LAND | MAP | BAG |
+| Flying in space | SCAN | MINE or FIRE | DOCK (autopilot) | MAP | BAG |
+| On foot | SCAN | FIRE (hold) | JET (hold) | BOARD / OPEN / READ / SIGNAL / SWAP | BAG |
+| Aboard a station | LOG | | | TALK / UNDOCK | BAG |
+| Talking to someone | SERVICE | CHAT | | | LEAVE |
+| Mission board | ACCEPT / CLAIM | ABANDON | BOARD / ACTIVE | | CLOSE |
+
+Tilt the device to steer the ship; hold Shift to boost. On foot the arrows walk and turn, and the
+tilt fine-aims. Hold the device still for a moment to calibrate the gyroscope; K recalibrates and I
+turns tilt steering off. F1 or H opens the help pages in the game. The full key list, gameplay
+details and the save file format are in [the Cardputer Sky guide](docs/cardputer-sky.md).
 
 ## Install on Cardputer Zero
 
-The device build targets Linux ARM64. From the repository root, run:
+The device build targets Linux ARM64. From the repository root:
 
 ```sh
 rustup target add aarch64-unknown-linux-musl
@@ -56,165 +86,65 @@ bash scripts/build-cardputer.sh
 python3 scripts/package-cardputer.py
 ```
 
-This produces a static AArch64 binary at `dist/flight-club-cardputer` and an installable package at `dist/flight-club_0.42.3_arm64.deb`.
-
-The packaging script uses a local `dpkg-deb` installation or runs it through Docker with `ubuntu:22.04`.
-
-Editable artwork lives in `assets/` as lossless PNG images. Cargo converts it into indexed textures and voxel data during the build; the game embeds the generated data and does not decode PNG at runtime. See [the asset format](assets/README.md) before editing dimensions, transparency, or voxel colors.
-
-For profile-guided optimization, build a training executable with `bash scripts/build-cardputer.sh --pgo-generate`. This writes `dist/flight-club-cardputer-pgo-generate`. Run it on the device with `LLVM_PROFILE_FILE=/path/to/profiles/%m-%p.profraw`, exercising representative maps, vehicles, weather, combat, portal travel, and audio through the existing benchmark options and normal play. Copy the profiles back and merge them with the `llvm-profdata` supplied by the same Rust toolchain:
-
-```sh
-rustup component add llvm-tools-preview
-"$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin/llvm-profdata" merge -o target/cardputer.profdata target/profiles/*.profraw
-bash scripts/build-cardputer.sh --pgo-use target/cardputer.profdata
-python3 scripts/package-cardputer.py
-```
-
-Train and compare the same source version and release settings, with separate benchmark seeds for evaluation. The standard build remains available without a profile; training and profile-guided builds use separate target directories.
-
-Copy the package to your Cardputer Zero and install it there:
+This produces a static AArch64 binary at `dist/flight-club-cardputer` and a package at
+`dist/flight-club_0.42.3_arm64.deb` (the binary and package keep the engine's name). The packaging
+script uses a local `dpkg-deb` or runs it in Docker with `ubuntu:22.04`. Copy the package to the
+device and install it:
 
 ```sh
 sudo apt install ./flight-club_0.42.3_arm64.deb
 ```
 
-Launch Flight Club from APPLaunch using the fighter icon.
+Launch it from APPLaunch. CARDPUTER SKY is the first entry in the menu and is selected by default.
 
-## Device controls
+## Play it on a PC
 
-The Cardputer Zero direction keys are F (up), X (down), Z (left), and C (right). Number keys have different functions in each mode.
-
-### Menu and general controls
-
-| Key | Action |
-| --- | --- |
-| F / X / Z / C | Select menu items or change settings |
-| Enter | Confirm; continue or retry after a result |
-| F1 | Open or close the controls guide |
-| F2 | Open or close settings |
-| F9 | Change the sound mode |
-| Esc | Pause during flight or go back; hold for two seconds to quit |
-
-### Flight controls in every mode
-
-| Key | Action |
-| --- | --- |
-| F / X / Z / C | Climb, dive, turn left, turn right |
-| Q / E | Roll left or right |
-| Hold Shift | Boost |
-| Space | Change camera view |
-| W / A / S / D | Look up, left, down, right |
-| Alt | Toggle hover |
-| M | Open or close the map |
-| I / K | Toggle motion controls or recalibrate |
-| P / R | Pause or resume; retry the current level |
-
-### Free Flight
-
-| Key | Action |
-| --- | --- |
-| 1 | Change the weather |
-| 2 | Change the time of day |
-| 3 | Summon a wormhole ahead |
-| 4 | Change aircraft |
-| 5 | Change the number of wingmen |
-| 6 | Toggle the exploded model view |
-| 7 | Toggle autopilot |
-| 8 | Toggle the flight demonstration |
-| 9 | Change maps |
-| 0 | Regenerate the current map with a new seed |
-
-### Checkpoint Race
-
-Use the shared flight controls. Press R to restart the level.
-
-### Coin Rush
-
-Use the shared flight controls. Press R to restart the level.
-
-### Sky Assault
-
-| Key | Action |
-| --- | --- |
-| Hold 1 | Fire |
-| 2 | Change weapon |
-| 3 | Launch NOVA |
-| 4 | Activate overdrive |
-| 5 | Toggle automatic fire |
-
-### Map
-
-| Key | Action |
-| --- | --- |
-| F / X / Z / C | Pan the map |
-| 1 / 2 | Zoom in or out |
-| 3 / 4 | Find the next wormhole or your aircraft |
-| Space | Mark the crosshair position |
-| Enter | Navigate to the marked position |
-| M | Return to the previous screen |
-
-See the [full controls guide (Chinese)](docs/controls.md) for every key.
-
-### Motion controls
-
-Hold the device still for about 0.8 seconds to calibrate. Press K to recalibrate after changing your grip.
-
-- Tilt left and right to turn and bank
-- Tilt forward and back to dive or climb; raising the top edge of the device makes the aircraft climb
-- Press I to turn off motion controls and use the direction keys; releasing the keys holds the heading and gradually levels the aircraft
-- Turning on autopilot with 7 also turns off motion controls
-
-## Development and device diagnostics
-
-The device build uses `glam` for scene math, writes RGB565 frames through fbdev mmap, and reads key press and release events through evdev. Runtime dependencies are statically linked into the executable.
-
-The display path is read from `FLIGHT_CLUB_FB`, `APPLAUNCH_LINUX_FBDEV_DEVICE`, or `LV_LINUX_FBDEV_DEVICE`, then from `/dev/fb_lcd` or `/proc/fb`. The program validates screen size, RGB565 layout, and stride with ioctl. For the keyboard, set `FLIGHT_CLUB_KEYBOARD` or `APPLAUNCH_LINUX_KEYBOARD_DEVICE`; the default is the I²C keyboard's by-path device.
-
-You can run a CPU benchmark or capture a fixed number of frames on the device:
+The emulator runs the device build's game object on your PC: the same key codes (including the
+F/X/Z/C arrow remap), the same gyroscope fusion fed by a simulated BMI270, and the same RGB565
+framebuffer. It plays a script, checks what happens, and saves screenshots framed in a picture of
+the Cardputer Zero:
 
 ```sh
-flight-club-cardputer --benchmark 180 --scale 1 --capture-dir /tmp/flight-club-captures
-flight-club-cardputer --mode combat --frames 300 --view cockpit --weather storm
-flight-club-cardputer --mode race --vehicle 1 --level 3
-flight-club-cardputer --mode combat --level 2 --view cockpit
-flight-club-cardputer --mode combat --benchmark 180 --capture-dir /tmp/combat-check
-flight-club-cardputer --map moon --mode free --view chase
-flight-club-cardputer --map space --mode free --view cockpit
-flight-club-cardputer --map space --benchmark 180 --capture-dir /tmp/space-check
-flight-club-cardputer --map city --maneuvers 330 --capture-dir /tmp/flight-loops
-flight-club-cardputer --map canyon --weather sandstorm --demo on
-flight-club-cardputer --map alpine --seed 8082 --weather snow
-flight-club-cardputer --imu-test 10 --imu-csv /tmp/flight-club-imu.csv
+cargo run --release --no-default-features --features cardputer --bin flight-club-emulator
+cargo run --release --no-default-features --features cardputer --bin flight-club-emulator -- --script scripts/emulator/station.txt --out target/emulator-station
 ```
 
-See [Project structure and development (Chinese)](docs/development.md) for build and verification details.
+Scripts in `scripts/emulator/`: `tour.txt` (a whole session, from the first landing to another star
+system), `combat.txt` (first person, drones, weapons, caches), `station.txt` (missions, asteroid
+mining and a pirate fight), `continue.txt` (save and resume) and `video.txt`. Add
+`--video FILE.mp4` to record gameplay with sound (needs `ffmpeg`).
 
-## Desktop preview
+To play with a window and a keyboard, run the desktop build with `cargo run --release`.
 
-Run the desktop build to preview and debug the game:
+## Development
 
 ```sh
-cargo run --release
+cargo fmt --all -- --check
+cargo clippy --all-features --all-targets -- -D warnings
+cargo test --locked                                              # desktop feature set
+cargo test --locked --no-default-features --features cardputer   # device feature set
 ```
 
-See the [full controls guide (Chinese)](docs/controls.md) for desktop keys.
+Game logic lives in `src/sky/` (no rendering), engine glue in `src/app/sky.rs`,
+`src/app/sky_foot.rs` and `src/app/sky_space.rs`, and drawing in `src/ui/sky.rs`. 3D additions go
+through the engine's software renderer as extra triangles. See
+[the architecture notes](docs/sky-architecture.md) for how the game fits the engine, version by
+version.
 
-## More documentation (Chinese)
+## Built on Flight Club
 
-- [Gameplay and aircraft](docs/gameplay.md): modes, aircraft, levels, and combat
-- [Controls](docs/controls.md): device keys, motion controls, map, and desktop keys
-- [Music and sound](docs/audio.md): synthesizer, tracks, and export
-- [Rendering, HUD, and maps](docs/world.md): cockpit HUD, terrain, weather, and camera shots
-- [Performance and rendering history](docs/performance.md): benchmarks across releases
-- [Project structure and development](docs/development.md): repository layout, content settings, and verification
+Planet Zero is a fork of [Flight Club](https://github.com/journey-ad/M5CardputerZero-FlightClub) by
+journey-ad, a pixel flight game for the Cardputer Zero with a CPU software renderer, procedural
+terrain, wormholes and seamless flight from the surface to space. Cardputer Sky reuses its renderer,
+terrain, flight model, space and orbit transitions, synthesizer and device layer.
 
-## Acknowledgment
-
-Creative inspiration: https://remix.ui8.ai/fly
+Flight Club's own four modes (Free Flight, Checkpoint Race, Coin Rush and Sky Assault) are still in
+the menu. Their controls and documentation (mostly in Chinese) are in
+[docs/controls.md](docs/controls.md), [docs/gameplay.md](docs/gameplay.md) and the rest of
+[docs/](docs/).
 
 ## License
 
-Original code, documentation, and scripts are licensed under the [MIT License](LICENSE).
-
-Third-party components and distribution notes are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Original code, documentation, and scripts are licensed under the [MIT License](LICENSE), as is the
+Flight Club engine it builds on. Third-party components and distribution notes are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
