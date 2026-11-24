@@ -187,7 +187,17 @@ cargo run --release --no-default-features --features cardputer --bin flight-club
 With no `--script` it plays `scripts/emulator/tour.txt` (built into the binary): a full session from
 the first landing to a frozen planet in another star system, with 17 checks.
 `scripts/emulator/combat.txt` covers the first-person controls, tilt aim, a drone patrol, a fight,
-the weapons view, a weapon cache and its guardians, and the station armory and contract. Output goes to
+the weapons view, a weapon cache and its guardians, and the station armory and contract.
+
+To record gameplay, add `--video FILE.mp4` (needs `ffmpeg` on the PATH): frames are framed in the
+device picture and scaled 2×, the game's own music and effects are rendered by its synthesizer in
+sync, and a caption strip shows the script's `caption` lines, held keys and the device tilt.
+`record off` / `record on` skip long stretches. `scripts/emulator/video.txt` is a 100-second
+showcase:
+
+```sh
+cargo run --release --no-default-features --features cardputer --bin flight-club-emulator -- --script scripts/emulator/video.txt --out target/video --video target/video/cardputer-sky.mp4
+``` Output goes to
 `target/emulator/` (`NAME.png` framed, `NAME-screen.png` raw 320×170), and its save file stays there
 too. The exit code is 1 if any check fails. Script commands are documented at the top of
 `src/bin/emulator.rs`; `tilt ROLL PITCH` moves the virtual device, `bench S` times frames.

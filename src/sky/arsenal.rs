@@ -494,7 +494,7 @@ impl Weapon {
             pierce: false,
             volatile: false,
             loot: 1.0,
-            assist: 5.0_f32.to_radians(),
+            assist: 7.0_f32.to_radians(),
             color: spec.color,
             sound: spec.sound,
         };
@@ -529,7 +529,7 @@ impl Weapon {
                 Perk::Salvager => s.loot = 1.5,
                 Perk::Stabilized => {
                     s.spread *= 0.5;
-                    s.assist = 8.0_f32.to_radians();
+                    s.assist = 10.0_f32.to_radians();
                 }
             }
         }

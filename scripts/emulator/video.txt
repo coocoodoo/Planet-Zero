@@ -1,0 +1,121 @@
+# Gameplay showcase for a video:
+# cargo run --release --no-default-features --features cardputer --bin flight-club-emulator -- --script scripts/emulator/video.txt --out target/video --video target/video/cardputer-sky.mp4
+
+fresh
+caption CARDPUTER SKY ON THE CARDPUTER ZERO
+wait 1.5
+start
+caption ARRIVING OVER A LUSH PLANET
+wait 3
+caption TILT THE DEVICE TO STEER
+tilt 24 0 0.7
+wait 3
+tilt -20 8 0.7
+wait 3
+tilt 0 0 0.6
+wait 1
+caption 4: SCAN FROM THE AIR
+press 4
+wait 2.5
+caption 6: LAND ON FLAT GROUND
+land
+until phase onfoot 8
+caption ON FOOT BESIDE THE SHIP
+wait 1.5
+press right 0.6
+wait 0.5
+caption 4: SCAN FLORA AND MINERALS
+press 4
+wait 3
+caption HOLD 5: MINE / THE ALERT RISES
+mine-until-drones 60
+caption GUARD DRONES INBOUND
+wait 1.5
+caption HOLD 5: FIGHT WITH AIM ASSIST
+fight 1 40
+wait 1.5
+caption 8 BAG, THEN 6: WEAPONS AND PERKS
+press 8
+wait 1
+press 6
+wait 2
+press down
+wait 2
+press 8
+caption WALKING TO A WEAPON CACHE
+wait 1
+record off
+goto-poi cache 90 700
+record on
+caption 7: OPEN THE CACHE
+press 7
+wait 1.5
+caption 7: SWAP TO THE NEW WEAPON
+swap-to 3
+wait 1
+caption GUARDIANS AWAKE
+fight 2 40
+wait 1
+record off
+goto-ship
+record on
+caption 7: BOARD AND LIFT OFF
+press 7
+wait 3
+caption NOSE UP AND BOOST TO ORBIT
+tilt 0 32 0.6
+down shift
+wait 6
+record off
+until location space 120
+record on
+up shift
+tilt 0 0 0.6
+caption SPACE / 6: AUTOPILOT TO THE STATION
+wait 2
+press 6
+wait 4
+record off
+until phase docked 150
+record on
+caption STATION: TRADE / ARMORY / CONTRACTS
+wait 1.5
+press 5
+wait 2
+press down
+press down
+press down
+press down
+wait 1
+press 7
+wait 1
+press 6
+wait 2
+caption 8: UNDOCK
+press 8
+wait 1.5
+caption CRAFT A JUMP CELL
+press 8
+press 5
+wait 1.5
+press 6
+wait 1.5
+press 8
+caption 7: GALAXY MAP / 6: WARP
+press 7
+wait 3
+press 6
+caption FLY INTO THE WARP TUNNEL
+wait 4
+record off
+until-min systems 2 40
+record on
+caption A NEW STAR SYSTEM
+wait 4
+caption SYSTEM MAP
+press 7
+press 7
+wait 3
+press 8
+caption CARDPUTER SKY
+wait 2

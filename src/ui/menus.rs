@@ -228,6 +228,12 @@ pub fn draw(app: &mut App) {
 /// 加载与虫洞连接提示
 fn loading(c: &mut Canvas, app: &App) {
     c.shade(30, 48, 260, 72);
+    if app.mode == Mode::Explore && app.travel.is_none() {
+        c.text(46, 57, "CARDPUTER SKY / LANDFALL", GOLD);
+        c.text(46, 78, &format!("{} SYSTEM", app.sky.system.name), WHITE);
+        c.text(46, 100, "GENERATING TERRAIN", MUTED);
+        return;
+    }
     let heading = if app.travel.is_some() {
         "WORMHOLE / CONNECTING".into()
     } else {

@@ -50,6 +50,12 @@ impl Context {
     }
 }
 
+/// A drone's hit radius for shots from `origin`: forgiving, and more so far away, because a
+/// drone 20 units off is only a few pixels wide on the Cardputer's screen.
+pub fn hitbox(drone: &Drone, origin: Vec3) -> f32 {
+    drone.radius() + 0.5 + drone.position.distance(origin) * 0.035
+}
+
 /// What a ray from the crosshair hits first.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Hit {
@@ -127,7 +133,7 @@ impl App {
         let yaw = to.x.atan2(-to.y) - self.sky.aim.x;
         let pitch = (to.z / to.truncate().length().max(0.01)).atan() - self.sky.aim.y;
         let w = &mut self.sky.walker;
-        let k = (5.0 * dt).min(1.0);
+        let k = (9.0 * dt).min(1.0);
         w.yaw += crate::flight::angle(yaw - w.yaw) * k;
         w.pitch += (pitch - w.pitch) * k;
     }
@@ -288,7 +294,8 @@ impl App {
             ground_t.unwrap_or(range),
         );
         for (i, drone) in self.sky.drones.iter().enumerate() {
-            if let Some(t) = ray_sphere(origin, direction, best.1, drone.position, drone.radius())
+            let reach = hitbox(drone, origin);
+            if let Some(t) = ray_sphere(origin, direction, best.1, drone.position, reach)
                 && t < best.1
             {
                 best = (Hit::Drone(i), t);
@@ -424,7 +431,7 @@ impl App {
                 let hits: Vec<usize> = (0..self.sky.drones.len())
                     .filter(|&i| {
                         let d = &self.sky.drones[i];
-                        ray_sphere(origin, direction, end, d.position, d.radius()).is_some()
+                        ray_sphere(origin, direction, end, d.position, hitbox(d, origin)).is_some()
                     })
                     .collect();
                 for &i in hits.iter().rev() {
@@ -734,7 +741,7 @@ impl App {
             } else {
                 let hit = self.sky.drones.iter().position(|d| {
                     d.id != p.last_hit
-                        && ray_sphere(from, direction, length, d.position, d.radius() + 0.3)
+                        && ray_sphere(from, direction, length, d.position, d.radius() + 0.8)
                             .is_some()
                 });
                 if let Some(h) = hit {

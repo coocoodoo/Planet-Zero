@@ -23,12 +23,15 @@
 //! | `tilt ROLL PITCH [S]` | tilt the device (degrees; right roll and nose-up pitch are positive) over S seconds |
 //! | `shot NAME` | save `NAME.png` (device frame) and `NAME-screen.png` (raw 320×170) |
 //! | `log` | print the game state |
+//! | `caption TEXT` | caption shown under the device in a `--video` recording |
+//! | `record off` / `record on` | pause and resume a `--video` recording (to skip long waits) |
 //! | `expect FIELD VALUE` | check `phase`, `overlay`, `location`, `page`, `imu`; `expect-min FIELD N` for `credits`, `discoveries`, `item:<name>`, `altitude`, `systems` |
 //! | `land` | descend toward the ground, then press 6 (helper for scripts) |
 //! | `bench S` | time S seconds of frames and count triangles |
 //! | `until FIELD VALUE S` | run until a field has a value (at most S seconds) |
 //! | `until-min FIELD N S` | run until a number field reaches N (at most S seconds) |
 //! | `mine-until-drones S` | on foot: aim at props and hold 5 until a drone patrol arrives |
+//! | `swap-to N` | on foot: press 7 until weapon slot N (1–3) is in hand |
 //! | `face-drone` | on foot: turn and look at the nearest drone with the arrow keys |
 //! | `fight N S` | on foot: face the nearest drone and hold 5 until N drones are destroyed |
 //! | `goto-poi KIND S` | on foot: walk to the nearest point of interest of a kind (cache, ruin…) |
@@ -42,6 +45,9 @@ use flight_club::cardputer::{Game, HEIGHT, WIDTH, imu::Fusion, rgb565};
 use flight_club::sky::{Location, Phase};
 use glam::{Quat, Vec3, vec3};
 use std::path::{Path, PathBuf};
+
+#[path = "emulator/video.rs"]
+mod video;
 
 const FRAME: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/cardputer-frame.rgba"));
 const FRAME_SIZE: (usize, usize) = (631, 408);
@@ -61,6 +67,27 @@ struct Device {
     out: PathBuf,
     time: f32,
     failures: usize,
+    video: Option<video::Video>,
+    caption: String,
+    held: Vec<u16>,
+}
+
+/// Key cap label for the video's status line.
+fn key_label(code: u16) -> String {
+    match code {
+        1 => "ESC".into(),
+        2..=10 => (code - 1).to_string(),
+        11 => "0".into(),
+        15 => "TAB".into(),
+        28 => "OK".into(),
+        42 => "SHIFT".into(),
+        57 => "SPACE".into(),
+        59 => "F1".into(),
+        16..=25 => "QWERTYUIOP"[(code - 16) as usize..][..1].into(),
+        30..=38 => "ASDFGHJKL"[(code - 30) as usize..][..1].into(),
+        44..=50 => "ZXCVBNM"[(code - 44) as usize..][..1].into(),
+        _ => format!("#{code}"),
+    }
 }
 
 fn key_code(name: &str) -> Option<u16> {
@@ -119,6 +146,9 @@ impl Device {
             out,
             time: 0.0,
             failures: 0,
+            video: None,
+            caption: String::new(),
+            held: Vec::new(),
         }
     }
     /// Accelerometer reading for a tilt, in the BMI270 frame the device uses: the screen's
@@ -159,6 +189,27 @@ impl Device {
         self.game.draw();
         rgb565(&self.game.screen, &mut self.framebuffer);
         self.time += dt;
+        // take the recorder out while building its frame (that reads the rest of the device)
+        if let Some(mut video) = self.video.take() {
+            video.audio(self.game.audio_frame());
+            let framed = self.framed();
+            video
+                .frame(&framed, &self.caption, &self.status())
+                .expect("ffmpeg stopped");
+            self.video = Some(video);
+        }
+    }
+    /// Held keys and the device tilt, for the video's status line.
+    fn status(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.held.is_empty() {
+            let keys: Vec<String> = self.held.iter().map(|&k| key_label(k)).collect();
+            parts.push(format!("KEYS {}", keys.join(" ")));
+        }
+        if self.tilt.0.abs() > 0.5 || self.tilt.1.abs() > 0.5 {
+            parts.push(format!("TILT R{:+.0} P{:+.0}", self.tilt.0, self.tilt.1));
+        }
+        parts.join("   ")
     }
     fn wait(&mut self, seconds: f32) {
         for _ in 0..(seconds * FPS).round().max(1.0) as usize {
@@ -166,6 +217,11 @@ impl Device {
         }
     }
     fn key(&mut self, code: u16, value: i32) {
+        if value == 1 && !self.held.contains(&code) {
+            self.held.push(code);
+        } else if value == 0 {
+            self.held.retain(|&k| k != code);
+        }
         self.game.key(code, value);
     }
     /// Framebuffer decoded back to RGB, as the LCD shows it.
@@ -182,6 +238,28 @@ impl Device {
             ]);
         }
         rgba
+    }
+    /// The screen inside the picture of the device (631×408 RGBA).
+    fn framed(&self) -> Vec<u8> {
+        let screen = self.screen_rgba();
+        let (fw, _) = FRAME_SIZE;
+        let mut framed = FRAME.to_vec();
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let at = ((SCREEN_AT.1 + y) * fw + SCREEN_AT.0 + x) * 4;
+                framed[at..at + 4].copy_from_slice(&screen[(y * WIDTH + x) * 4..][..4]);
+            }
+        }
+        for p in framed.chunks_exact_mut(4) {
+            if p[3] < 255 {
+                let a = p[3] as u32;
+                for channel in p.iter_mut().take(3) {
+                    *channel = ((*channel as u32 * a + 24 * (255 - a)) / 255) as u8;
+                }
+                p[3] = 255;
+            }
+        }
+        framed
     }
     fn shot(&self, name: &str) {
         let screen = self.screen_rgba();
@@ -268,6 +346,45 @@ impl Device {
     }
     fn log(&self) {
         let g = &self.game;
+        let eye = g.sky.walker.position;
+        let drones: Vec<String> = g
+            .sky
+            .drones
+            .iter()
+            .map(|d| {
+                format!(
+                    "{}:{:.0}u/{:.0}hp/z{:+.0}/{}",
+                    d.kind.spec().name,
+                    d.position.distance(eye),
+                    d.health,
+                    d.position.z - eye.z,
+                    if d.sight { "sight" } else { "hidden" }
+                )
+            })
+            .collect();
+        {
+            let slots: Vec<String> = g
+                .sky
+                .loadout
+                .all()
+                .iter()
+                .map(|w| w.map_or("-".to_owned(), |w| w.archetype.spec().short.to_owned()))
+                .collect();
+            println!(
+                "     context {} active {} slots {}",
+                g.sky_context().label(),
+                g.sky.loadout.active,
+                slots.join(",")
+            );
+        }
+        if !drones.is_empty() {
+            let weapon = g.sky.loadout.weapon().map(|w| w.name()).unwrap_or_default();
+            println!(
+                "     drones {} weapon {weapon} heat {:.2}",
+                drones.join(" "),
+                g.sky.loadout.heat[g.sky.loadout.active]
+            );
+        }
         let sky = &g.sky;
         let p = g.flight.position;
         let place = match sky.location {
@@ -426,9 +543,13 @@ impl Device {
             }
             if diff.abs() < 0.5 {
                 self.key(up, 1);
+                // run (shift) on long walks
+                if d.truncate().length() > 30.0 {
+                    self.key(42, 1);
+                }
             }
             self.frame();
-            for k in [up, left, right] {
+            for k in [up, left, right, 42] {
                 self.key(k, 0);
             }
         }
@@ -496,6 +617,14 @@ impl Device {
                     self.tilt_time = (0.0, number(3, 0.4));
                 }
                 "shot" => self.shot(arg(1)),
+                "caption" => {
+                    self.caption = words[1..].join(" ");
+                }
+                "record" => {
+                    if let Some(video) = &mut self.video {
+                        video.recording = arg(1) != "off";
+                    }
+                }
                 "log" => self.log(),
                 "expect" => {
                     let value = self.field(arg(1));
@@ -584,6 +713,21 @@ impl Device {
                         format!("a drone patrol arrived after {:.1}s", frames as f32 / FPS),
                     );
                 }
+                "swap-to" => {
+                    // press 7 (as a player would) until the wanted slot is in hand
+                    let slot = (number(1, 1.0) as usize).saturating_sub(1).min(2);
+                    for _ in 0..3 {
+                        if self.game.sky.loadout.active == slot {
+                            break;
+                        }
+                        self.key(8, 1);
+                        self.wait(0.1);
+                        self.key(8, 0);
+                        self.wait(0.6);
+                    }
+                    let active = self.game.sky.loadout.active;
+                    self.check(active == slot, format!("slot {} in hand", slot + 1));
+                }
                 "face-drone" => {
                     self.face_drone(90);
                 }
@@ -601,9 +745,19 @@ impl Device {
                         self.key(6, 1);
                         self.face_drone(1);
                         frames += 1;
-                        // keep the battery and the active weapon usable (switch when hot)
+                        // switch weapons when this one is hot or cannot reach, as a player would
+                        let eye = self.game.sky.walker.position;
+                        let nearest = self
+                            .game
+                            .sky
+                            .drones
+                            .iter()
+                            .map(|d| d.position.distance(eye))
+                            .fold(f32::INFINITY, f32::min);
                         let l = &self.game.sky.loadout;
-                        if l.overheat[l.active] > 0.0 {
+                        let short =
+                            l.stats().is_some_and(|s| nearest > s.range * 0.9) && frames % 30 == 0;
+                        if l.overheat[l.active] > 0.0 || short {
                             self.key(6, 0);
                             self.key(16, 1);
                             self.frame();
@@ -689,7 +843,7 @@ impl Device {
                         self.check(false, "goto-ship: no parked ship".into());
                         continue;
                     };
-                    self.walk_to(ship, 7.0, 45.0);
+                    self.walk_to(ship, 7.0, number(1, 120.0));
                     let d = self.game.sky.walker.position.distance(ship);
                     self.check(d < 9.0, format!("reached the ship ({d:.1} units away)"));
                 }
@@ -764,7 +918,7 @@ fn main() {
             .cloned()
     };
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("flight-club-emulator --script FILE [--out DIR] [--save FILE]");
+        println!("flight-club-emulator --script FILE [--out DIR] [--save FILE] [--video FILE.mp4]");
         return;
     }
     let out = PathBuf::from(value("--out").unwrap_or_else(|| "target/emulator".into()));
@@ -784,7 +938,15 @@ fn main() {
     let mut device = Device::new(out);
     // the device boots into the launcher menu with the gyroscope calibrating
     device.wait(1.0);
+    if let Some(path) = value("--video") {
+        device.video = Some(video::Video::start(Path::new(&path)).expect("start ffmpeg"));
+    }
     device.run(&script);
+    if let Some(video) = device.video.take() {
+        let frames = video.frames;
+        let path = video.finish().expect("finish the video");
+        println!("video {} ({:.1}s)", path.display(), frames as f32 / FPS);
+    }
     if device.failures > 0 {
         eprintln!("{} check(s) failed", device.failures);
         std::process::exit(1);
