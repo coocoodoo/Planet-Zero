@@ -49,6 +49,17 @@ The library crate (`src/lib.rs`) holds all game logic. Both entry points are thi
 
 Tests live in `tests.rs` submodules: `src/{app,flight,gameplay,world,audio}/tests.rs` and `src/app/orbit/tests.rs`. They include full-level playthroughs, so a single test can run for a while. Map generation is asynchronous, so tests must wait on the loader rather than busy-loop (see recent commit 96f2704).
 
+## Cardputer Sky
+
+`Mode::Explore` is Cardputer Sky, a procedural exploration and survival mode. Game logic lives in
+`src/sky/` (no rendering), engine glue in `src/app/sky.rs`, drawing in `src/ui/sky.rs` and
+`src/ui/sky_icons.rs`, and 3D additions go through `render::Extras` (extra triangles, parked ships,
+a colour grade). On foot the camera comes from `Flight::eye`. Design notes: `docs/sky-architecture.md`;
+player guide: `docs/cardputer-sky.md`. The PC emulator `src/bin/emulator.rs` (feature `cardputer`)
+runs `cardputer::Game` with scripted keys and a simulated BMI270; `scripts/emulator/tour.txt` is an
+end-to-end check (exit code 1 on failure). The default script is compiled in, so rebuild after editing
+it, or pass `--script`.
+
 ## Testing workflow
 
 `skills/flight-club-testing/SKILL.md` (Chinese) documents the full method:

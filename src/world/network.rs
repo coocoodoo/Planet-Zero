@@ -41,6 +41,10 @@ pub struct Network {
     environment_seed: u32,
     summoned: std::collections::HashMap<MapKey, u32>,
     pub active: bool,
+    /// Stock wormholes between the 12 maps. Cardputer Sky turns them off.
+    pub surface_links: bool,
+    /// One-way warp tunnel to another star system (Cardputer Sky)
+    warp: Option<Link>,
 }
 impl Network {
     pub fn random_earth(&mut self) -> MapKey {
@@ -58,6 +62,9 @@ impl Network {
         }
     }
     pub fn park_portals(&mut self, world: &World, position: Vec3, forward: Vec3) {
+        if !self.surface_links {
+            return;
+        }
         self.ensure(world);
         if world.kind == MapKind::Space {
             return;
@@ -99,6 +106,8 @@ impl Network {
             environment_seed: seed,
             summoned: Default::default(),
             active: false,
+            surface_links: true,
+            warp: None,
         };
         for i in 0..kinds.len() {
             network.connect(kinds[i], kinds[(i + 1) % kinds.len()]);
@@ -114,7 +123,37 @@ impl Network {
             environment_seed: self.environment_seed,
             summoned: self.summoned.clone(),
             active: self.active,
+            surface_links: self.surface_links,
+            warp: self.warp,
         }
+    }
+    /// Open a warp tunnel ahead of the ship to `target` (another system's space map). The far
+    /// end is placed when the target world arrives, exactly like a stock wormhole exit.
+    pub fn open_warp(&mut self, world: &World, position: Vec3, forward: Vec3, target: MapKey) {
+        let direction = forward.normalize_or_zero();
+        let mut aperture = Portal {
+            center: position + direction * 700.0,
+            yaw: direction.x.atan2(-direction.y) + std::f32::consts::PI,
+            radius: 62.0,
+        };
+        // in space, stock portals sit at fixed points by the planets; a warp tunnel stays ahead
+        if world.kind != MapKind::Space {
+            place_aperture(world, &mut aperture, None);
+        }
+        self.warp = Some(Link {
+            id: self.random.0 ^ 0x57a2_0000,
+            ends: [MapKey::of(world), target],
+            entrances: [Some(aperture), None],
+        });
+        self.random.next();
+        self.request(target);
+        self.active = true;
+    }
+    pub fn close_warp(&mut self) {
+        self.warp = None;
+    }
+    pub fn warp_open(&self) -> bool {
+        self.warp.is_some()
     }
     fn add_link(&mut self, ends: [MapKey; 2], entrances: [Option<Portal>; 2]) {
         self.links.push(Link {
@@ -140,6 +179,9 @@ impl Network {
         );
     }
     pub fn ensure(&mut self, world: &World) {
+        if !self.surface_links {
+            return;
+        }
         let key = MapKey::of(world);
         if !self.links.iter().any(|l| l.ends.contains(&key)) {
             let at = self.random_link(world.kind);
@@ -174,8 +216,13 @@ impl Network {
     pub fn routes(&self, world: &World) -> Vec<Route> {
         let key = MapKey::of(world);
         let mut routes = Vec::with_capacity(2);
+        let stock = if self.surface_links {
+            self.links.as_slice()
+        } else {
+            &[]
+        };
         for placed in [true, false] {
-            for link in &self.links {
+            for link in stock.iter().chain(self.warp.iter()) {
                 let Some(side) = link.ends.iter().position(|k| *k == key) else {
                     continue;
                 };
@@ -208,6 +255,9 @@ impl Network {
             .aperture
     }
     pub fn summon(&mut self, world: &World, position: Vec3, forward: Vec3) {
+        if !self.surface_links {
+            return;
+        }
         self.ensure(world);
         let key = MapKey::of(world);
         let old = self.summoned.get(&key).copied();

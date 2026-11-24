@@ -92,6 +92,9 @@ impl App {
             self.escape_since = Some(Instant::now());
             return;
         }
+        if self.page == Page::Playing && self.explore() && self.sky_key(code) {
+            return;
+        }
         match code {
             CHART if matches!(self.page, Page::Playing | Page::Paused | Page::Chart) => {
                 self.pitch_gesture = Default::default();
@@ -360,6 +363,9 @@ impl App {
     }
     pub fn back(&mut self) {
         self.pitch_gesture = Default::default();
+        if self.sky_back() {
+            return;
+        }
         match self.page {
             Page::Chart => self.toggle_chart(),
             Page::Menu => {}
@@ -384,16 +390,24 @@ impl App {
                 0..=5 => self.selection = START_ROW,
                 START_ROW => self.start(),
                 7 => self.open_settings(),
-                8 => self.quit = true,
+                8 => {
+                    self.sky_save();
+                    self.quit = true
+                }
                 _ => {}
             },
             Page::Paused => match self.selection {
                 0 => self.page = Page::Playing,
+                // Cardputer Sky has no missions to retry: resume instead of resetting the session
+                1 if self.explore() => self.page = Page::Playing,
                 1 => self.start(),
                 2 => self.flight.hud = !self.flight.hud,
                 3 => self.open_settings(),
                 4 => self.home(),
-                5 => self.quit = true,
+                5 => {
+                    self.sky_save();
+                    self.quit = true
+                }
                 _ => {}
             },
             Page::Settings => self.activate_setting(),
@@ -404,7 +418,7 @@ impl App {
     pub(super) fn adjust(&mut self, direction: i32) {
         let next = |i: usize, len: usize| (i as i32 + direction).rem_euclid(len as i32) as usize;
         match self.selection {
-            0 => self.mode = Mode::ALL[next(self.mode as usize, 4)],
+            0 => self.mode = Mode::ALL[next(self.mode as usize, Mode::ALL.len())],
             1 => {
                 self.flight.vehicle =
                     Vehicle::ALL[next(self.flight.vehicle as usize, Vehicle::ALL.len())]

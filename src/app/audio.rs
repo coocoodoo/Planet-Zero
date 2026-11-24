@@ -53,12 +53,12 @@ impl App {
                     0.0,
                 )
             }
-            Mode::Free => (1.0, 0.0),
+            Mode::Free | Mode::Explore => (1.0, 0.0),
         }
     }
     /// 大气层内的轨道推进强度，太空中的加速不算升空
     fn ascent(&self) -> f32 {
-        if self.mode != Mode::Free || self.world.kind == MapKind::Space {
+        if !self.mode.roams() || self.world.kind == MapKind::Space {
             0.0
         } else {
             self.flight.orbital_thrust
@@ -102,7 +102,7 @@ impl App {
         let altitude_m = self.flight.position.z;
         // 下降段仍在太空配乐中，落地后切回地表曲目
         let descending = self.orbit.transition.is_some() && self.orbit.descending;
-        let ascending = self.mode == Mode::Free
+        let ascending = self.mode.roams()
             && self.world.kind != MapKind::Space
             && !descending
             && (self.orbit.boost || ascent > 0.3 || self.orbit.transition.is_some());
@@ -118,7 +118,7 @@ impl App {
                 }
             }
             _ => match self.mode {
-                Mode::Free => Cue::Flight,
+                Mode::Free | Mode::Explore => Cue::Flight,
                 Mode::Race => Cue::Race,
                 Mode::Coins => Cue::Coins,
                 Mode::Combat if self.mission.countdown > 0.0 => Cue::Flight,

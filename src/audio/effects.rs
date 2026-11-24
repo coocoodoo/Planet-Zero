@@ -348,5 +348,59 @@ pub fn tones(sound: Sound, mut emit: impl FnMut(Tone)) {
             put(blip(Wave::Fm, 420.0, 40.0, 0.14, 1.3, 0.05));
             put(blip(Wave::Noise, 0.0, 0.0, 0.18, 0.6, 0.35).shape(0.4));
         }
+        Sound::Scan => {
+            // rising sonar ping with a soft echo
+            put(blip(Wave::Sine, 520.0, 1560.0, 0.2, 0.28, 0.0).attack(0.01));
+            put(blip(Wave::Sine, 1560.0, 1560.0, 0.08, 0.3, 0.32).pan(-0.3));
+            put(blip(Wave::Sine, 1560.0, 1560.0, 0.05, 0.3, 0.6).pan(0.3));
+        }
+        Sound::Mine => {
+            put(blip(Wave::Saw, 140.0, 190.0, 0.09, 0.11, 0.0));
+            put(blip(Wave::Noise, 0.0, 0.0, 0.05, 0.1, 0.0).shape(0.6));
+        }
+        Sound::Jetpack => {
+            put(blip(Wave::Noise, 0.0, 0.0, 0.1, 0.16, 0.0)
+                .shape(0.2)
+                .attack(0.03));
+        }
+        Sound::Dock => {
+            put(blip(Wave::Pulse, 220.0, 110.0, 0.14, 0.12, 0.0));
+            put(blip(Wave::Noise, 0.0, 0.0, 0.12, 0.25, 0.08).shape(-0.2));
+            put(blip(Wave::Triangle, 440.0, 660.0, 0.12, 0.2, 0.4));
+        }
+        Sound::Hazard => {
+            put(blip(Wave::Pulse, 880.0, 880.0, 0.1, 0.08, 0.0));
+            put(blip(Wave::Pulse, 660.0, 660.0, 0.1, 0.08, 0.14));
+        }
+        Sound::Footstep => {
+            put(blip(Wave::Noise, 0.0, 0.0, 0.05, 0.05, 0.0).shape(-0.4));
+            put(blip(Wave::Sine, 90.0, 60.0, 0.05, 0.05, 0.0));
+        }
+        Sound::Craft => {
+            put(blip(
+                Wave::Triangle,
+                frequency(72),
+                frequency(72),
+                0.12,
+                0.06,
+                0.0,
+            ));
+            put(blip(
+                Wave::Triangle,
+                frequency(79),
+                frequency(79),
+                0.12,
+                0.08,
+                0.07,
+            ));
+            put(blip(
+                Wave::Triangle,
+                frequency(84),
+                frequency(84),
+                0.12,
+                0.12,
+                0.14,
+            ));
+        }
     }
 }

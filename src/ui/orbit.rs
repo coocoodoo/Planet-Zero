@@ -3,10 +3,10 @@ use crate::world::MapKind;
 use glam::vec2;
 
 pub(super) fn draw(app: &mut App) {
-    if app.page != Page::Playing || app.mode != Mode::Free || app.flight.demo {
+    if app.page != Page::Playing || !app.mode.roams() || app.flight.demo {
         return;
     }
-    if app.orbit.arrival_notice > 0.0 {
+    if app.orbit.arrival_notice > 0.0 && !app.explore() {
         let mut c = Canvas {
             pixels: &mut app.screen,
         };
@@ -29,6 +29,7 @@ pub(super) fn draw(app: &mut App) {
         ""
     };
     let body = app.orbit_body();
+    let body_name = app.body_name(body);
     let mut c = Canvas {
         pixels: &mut app.screen,
     };
@@ -56,9 +57,9 @@ pub(super) fn draw(app: &mut App) {
             c.line(tip.x as i32, tip.y as i32, p.x as i32, p.y as i32, WHITE);
         }
         c.osd(
-            160 - Canvas::osd_width(body.name()) / 2,
+            160 - Canvas::osd_width(&body_name) / 2,
             48,
-            body.name(),
+            &body_name,
             WHITE,
         );
         c.osd(

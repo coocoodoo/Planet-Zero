@@ -54,6 +54,20 @@ pub enum Sound {
     Wave,
     Destroyed,
     Thunder,
+    /// Cardputer Sky: scanner ping
+    Scan,
+    /// Cardputer Sky: mining beam pulse
+    Mine,
+    /// Cardputer Sky: jetpack burst
+    Jetpack,
+    /// Cardputer Sky: docking clamps
+    Dock,
+    /// Cardputer Sky: low life support or hazard protection
+    Hazard,
+    /// Cardputer Sky: item crafted or bought
+    Craft,
+    /// Cardputer Sky: a step on foot
+    Footstep,
 }
 impl Sound {
     /// 每种音效独立的限频槽位与最短间隔（秒）
@@ -102,10 +116,17 @@ impl Sound {
             Sound::Flak => (40, 0.12),
             Sound::Rail => (41, 0.3),
             Sound::Swarm => (42, 0.16),
+            Sound::Scan => (43, 0.5),
+            Sound::Mine => (44, 0.12),
+            Sound::Jetpack => (45, 0.16),
+            Sound::Dock => (46, 1.5),
+            Sound::Hazard => (47, 1.0),
+            Sound::Craft => (48, 0.15),
+            Sound::Footstep => (49, 0.18),
         }
     }
 }
-pub(crate) const THROTTLE_SLOTS: usize = 43;
+pub(crate) const THROTTLE_SLOTS: usize = 50;
 
 /// 实时输出的选曲种子，每次启动随机
 #[allow(dead_code)]

@@ -14,6 +14,12 @@ struct Scene {
     network: Option<Network>,
     theme: usize,
     scale: usize,
+    /// Cardputer Sky props, parked ship, station and colour grade
+    extras: (
+        Vec<flight_club::render::ExtraTriangle>,
+        Vec<Flight>,
+        flight_club::render::Grade,
+    ),
 }
 pub struct Frame {
     pub map: flight_club::world::network::MapKey,
@@ -47,6 +53,10 @@ impl Drawing {
                     scale = scene.scale;
                 }
                 let started = std::time::Instant::now();
+                let (triangles, ships, grade) = scene.extras;
+                renderer.extras.triangles = triangles;
+                renderer.extras.ships = ships;
+                renderer.extras.grade = grade;
                 renderer.render_connected(
                     &scene.world,
                     &scene.flight,
@@ -96,6 +106,11 @@ impl Drawing {
             network: Some(app.network.snapshot()),
             theme: app.theme,
             scale,
+            extras: (
+                app.renderer.extras.triangles.clone(),
+                app.renderer.extras.ships.clone(),
+                app.renderer.extras.grade,
+            ),
         };
         self.busy = self.send.send(scene).is_ok();
     }

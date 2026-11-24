@@ -10,6 +10,20 @@ Flight Club is a pixel flight game for Cardputer Zero. Pilot a fighter through w
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 2024](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
 
+## Cardputer Sky
+
+**Cardputer Sky** is a procedural space exploration and survival mode built on this engine and
+selected by default in the menu. Pilot your ship with the gyroscope, land on generated planets in
+seven biomes, explore on foot, scan and mine, fight guard drones with seven weapon types rolled with
+random perks, survive heat, cold, toxicity and radiation, trade and upgrade at space stations, and warp
+between 14,260 star systems. Keys 4–8 under the screen carry the
+main actions, with icons above each key, following M5Stack's Recommended Key Mapping Design.
+
+See [the Cardputer Sky guide](docs/cardputer-sky.md) for controls, gameplay, the save file and the PC
+emulator, and [the architecture notes](docs/sky-architecture.md) for how it fits the engine.
+
+<img src="docs/media/sky/flight.png" alt="Cardputer Sky in the emulator" width="420" />
+
 ## Gameplay
 
 - Four modes: Free Flight, Checkpoint Race, Coin Rush, and Sky Assault

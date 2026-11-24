@@ -24,6 +24,11 @@ path = "src/bin/cardputer.rs"
 required-features = ["cardputer"]
 
 [[bin]]
+name = "flight-club-emulator"
+path = "src/bin/emulator.rs"
+required-features = ["cardputer"]
+
+[[bin]]
 name = "flight-club-audio"
 path = "src/bin/audio.rs"
 

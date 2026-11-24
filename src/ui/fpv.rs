@@ -379,7 +379,7 @@ fn clock_text(hour: u32, minute: u32) -> String {
 }
 
 fn device_clock() -> (u32, u32) {
-    #[cfg(feature = "cardputer")]
+    #[cfg(all(feature = "cardputer", unix))]
     unsafe {
         let now = libc::time(std::ptr::null_mut());
         let mut local: libc::tm = std::mem::zeroed();
@@ -388,7 +388,7 @@ fn device_clock() -> (u32, u32) {
         }
         (local.tm_hour as u32, local.tm_min as u32)
     }
-    #[cfg(not(feature = "cardputer"))]
+    #[cfg(not(all(feature = "cardputer", unix)))]
     {
         let seconds = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -442,9 +442,9 @@ pub fn draw(app: &mut App) {
         c.osd(160 - Canvas::osd_width(text) / 2, 35, text, GOLD);
     }
     if app.input_label == "FAIL" {
-        c.osd(5, if m.mode == Mode::Free { 33 } else { 44 }, "IMU --", RED);
+        c.osd(5, if m.mode.roams() { 33 } else { 44 }, "IMU --", RED);
     }
-    if m.mode != Mode::Free {
+    if !m.mode.roams() {
         c.osd(5, 33, &format!("T-{:03.0}", m.remaining), GOLD);
         c.osd_right(
             315,

@@ -8,6 +8,8 @@ mod navigation;
 mod orbit;
 mod osd;
 mod perf;
+mod sky;
+mod sky_icons;
 use crate::app::{App, Page};
 use crate::flight::angle;
 use crate::gameplay::Mode;
@@ -19,6 +21,8 @@ pub(crate) use menus::help_page_count;
 pub fn draw(app: &mut App) {
     if app.page == Page::Chart {
         chart::draw(app);
+    } else if app.page == Page::Playing && app.explore() {
+        sky::draw(app);
     } else if app.page == Page::Playing {
         hud::draw(app);
         if app.flight.hud {
@@ -30,7 +34,10 @@ pub fn draw(app: &mut App) {
     } else {
         menus::draw(app);
     }
-    orbit::draw(app);
+    // Cardputer Sky panels cover the view; the engine's orbit labels would sit on top of them
+    if !(app.explore() && app.sky.overlay != crate::sky::Overlay::None) {
+        orbit::draw(app);
+    }
     perf::draw(app);
 }
 

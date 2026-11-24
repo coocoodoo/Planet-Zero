@@ -22,7 +22,7 @@ pub struct Orbit {
 }
 impl App {
     fn orbit_enabled(&self) -> bool {
-        self.mode == Mode::Free
+        self.mode.roams()
             && !self.flight.demo
             && self.loader.pending.is_none()
             && self.travel.is_none()
@@ -42,6 +42,9 @@ impl App {
             .unwrap()
     }
     fn orbit_key(&self, body: Body) -> Option<MapKey> {
+        if let Some(key) = self.sky_body_key(body) {
+            return Some(key);
+        }
         match body {
             Body::Moon => Some(MapKey {
                 kind: MapKind::Moon,
@@ -119,10 +122,7 @@ impl App {
                 .into_iter()
                 .any(|body| body.altitude(self.flight.position) < body.orbit_altitude() + 500.0);
         } else if self.flight.position.z >= ARM_ALTITUDE - 100.0 {
-            self.network.request(MapKey {
-                kind: MapKind::Space,
-                seed: MapKind::Space.seed(),
-            });
+            self.network.request(self.space_key());
         }
     }
     /// 太空地图中把飞机挡在星体外侧，所有模式都生效
@@ -184,7 +184,8 @@ impl App {
             self.mission.elapsed += dt;
             if altitude >= body.orbit_altitude() {
                 self.finish_ascent(space);
-                self.orbit.cooldown = 0.4;
+                // Cardputer Sky: a moment to turn away before the planet can catch you again
+                self.orbit.cooldown = if self.explore() { 5.0 } else { 0.4 };
             } else if altitude <= body.surface_altitude() {
                 self.orbit.descending = false;
                 self.sounds.push(crate::audio::Sound::Landing);
@@ -209,8 +210,10 @@ impl App {
             for body in bodies {
                 let delta = body.center() - self.flight.position;
                 if self.orbit.cooldown <= 0.0
+                    && !(self.explore() && self.sky.autodock)
                     && body.altitude(self.flight.position) < body.orbit_altitude()
-                    && delta.normalize_or_zero().dot(self.flight.axes()[1]) > 0.1
+                    && delta.normalize_or_zero().dot(self.flight.axes()[1])
+                        > if self.explore() { 0.45 } else { 0.1 }
                     && let Some(key) = self.orbit_key(body)
                 {
                     if self.network.get(key).is_some() {
@@ -225,10 +228,7 @@ impl App {
             && self.orbit.boost
             && self.flight.position.z >= Body::of(self.world.kind).surface_altitude()
         {
-            let target = MapKey {
-                kind: MapKind::Space,
-                seed: MapKind::Space.seed(),
-            };
+            let target = self.space_key();
             if self.network.get(target).is_some() {
                 self.flight.orbital_scenery = self.network.get(target).cloned();
                 let body = Body::of(self.world.kind);

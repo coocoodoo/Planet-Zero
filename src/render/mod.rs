@@ -2,6 +2,8 @@ mod aircraft;
 mod celestial;
 mod clouds;
 mod cockpit;
+mod extras;
+pub use extras::{ExtraTriangle, Extras, Grade};
 mod feel;
 mod geology;
 mod landmarks;
@@ -138,6 +140,8 @@ pub struct Renderer {
     bloom: Vec<[u16; 3]>,
     voxels: Vec<Vec<(f32, f32, usize, bool)>>,
     pub detail: [f64; 4],
+    /// Game-mode content for the next frame (Cardputer Sky props, ships, colour grade)
+    pub extras: Extras,
 }
 
 /// 当前光照的黄昏、夜晚与合成器浪潮程度，供配乐同步过渡
@@ -333,6 +337,7 @@ impl Renderer {
             bloom: vec![],
             voxels,
             detail: [0.0; 4],
+            extras: Extras::default(),
         }
     }
     pub fn render(
@@ -368,7 +373,9 @@ impl Renderer {
         if width > 320 && self.workers.is_empty() {
             self.workers = (0..3).map(|_| Self::single()).collect();
         }
-        let cockpit = flight.weights[2];
+        // On foot (Cardputer Sky) there is no cockpit and no player aircraft
+        let walking = flight.eye.is_some();
+        let cockpit = if walking { 0.0 } else { flight.weights[2] };
         let rolled = cockpit > 0.01;
         // 座舱围绕画面上方的视线中心旋转，外围画布覆盖完整翻滚
         let reach_y = height as f32 * 1.28;
@@ -532,14 +539,16 @@ impl Renderer {
         self.detail[3] = portals_started.elapsed().as_secs_f64() * 1000.0;
         self.stages[1] = started.elapsed().as_secs_f64() * 1000.0;
         let started = std::time::Instant::now();
-        self.shadow(world, flight, &camera);
+        if !walking {
+            self.shadow(world, flight, &camera);
+        }
         let mut jets: Vec<&Flight> = flight
             .wingmen
             .iter()
             .take(flight.wing_count)
             .filter(|wing| wing.portal_wait <= 0.0)
             .collect();
-        if cockpit < 0.6 {
+        if cockpit < 0.6 && !walking {
             jets.push(flight);
         }
         jets.sort_by(|a, b| {
@@ -553,10 +562,13 @@ impl Renderer {
         for jet in jets {
             self.jet(jet, &camera);
         }
-        self.plasma(flight, &camera);
+        if !walking {
+            self.plasma(flight, &camera);
+        }
         if let Some(mission) = mission {
             self.mission(mission, flight, &camera);
         }
+        self.draw_extras(&camera);
         // 当前世界的云和降水以传送门表面作为遮挡边界
         if flight.portal_transit.is_some() && !world.kind.vacuum() {
             self.portal_mask(world, flight, &camera, network, 1.06);
@@ -565,7 +577,9 @@ impl Renderer {
         if !world.kind.vacuum() {
             self.precipitation(world, flight, &camera);
         }
-        self.speed_lines(flight, &camera);
+        if !walking {
+            self.speed_lines(flight, &camera);
+        }
         if world.kind == crate::world::MapKind::City && self.light.synthwave > 0.0 {
             self.synthwave_glow();
         }
@@ -614,6 +628,7 @@ impl Renderer {
         if has_panel {
             self.cockpit.glass(&mut self.output, width, height, flight);
         }
+        self.grade_output();
         self.stages[2] = started.elapsed().as_secs_f64() * 1000.0;
         self.rgba.resize(width * height * 4, 0);
         let hurt = mission.map_or(0.0, |m| m.hurt / 0.35);

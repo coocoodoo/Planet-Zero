@@ -1,0 +1,9 @@
+# Resume from the save the tour left behind: the session must come back where it stopped.
+start
+wait 1
+expect phase onfoot
+expect location planet
+expect-min systems 2
+expect-min credits 100
+shot 30-continue
+log

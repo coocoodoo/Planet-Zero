@@ -1,6 +1,6 @@
 use super::*;
 
-const HELP_PAGES: [[&str; 8]; 9] = [
+const HELP_PAGES: [[&str; 8]; 16] = [
     [
         "FLIGHT",
         "UP / DOWN PITCH",
@@ -91,10 +91,81 @@ const HELP_PAGES: [[&str; 8]; 9] = [
         "M RETURN TO FLIGHT",
         "DIRECTION KEYS TAKE CONTROL",
     ],
+    [
+        "SKY / FLYING",
+        "TILT THE DEVICE TO STEER",
+        "F X Z C CLIMB DIVE TURN",
+        "4 SCAN  5 MINE  6 LAND",
+        "7 GALAXY MAP  8 INVENTORY",
+        "SHIFT PULSE BOOST",
+        "Q / E ROLL  SPACE CAMERA",
+        "I GYRO ON/OFF  K RECENTER",
+    ],
+    [
+        "SKY / ON FOOT",
+        "F / X WALK  Z / C TURN",
+        "TAP Z / C TO AIM FINELY",
+        "DOUBLE TAP X: TURN AROUND",
+        "A / D SIDESTEP  W / S LOOK",
+        "SHIFT RUN  SPACE JETPACK",
+        "TILT THE DEVICE TO FINE AIM",
+        "K RECENTRE  F2 AIM SETTINGS",
+    ],
+    [
+        "SKY / SPACE",
+        "HOLD CLIMB HIGH TO REACH ORBIT",
+        "FLY AT A PLANET TO LAND ON IT",
+        "6 AUTOPILOT TO THE STATION",
+        "5 MINE ASTEROIDS FOR TRITIUM",
+        "7 MAP: WARP USES A JUMP CELL",
+        "WARP AWAY FROM PLANETS",
+        "FLY INTO THE TUNNEL TO JUMP",
+    ],
+    [
+        "SKY / GALAXY AND SYSTEM MAP",
+        "Z / C OR 4 / 5 PICK A STAR",
+        "F / X TILT THE STAR FIELD",
+        "6 OPEN A WARP TUNNEL",
+        "7 SYSTEM VIEW AND PLANETS",
+        "SYSTEM: 6 SET COURSE",
+        "8 OR ESC CLOSE",
+        "CYAN STARS ARE IN RANGE",
+    ],
+    [
+        "SKY / INVENTORY AND STATION",
+        "ARROWS PICK A SLOT",
+        "4 USE: RECHARGE A SYSTEM",
+        "5 RECIPES  6 MAKE",
+        "STATION: 4 SELL 5 BUY 6 UPGRADE",
+        "STATION: 7 OR ENTER CONFIRM",
+        "STATION: 8 UNDOCK",
+        "SCAN DATA SELLS AT STATIONS",
+    ],
+    [
+        "SKY / WEAPONS AND DRONES",
+        "4 SCAN  5 FIRE  6 JETPACK",
+        "7 OR E: BOARD OPEN READ",
+        "7 WITH NOTHING NEAR: SWAP",
+        "Q NEXT WEAPON",
+        "MINING AND LOOTING ALERT",
+        "GUARD DRONES / RED ! = SHOT",
+        "SHIELD SHD RECHARGES IN 3S",
+    ],
+    [
+        "SKY / ARSENAL",
+        "8 BAG THEN 6 ARMS",
+        "4 EQUIP  5 SCRAP FOR METAL",
+        "RARITY: COMMON TO EXOTIC",
+        "EACH RARITY ADDS A PERK",
+        "CACHES HOLD RARE WEAPONS",
+        "REROLL CELL REROLLS PERKS",
+        "STATIONS: ARMORY + CONTRACT",
+    ],
 ];
 
 fn help_pages(mode: Mode) -> &'static [usize] {
     match mode {
+        Mode::Explore => &[9, 10, 14, 15, 11, 12, 13, 1, 2],
         Mode::Free => &[0, 1, 2, 3, 4, 8],
         Mode::Combat => &[0, 1, 2, 5],
         Mode::Race => &[0, 1, 2, 6],
@@ -185,8 +256,13 @@ fn main_menu(c: &mut Canvas, app: &App) {
     let menu_map = app.menu_map();
     let menu_weather = app.menu_weather().name();
     c.shade(0, 0, 320, 32);
-    c.text_scale(10, 7, "FLIGHT CLUB", WHITE, 2);
-    c.text(224, 8, "ARCADE", CYAN);
+    if app.mode == Mode::Explore {
+        c.text_scale(10, 7, "CARDPUTER SKY", WHITE, 2);
+        c.text(224, 8, "EXPLORE", CYAN);
+    } else {
+        c.text_scale(10, 7, "FLIGHT CLUB", WHITE, 2);
+        c.text(224, 8, "ARCADE", CYAN);
+    }
     c.text(224, 20, concat!("V", env!("CARGO_PKG_VERSION")), MUTED);
     c.shade(8, 34, 304, 115);
     c.rect(8, 34, 2, 115, CYAN);
@@ -213,6 +289,8 @@ fn main_menu(c: &mut Canvas, app: &App) {
             "",
             if app.loader.pending.is_some() {
                 "START WHEN READY"
+            } else if app.mode == Mode::Explore {
+                "START EXPLORING"
             } else {
                 "START FLIGHT"
             },
@@ -301,6 +379,8 @@ fn settings(c: &mut Canvas, app: &App) {
             ("PORTAL LABELS", toggle(app.portal_labels)),
             ("SOUND", app.audio_settings.name().to_owned()),
             ("VOLUME", format!("{}%", app.audio_settings.volume * 10)),
+            ("AIM ASSIST", toggle(app.aim_assist)),
+            ("TILT AIM ON FOOT", toggle(app.tilt_aim)),
             ("BACK", String::new()),
         ],
         Some(SettingsSection::Advanced) => vec![
@@ -432,7 +512,7 @@ fn results(c: &mut Canvas, app: &App) {
         ),
         Mode::Coins => format!("COINS {}  CHAIN X{}", m.collected, m.best_combo),
         Mode::Combat => format!("KILLS {}  GRAZE {}", m.kills, m.grazes),
-        Mode::Free => String::new(),
+        Mode::Free | Mode::Explore => String::new(),
     };
     c.text(28, 78, &detail, WHITE);
     c.text(

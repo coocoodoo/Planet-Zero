@@ -10,6 +10,12 @@ Flight Club 是为 Cardputer Zero 制作的像素飞行游戏。驾驶战机穿�
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 2024](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
 
+## Cardputer Sky
+
+**Cardputer Sky** 是基于本引擎的程序生成太空探索与生存模式，菜单默认选中。用陀螺仪驾驶飞船，降落在七种生态的行星上步行探索，扫描与采矿，用七类带随机词条的武器对抗守卫无人机，抵御高温、严寒、毒性与辐射，在空间站交易和升级，并在 14,260 个星系之间跃迁。屏幕下方的 4–8 键承担主要操作，每个键上方显示图标，遵循 M5Stack 推荐的按键映射设计。
+
+操作、玩法、存档与 PC 模拟器见 [Cardputer Sky 指南（英文）](docs/cardputer-sky.md)，与引擎的结合方式见 [架构说明（英文）](docs/sky-architecture.md)。
+
 ## 玩法
 
 - 自由飞行、检查点竞速、金币冲刺和空战闯关四种模式

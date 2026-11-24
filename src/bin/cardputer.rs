@@ -549,6 +549,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         game.mode = options.mode.unwrap_or(flight_club::gameplay::Mode::Free);
         game.start();
         game.flight.set_demo(options.demo);
+    } else {
+        // the launcher opens the menu with Cardputer Sky selected
+        game.mode = flight_club::gameplay::Mode::Explore;
     }
     game.set_weather(options.weather);
     game.flight

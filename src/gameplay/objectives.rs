@@ -101,7 +101,7 @@ impl Mission {
                     score(a).total_cmp(&score(b))
                 })
                 .map(|e| e.position),
-            Mode::Free => None,
+            Mode::Free | Mode::Explore => None,
         }
     }
     pub fn coin_goal(&self) -> u32 {

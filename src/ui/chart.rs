@@ -50,6 +50,8 @@ fn route_line(c: &mut Canvas<'_>, start: Vec2, end: Vec2, color: [u8; 3]) {
 
 pub fn draw(app: &mut App) {
     app.chart.prepare(&app.world, app.flight.position);
+    let names = Body::ALL.map(|body| app.body_name(body));
+    let name = |body: Body| names[Body::ALL.iter().position(|b| *b == body).unwrap()].as_str();
     let chart = &app.chart;
     let f = &app.flight;
     let routes = app.network.routes(&app.world);
@@ -124,7 +126,7 @@ pub fn draw(app: &mut App) {
                 c.osd(
                     (p.x + ORIGIN.x - 12.0) as i32,
                     (p.y + ORIGIN.y + radius + 3.0) as i32,
-                    body.name(),
+                    name(body),
                     color,
                 );
             }
@@ -234,7 +236,7 @@ pub fn draw(app: &mut App) {
             WHITE,
         );
         if let Some(t) = target {
-            c.osd(171, 53, t.body.map_or("WAYPOINT", |body| body.name()), CYAN);
+            c.osd(171, 53, t.body.map_or("WAYPOINT", name), CYAN);
             c.osd(
                 171,
                 64,

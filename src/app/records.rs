@@ -13,7 +13,7 @@ impl App {
         )
     }
     pub(super) fn save_record(&mut self) {
-        if self.mode == Mode::Free || self.mission.score <= self.best_score {
+        if self.mode.roams() || self.mission.score <= self.best_score {
             return;
         }
         if self.mode == Mode::Race && self.mission.outcome != Some(true) {

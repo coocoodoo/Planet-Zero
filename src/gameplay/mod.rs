@@ -5,7 +5,9 @@ use glam::{Vec3, vec3};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Mode {
+    /// Cardputer Sky: galaxy exploration and survival
     #[default]
+    Explore,
     Free,
     Race,
     Coins,
@@ -13,9 +15,20 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub const ALL: [Self; 4] = [Self::Free, Self::Race, Self::Coins, Self::Combat];
+    pub const ALL: [Self; 5] = [
+        Self::Explore,
+        Self::Free,
+        Self::Race,
+        Self::Coins,
+        Self::Combat,
+    ];
+    /// Modes without objectives where the player roams freely, including orbit flight.
+    pub fn roams(self) -> bool {
+        matches!(self, Self::Free | Self::Explore)
+    }
     pub fn name(self) -> &'static str {
         match self {
+            Self::Explore => "CARDPUTER SKY",
             Self::Free => "FREE FLIGHT",
             Self::Race => "CHECKPOINT RACE",
             Self::Coins => "COIN RUSH",
@@ -24,6 +37,7 @@ impl Mode {
     }
     pub fn description(self) -> &'static str {
         match self {
+            Self::Explore => "GALAXY / LAND / MINE / SURVIVE",
             Self::Free => "EXPLORE / WEATHER / AEROBATICS",
             Self::Race => "18 GATES / BEAT THE CLOCK",
             Self::Coins => "COLLECT / CHAIN / SCORE",
@@ -32,6 +46,7 @@ impl Mode {
     }
     pub fn parse(s: &str) -> Option<Self> {
         match s {
+            "explore" | "sky" => Some(Self::Explore),
             "free" => Some(Self::Free),
             "race" => Some(Self::Race),
             "coins" => Some(Self::Coins),
@@ -156,7 +171,7 @@ impl Mission {
     ) -> Self {
         flight.set_demo(false);
         flight.change_world(world);
-        flight.yaw = if mode == Mode::Free && world.kind.vacuum() {
+        flight.yaw = if mode.roams() && world.kind.vacuum() {
             0.55
         } else {
             0.0
@@ -185,12 +200,12 @@ impl Mission {
             mode,
             difficulty,
             elapsed: 0.0,
-            countdown: if mode == Mode::Free { 0.0 } else { 3.0 },
+            countdown: if mode.roams() { 0.0 } else { 3.0 },
             remaining: match mode {
                 Mode::Race => 110.0 - difficulty as u8 as f32 * 15.0,
                 Mode::Coins => 90.0,
                 Mode::Combat => 480.0,
-                Mode::Free => 0.0,
+                Mode::Free | Mode::Explore => 0.0,
             },
             score: 0,
             combo: 0,
@@ -376,7 +391,7 @@ impl Mission {
         }
         self.overdrive_time = (self.overdrive_time - dt).max(0.0);
         self.elapsed += dt;
-        if self.mode == Mode::Free {
+        if self.mode.roams() {
             return;
         }
         self.remaining = (self.remaining - dt).max(0.0);

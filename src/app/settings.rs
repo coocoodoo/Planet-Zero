@@ -19,6 +19,8 @@ pub(super) struct Settings {
     pub hud: bool,
     pub volume: u8,
     pub sound_profile: u8,
+    pub aim_assist: bool,
+    pub tilt_aim: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -33,6 +35,8 @@ impl Default for Settings {
             hud: true,
             volume: crate::audio::Settings::default().volume,
             sound_profile: 0,
+            aim_assist: true,
+            tilt_aim: true,
         }
     }
 }
@@ -61,14 +65,14 @@ impl App {
     }
     pub(crate) fn settings_rows(&self) -> usize {
         match self.settings_section {
-            Some(SettingsSection::General) => 5,
+            Some(SettingsSection::General) => 7,
             Some(SettingsSection::Advanced) => 7,
             None => 3,
         }
     }
     pub(crate) fn settings_row_height(&self) -> usize {
         match self.settings_section {
-            Some(SettingsSection::General) => 15,
+            Some(SettingsSection::General) => 11,
             Some(SettingsSection::Advanced) => 11,
             None => 28,
         }
@@ -106,6 +110,11 @@ impl App {
                 self.audio_settings.volume =
                     (self.audio_settings.volume as i32 + direction).clamp(0, 10) as u8
             }
+            (Some(SettingsSection::General), 4) => self.aim_assist = !self.aim_assist,
+            (Some(SettingsSection::General), 5) => {
+                self.tilt_aim = !self.tilt_aim;
+                self.sky_recenter();
+            }
             (Some(SettingsSection::Advanced), 0) => self.flight.faceted = !self.flight.faceted,
             (Some(SettingsSection::Advanced), 1) => {
                 self.flight.dynamic_clouds = !self.flight.dynamic_clouds
@@ -132,7 +141,7 @@ impl App {
             return;
         };
         let data = format!(
-            "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ncloud_pixel_texture = {}\ndynamic_lighting = {}\nsmooth_sky_gradient = {}\nportal_preview = {}\nhud = {}\nvolume = {}\nsound_profile = {}\n",
+            "faceted = {}\nportal_labels = {}\ndynamic_clouds = {}\ncloud_pixel_texture = {}\ndynamic_lighting = {}\nsmooth_sky_gradient = {}\nportal_preview = {}\nhud = {}\nvolume = {}\nsound_profile = {}\naim_assist = {}\ntilt_aim = {}\n",
             self.flight.faceted,
             self.portal_labels,
             self.flight.dynamic_clouds,
@@ -143,6 +152,8 @@ impl App {
             self.flight.hud,
             self.audio_settings.volume,
             self.audio_settings.profile,
+            self.aim_assist,
+            self.tilt_aim,
         );
         let result = (|| -> std::io::Result<()> {
             if let Some(parent) = path.parent() {

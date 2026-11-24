@@ -40,6 +40,21 @@ pub const LEFT: u16 = 105;
 pub const RIGHT: u16 = 106;
 pub const DOWN: u16 = 108;
 
+/// Cardputer Zero number keys 4–8, which sit directly under the screen (M5Stack's recommended
+/// home for the most frequent actions). Their evdev codes are the digit plus one.
+pub const KEY4: u16 = 5;
+pub const KEY5: u16 = 6;
+pub const KEY6: u16 = 7;
+pub const KEY7: u16 = 8;
+pub const KEY8: u16 = 9;
+pub const BAR: [u16; 5] = [KEY4, KEY5, KEY6, KEY7, KEY8];
+pub const TAB: u16 = 15;
+pub const KEY_E: u16 = 18;
+pub const KEY_G: u16 = 34;
+pub const KEY_H: u16 = 35;
+pub const KEY_L: u16 = 38;
+pub const KEY_V: u16 = 47;
+
 pub fn cardputer_direction(code: u16) -> u16 {
     match code {
         33 => UP,

@@ -1,0 +1,86 @@
+# Cardputer Sky v2 on the emulated Cardputer Zero: first person, weapons, guard drones, content.
+# Every action goes through the device's own key and gyroscope paths.
+# Run: cargo run --release --no-default-features --features cardputer --bin flight-club-emulator -- --script scripts/emulator/combat.txt
+
+fresh
+start
+wait 1
+land
+until phase onfoot 8
+expect-min weapons 2
+shot c01-landed
+
+# intuitive first person: tap to aim finely, double tap back to turn around, tilt to fine-aim
+press right 0.05
+press down 0.05
+press down 0.05
+wait 0.4
+shot c02-turned-around
+tilt 9 6 0.4
+wait 0.6
+shot c03-tilt-aim
+tilt 0 0 0.4
+press k
+wait 0.5
+
+# mining raises the guard alert until a patrol comes
+mine-until-drones 90
+expect-min alert 0.3
+wait 2
+shot c04-drones-inbound
+bench 2
+
+# fight: aim with the arrows (and aim assist) while holding 5
+fight 1 60
+expect-min drones_destroyed 1
+shot c05-drone-down
+log
+
+# swap weapons with 7 when nothing is near, and try the pulse laser
+press 7
+wait 0.3
+shot c06-swapped
+expect context swap
+
+# weapons view: 8 then 6
+press 8
+press 6
+wait 0.2
+shot c07-arms
+press down
+wait 0.2
+shot c08-arms-second
+press 8
+
+# points of interest: walk to the nearest cache, ruin or beacon and use key 7
+goto-poi cache 90 700
+press 7
+wait 0.5
+shot c09-cache
+expect-min weapons 3
+fight 1 60
+log
+
+# station: dock, take a contract, browse the armory
+goto-ship
+press 7
+until phase flying 5
+tilt 0 32 0.6
+down shift
+until location space 120
+up shift
+tilt 0 0 0.6
+wait 2
+press 6
+until phase docked 150
+press 5
+wait 0.2
+shot c10-station-buy
+press 7
+expect-min contract 1
+press down
+wait 0.2
+shot c11-armory
+press 8
+until phase flying 3
+log

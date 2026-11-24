@@ -1,0 +1,152 @@
+# Cardputer Sky tour on the emulated Cardputer Zero.
+# Every action goes through the device's own key and gyroscope paths.
+# Run: cargo run --release --no-default-features --features cardputer --bin flight-club-emulator
+
+fresh
+shot 00-menu
+start
+wait 2
+expect page playing
+expect location planet
+expect imu imu
+shot 01-arrival
+bench 3
+
+# gyroscope piloting: tilt right to bank and turn, nose up to climb
+tilt 22 0 0.5
+wait 2.5
+shot 02-gyro-bank
+tilt 0 0 0.5
+wait 1
+
+# flight scanner (key 4) marks points of interest
+press 4
+wait 0.6
+shot 03-flight-scan
+
+# land with key 6 and step out
+land
+until phase onfoot 8
+shot 04-landed
+bench 3
+wait 0.5
+
+# walk and scan
+press up 1.5
+press 4
+wait 0.7
+shot 05-scanner
+expect-min discoveries 1
+
+# mine the nearest prop with key 5
+aim
+down 5
+wait 1.0
+shot 06-mining
+wait 3.5
+up 5
+log
+expect-min credits 1
+
+# jetpack (key 6)
+down 6
+wait 0.9
+shot 07-jetpack
+up 6
+wait 2
+
+# inventory (key 8) and crafting
+press 8
+wait 0.3
+shot 08-inventory
+press 5
+wait 0.2
+shot 09-crafting
+press 8
+expect overlay none
+
+# back to the ship and take off (key 7)
+goto-ship
+press 7
+until phase flying 5
+wait 1
+shot 10-takeoff
+
+# fly to orbit by tilting the device nose-up and holding boost
+tilt 0 32 0.6
+down shift
+until location space 120
+up shift
+tilt 0 0 0.6
+wait 3
+shot 11-space
+bench 3
+press 4
+wait 0.5
+
+# autopilot to the station (key 6) and dock
+press 6
+until phase docked 150
+shot 12-station
+press 7
+wait 0.3
+shot 13-station-sold
+press 6
+wait 0.3
+shot 14-station-upgrades
+press 5
+press down
+press down
+press down
+press down
+wait 0.2
+press 7
+wait 0.2
+shot 15-station-buy
+press 8
+until phase flying 3
+
+# craft a jump cell, open the galaxy map and warp
+press 8
+press 5
+press 6
+press 8
+expect-min item:jump_cell 1
+press 7
+wait 0.4
+shot 16-galaxy-map
+press 6
+wait 2.5
+shot 17-warp-tunnel
+until-min systems 2 40
+wait 3
+log
+shot 18-new-system
+
+# system map
+press 7
+press 7
+wait 0.3
+shot 19-system-map
+press 8
+
+# fly down to the course planet with the navigation chart (M, 5 selects it, OK flies there)
+press m
+press 5
+press ok
+until location planet 150
+wait 6
+shot 21-new-planet
+land
+until phase onfoot 8
+press 4
+wait 0.7
+shot 22-new-planet-foot
+log
+
+# help overlay
+press f1
+wait 0.2
+shot 20-help
+press ok
+log

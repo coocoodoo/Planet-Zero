@@ -124,6 +124,17 @@ pub struct Flight {
     loop_direction: f32,
     aerobatic_ground: f32,
     trail_time: f32,
+    /// Cardputer Sky on-foot view: when set, the camera uses this viewpoint and the renderer
+    /// hides the player's aircraft, its shadow and the cockpit.
+    pub eye: Option<Eye>,
+}
+
+/// First-person viewpoint used on foot. `yaw` follows `heading()`; `pitch` > 0 looks up.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Eye {
+    pub position: Vec3,
+    pub yaw: f32,
+    pub pitch: f32,
 }
 
 impl Flight {
@@ -208,6 +219,7 @@ impl Flight {
                 .max(world.obstacles.iter().copied().max().unwrap_or(0))
                 as f32,
             trail_time: 0.0,
+            eye: None,
         };
         for side in [-1.0, 1.0] {
             let mut wing = flight.clone();

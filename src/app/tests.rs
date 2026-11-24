@@ -747,9 +747,10 @@ fn settings_categories_route_controls_and_persist_portal_preview() {
     tap(&mut app, ENTER);
     assert_eq!(app.settings_section, Some(SettingsSection::General));
     let volume = app.audio_settings.volume;
-    app.click(192, 100);
+    // General has seven 11 px rows (Cardputer Sky aim settings): VOLUME is at y 82–92
+    app.click(192, 87);
     assert_eq!(app.audio_settings.volume, volume.saturating_sub(1));
-    app.click(272, 100);
+    app.click(272, 87);
     assert_eq!(app.audio_settings.volume, volume);
     assert!(!app.flight.portal_preview);
     app.click(34, 28);

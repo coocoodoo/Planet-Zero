@@ -107,6 +107,7 @@ fn capture(app: &mut App, path: &std::path::Path) {
 #[macroquad::main(configuration)]
 async fn main() {
     let mut app = App::new(World::new(7));
+    app.mode = Mode::Explore;
     app.perf.asynchronous = true;
     let args: Vec<_> = std::env::args().collect();
     if let Some(i) = args.iter().position(|a| a == "--capture") {
@@ -169,6 +170,11 @@ async fn main() {
         (KeyCode::F2, k::SETTINGS),
         (KeyCode::F9, k::SOUND),
         (KeyCode::F10, k::PERF),
+        (KeyCode::Tab, k::TAB),
+        (KeyCode::V, k::KEY_V),
+        (KeyCode::G, k::KEY_G),
+        (KeyCode::H, k::KEY_H),
+        (KeyCode::L, k::KEY_L),
     ];
     loop {
         let frame_dt = get_frame_time();
@@ -240,6 +246,7 @@ async fn main() {
             audio.update(&mut app);
         }
         app.prepare_scene();
+        app.sky_scene();
         let scale = desktop::SCALES[quality];
         if let Some(frame) = drawing.poll()
             && frame.scale == scale

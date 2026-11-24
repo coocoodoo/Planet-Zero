@@ -97,4 +97,10 @@ fn main() {
         })
         .collect();
     fs::write(output.join("falcon.bin"), model).unwrap();
+    // Device bezel for the PC emulator's screenshots (only the emulator binary embeds it)
+    let frame: Vec<u8> = read_png(Path::new("docs/media/cardputer-zero-frame.png"), 631, 408)
+        .into_iter()
+        .flatten()
+        .collect();
+    fs::write(output.join("cardputer-frame.rgba"), frame).unwrap();
 }

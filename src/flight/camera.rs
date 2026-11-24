@@ -91,7 +91,32 @@ impl Camera {
         }
         camera
     }
+    /// First-person camera for walking. This projection puts the true eye `1/q` behind
+    /// `position`, so `position` is pushed forward to keep the eye at the walker's head.
+    /// Focal length is 190 px per unit at 320 px wide (about 80° horizontal field of view).
+    fn walking(eye: super::Eye, width: usize, height: usize) -> Self {
+        const Q: f32 = 0.25;
+        let w = width as f32;
+        let mut camera = Self {
+            position: eye.position,
+            yaw: 0.0,
+            pitch: 0.0,
+            forward: Vec3::ZERO,
+            right: Vec3::ZERO,
+            up: Vec3::ZERO,
+            q: Q,
+            scale: 190.0 * Q * w / 320.0,
+            slope: 0.0,
+            center: vec2(w * 0.5, height as f32 * 0.42),
+        };
+        camera.orient(-eye.yaw, eye.pitch);
+        camera.position = eye.position + camera.forward / Q;
+        camera
+    }
     pub fn new(flight: &Flight, width: usize, height: usize) -> Self {
+        if let Some(eye) = flight.eye {
+            return Self::walking(eye, width, height);
+        }
         let mut camera = Self::tracked(flight, width, height);
         if flight.camera_look.length_squared() > 0.0000001 {
             let eye = camera.ray(camera.center).0;

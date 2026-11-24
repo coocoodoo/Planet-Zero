@@ -58,6 +58,7 @@ impl Game {
             }
             if code == crate::keys::CALIBRATE {
                 self.calibrate_imu = true;
+                self.app.sky_recenter();
             }
             if code == crate::keys::AUTOPILOT
                 && self.page == Page::Playing
@@ -90,11 +91,17 @@ impl Game {
         } else {
             "KEY"
         };
+        // Cardputer Sky: on foot, small tilts fine-aim the view instead
+        let tilt_ready = self.imu_enabled && self.motion.available && self.motion.ready;
+        self.app
+            .sky_tilt(self.motion.roll, self.motion.pitch, tilt_ready);
+        // Cardputer Sky: the gyroscope pilots the ship only (not on foot or in menus)
         if !self.navigation.active
             && !self.flight.demo
             && self.imu_enabled
             && self.motion.available
             && self.motion.ready
+            && self.app.sky_motion()
         {
             let roll = imu::axis(self.motion.roll, 35.0_f32.to_radians());
             let pitch = imu::axis(self.motion.pitch, 30.0_f32.to_radians());

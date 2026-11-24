@@ -8,7 +8,10 @@ pub mod perf;
 pub use perf::{PerfPanel, PerfStats};
 mod records;
 mod settings;
+pub(crate) mod sky;
+mod sky_foot;
 pub(crate) use settings::SettingsSection;
+pub use sky_foot::{Context, Hit};
 pub mod telemetry;
 #[cfg(test)]
 mod tests;
@@ -87,6 +90,12 @@ pub struct App {
     records: Vec<(String, u32)>,
     record_path: Option<PathBuf>,
     pub keys: HashSet<u16>,
+    /// Cardputer Sky session (active only in `Mode::Explore`)
+    pub sky: crate::sky::Sky,
+    /// Cardputer Sky: ease the aim toward targets while firing
+    pub aim_assist: bool,
+    /// Cardputer Sky: small device tilts fine-aim on foot
+    pub tilt_aim: bool,
     pub perf_panel: PerfPanel,
     pub perf: PerfStats,
     escape_since: Option<Instant>,
@@ -196,6 +205,9 @@ impl App {
             records,
             record_path,
             keys: HashSet::new(),
+            sky: crate::sky::Sky::default(),
+            aim_assist: settings.aim_assist,
+            tilt_aim: settings.tilt_aim,
             perf_panel: PerfPanel::Off,
             perf: PerfStats::default(),
             escape_since: None,
@@ -227,6 +239,9 @@ impl App {
                 self.loadout.bombs = 3;
             }
             self.run_score = 0;
+        }
+        if self.mode == Mode::Explore && !self.sky_prepare() && self.loader.pending.is_none() {
+            return;
         }
         if self.loader.pending.is_some() {
             self.pending_start = true;
@@ -261,6 +276,9 @@ impl App {
         self.keys.clear();
         if self.mission.countdown > 0.0 {
             self.sounds.push(crate::audio::Sound::Countdown(3));
+        }
+        if self.mode == Mode::Explore {
+            self.sky_enter();
         }
     }
     /// 加载完成后回到目标页面；玩家在加载时打开了帮助或设置，则保留当前页，只更新返回位置
@@ -303,6 +321,7 @@ impl App {
         }
     }
     pub fn home(&mut self) {
+        self.sky_leave();
         self.orbit = orbit::Orbit::default();
         self.flight.surface = None;
         self.flight.sky_rotation = glam::Quat::IDENTITY;
@@ -351,6 +370,7 @@ impl App {
             .escape_since
             .is_some_and(|t| t.elapsed() >= Duration::from_secs(2))
         {
+            self.sky_save();
             self.quit = true;
         }
         if self.page != Page::Playing {
@@ -392,6 +412,9 @@ impl App {
         if self.page != Page::Playing {
             return;
         }
+        if self.explore() && self.sky_step(dt) {
+            return;
+        }
         let held = |key| f32::from(self.keys.contains(&key));
         let look = glam::vec2(
             held(crate::keys::LOOK_RIGHT) - held(crate::keys::LOOK_LEFT),
@@ -409,6 +432,9 @@ impl App {
             controls.pitch_target = None;
         }
         let mut controls = self.navigation_controls().unwrap_or(controls);
+        if self.explore() {
+            self.sky_controls(&mut controls);
+        }
         // 悬停中按加速恢复油门，方向键调整姿态
         if self.flight.hover && controls.manual && controls.boost {
             self.flight.hover = false;
@@ -441,6 +467,9 @@ impl App {
             self.reward = 0;
             self.save_record();
         }
+        if self.explore() {
+            self.sky_after_flight(dt);
+        }
     }
     pub fn prepare_scene(&mut self) {
         if (self.page == Page::Playing || self.flight.demo) && self.loader.pending.is_none() {
@@ -471,6 +500,7 @@ impl App {
         }
         let started = Instant::now();
         self.prepare_scene();
+        self.sky_scene();
         let menu = self.scene_is_menu();
         self.renderer.render_connected(
             &self.world,
