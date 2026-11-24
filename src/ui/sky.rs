@@ -129,7 +129,7 @@ fn keys(app: &App) -> [Key; 5] {
                 let ready =
                     sky.loadout.overheat[sky.loadout.active] <= 0.0 && sky.vitals.tool > 0.0;
                 [
-                    key("SCAN", Icon::Scan, sky.scan_age > 1.2),
+                    key("SCAN", Icon::Scan, true),
                     key("FIRE", Icon::Fire, ready),
                     key("JET", Icon::Jet, sky.vitals.jetpack > 0.0),
                     key(
@@ -147,7 +147,7 @@ fn keys(app: &App) -> [Key; 5] {
                     key("LAND", Icon::Land, can_land(app))
                 };
                 [
-                    key("SCAN", Icon::Scan, sky.scan_age > 1.2),
+                    key("SCAN", Icon::Scan, true),
                     key(
                         "MINE",
                         Icon::Mine,
@@ -171,46 +171,94 @@ fn can_land(app: &App) -> bool {
 }
 
 /// The key bar: label, 22×22 icon centred on the key, tick down to the key.
+fn blend(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
+    let t = t.clamp(0.0, 1.0);
+    std::array::from_fn(|i| (a[i] as f32 + (b[i] as f32 - a[i] as f32) * t) as u8)
+}
+
+/// The key bar. On the HUD it slides down after a few idle seconds so only the labels and the
+/// ticks to the keys stay; any key press brings it back. Pressed keys light up: a bright flash
+/// that settles to gold while held (red if the action is unavailable right now).
 fn key_bar(c: &mut Canvas, app: &App, keys: &[Key; 5]) {
-    c.shade(0, BAR_TOP as usize, 320, 170 - BAR_TOP as usize);
+    let bar = &app.sky.bar;
+    let slide = if app.sky.overlay == Overlay::None {
+        bar.offset().round() as i32
+    } else {
+        0
+    };
+    let top = BAR_TOP + slide;
+    c.shade(0, top as usize, 320, (170 - top).max(0) as usize);
+    const FLASH: [u8; 3] = [255, 246, 210];
+    const PLATE: [u8; 3] = [40, 60, 70];
     for (i, k) in keys.iter().enumerate() {
         let x = KEY_X[i];
+        let held = app.keys.contains(&BAR[i]);
+        let pulse = bar.pulse(i);
         if k.icon == Icon::Blank {
-            c.rect(x, 165, 1, 5, DIM);
+            c.rect(x, 166, 1, 4, blend(DIM, RED, pulse));
             continue;
         }
-        let held = app.keys.contains(&BAR[i]);
-        let color = if !k.enabled {
-            DIM
-        } else if held {
-            GOLD
+        // colour: flash on the press, gold while held, red when the action is unavailable
+        let rest = if k.enabled { WHITE } else { DIM };
+        let hot = if k.enabled { GOLD } else { RED };
+        let color = if held {
+            blend(hot, FLASH, pulse)
         } else {
-            WHITE
+            blend(rest, blend(hot, FLASH, pulse), pulse)
         };
-        if held && k.enabled {
-            c.rect(x - 12, KEY_Y - 12, 24, 24, [40, 60, 70]);
+        // the icon sinks a pixel while its key is down, like a real button
+        let icon_y = KEY_Y + slide + i32::from(held);
+        if held || pulse > 0.0 {
+            let glow = blend(PLATE, hot, 0.25 + 0.45 * pulse);
+            let plate = if held {
+                glow
+            } else {
+                blend(PANEL, glow, pulse)
+            };
+            c.rect(
+                x - 12,
+                icon_y - 12,
+                24,
+                (165 - (icon_y - 12)).clamp(0, 24),
+                plate,
+            );
+            if pulse > 0.0 {
+                // ring that grows and fades from the key
+                let grow = (12.0 + 5.0 * (1.0 - pulse)) as i32;
+                let ring = blend(PANEL, hot, pulse);
+                c.rect(x - grow, icon_y - grow, grow * 2, 1, ring);
+                c.rect(x - grow, icon_y + grow - 1, grow * 2, 1, ring);
+                c.rect(x - grow, icon_y - grow, 1, grow * 2, ring);
+                c.rect(x + grow - 1, icon_y - grow, 1, grow * 2, ring);
+            }
         }
         let rows = bitmap(k.icon);
         for (yy, row) in rows.iter().enumerate() {
+            let py = icon_y - 11 + yy as i32 * 2;
+            // never below the key ticks: a tucked bar shows only its labels
+            if py > 163 {
+                break;
+            }
             for (xx, ch) in row.bytes().enumerate() {
                 if ch == b'#' {
-                    c.rect(
-                        x - 11 + xx as i32 * 2,
-                        KEY_Y - 11 + yy as i32 * 2,
-                        2,
-                        2,
-                        color,
-                    );
+                    c.rect(x - 11 + xx as i32 * 2, py, 2, 2, color);
                 }
             }
         }
+        let label = if !k.enabled {
+            blend(DIM, RED, pulse)
+        } else if held || pulse > 0.0 {
+            blend(GOLD, FLASH, pulse)
+        } else {
+            CYAN
+        };
         c.osd(
             x - Canvas::osd_width(k.label) / 2,
-            133,
+            133 + slide,
             k.label,
-            if k.enabled { CYAN } else { DIM },
+            label,
         );
-        c.rect(x, 165, 1, 5, color);
+        c.rect(x, 166, 1, 4, color);
     }
 }
 

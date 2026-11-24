@@ -530,6 +530,10 @@ impl App {
     /// step is skipped): panels open, landing, on foot, take-off, docking.
     pub(super) fn sky_step(&mut self, dt: f32) -> bool {
         self.sky.tick(dt);
+        let hud = self.sky.overlay == Overlay::None
+            && matches!(self.sky.phase, Phase::Flying | Phase::OnFoot);
+        let held = !self.keys.is_empty();
+        self.sky.bar.step(dt, hud, held);
         self.sky_sync_location();
         if self.sky.overlay != Overlay::None {
             return true;

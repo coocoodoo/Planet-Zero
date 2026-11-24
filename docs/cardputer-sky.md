@@ -42,6 +42,11 @@ keys **4–8**, directly under the screen, with a 22×22 icon centred over each 
 **F / X / Z / C** are always the arrow keys; Cardputer Sky never asks for text, so they never type.
 Other keys are listed only in the help pages (F1 or H), never in columns that line up with keys 4–8.
 
+On the HUD the bar keeps out of the way: after 2.5 seconds without a key press it slides down until
+only the labels and the ticks to the keys show, and any key press slides it back up. A pressed key
+flashes bright and stays gold while held (its icon sinks a pixel like a real button); a key whose
+action is unavailable right now flashes red instead. Panels always show the full bar.
+
 | Situation | 4 | 5 | 6 | 7 | 8 |
 | --- | --- | --- | --- | --- | --- |
 | Flying over a planet | SCAN | MINE (space only) | LAND | MAP | BAG |

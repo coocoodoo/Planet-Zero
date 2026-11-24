@@ -88,6 +88,9 @@ impl App {
         if value != 1 || !self.keys.insert(code) {
             return;
         }
+        if self.explore() {
+            self.sky.bar.press(code);
+        }
         if code == ESC {
             self.escape_since = Some(Instant::now());
             return;

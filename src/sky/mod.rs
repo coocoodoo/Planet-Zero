@@ -67,6 +67,69 @@ pub enum Overlay {
     Lore,
 }
 
+/// The HUD key bar: slides down after a few idle seconds so only the key labels show, rises
+/// again on any key press, and flashes each key when it is pressed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct KeyBar {
+    /// 0 fully shown … 1 tucked down to the labels
+    pub hide: f32,
+    /// Seconds since the last key press (0 while any key is held)
+    pub idle: f32,
+    /// Seconds since each of keys 4–8 was last pressed
+    pub flash: [f32; 5],
+}
+/// Idle seconds before the bar tucks away
+pub const BAR_HIDE_AFTER: f32 = 2.5;
+/// Pixels the bar slides down when hidden: the icons leave, the labels stay
+pub const BAR_SLIDE: f32 = 25.0;
+/// Seconds a key's press flash lasts
+pub const BAR_FLASH: f32 = 0.45;
+impl Default for KeyBar {
+    fn default() -> Self {
+        Self {
+            hide: 0.0,
+            idle: 0.0,
+            flash: [f32::INFINITY; 5],
+        }
+    }
+}
+impl KeyBar {
+    /// Any key press shows the bar; keys 4–8 also flash.
+    pub fn press(&mut self, code: u16) {
+        self.idle = 0.0;
+        if let Some(i) = crate::keys::BAR.iter().position(|&k| k == code) {
+            self.flash[i] = 0.0;
+        }
+    }
+    /// `can_hide`: the HUD is up (no panel open). `held`: some key is held down.
+    pub fn step(&mut self, dt: f32, can_hide: bool, held: bool) {
+        self.idle = if held { 0.0 } else { self.idle + dt };
+        for f in &mut self.flash {
+            *f += dt;
+        }
+        let target = if can_hide && self.idle > BAR_HIDE_AFTER {
+            1.0
+        } else {
+            0.0
+        };
+        // tuck away gently, come back quickly
+        let rate = if target > self.hide { 3.0 } else { 12.0 };
+        self.hide += (target - self.hide) * (rate * dt).min(1.0);
+        if (target - self.hide).abs() < 0.002 {
+            self.hide = target;
+        }
+    }
+    /// Current slide in pixels, eased so the motion starts and ends softly.
+    pub fn offset(&self) -> f32 {
+        let t = self.hide.clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t) * BAR_SLIDE
+    }
+    /// 1 right after key `i` was pressed, fading to 0.
+    pub fn pulse(&self, i: usize) -> f32 {
+        (1.0 - self.flash[i] / BAR_FLASH).clamp(0.0, 1.0)
+    }
+}
+
 /// Equipped weapons, the locker, and per-slot heat.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Loadout {
@@ -301,6 +364,7 @@ pub struct Sky {
     /// Time of the last back press (double tap turns around)
     pub back_tap: f32,
     pub footstep: f32,
+    pub bar: KeyBar,
 }
 
 impl Default for Sky {
@@ -386,6 +450,7 @@ impl Default for Sky {
             tilt_ref: None,
             back_tap: -10.0,
             footstep: 0.0,
+            bar: KeyBar::default(),
         }
     }
 }
@@ -510,6 +575,44 @@ impl Sky {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn key_bar_tucks_away_when_idle_and_rises_on_a_press() {
+        let mut bar = KeyBar::default();
+        let dt = 1.0 / 30.0;
+        for _ in 0..30 * 2 {
+            bar.step(dt, true, false);
+        }
+        assert_eq!(bar.offset(), 0.0, "still shown before the idle delay");
+        for _ in 0..30 * 3 {
+            bar.step(dt, true, false);
+        }
+        assert!(bar.offset() > BAR_SLIDE * 0.95, "tucked away");
+        // sliding is smooth: no frame jumps more than a few pixels
+        let mut previous = bar.offset();
+        bar.press(crate::keys::KEY5);
+        assert_eq!(bar.pulse(1), 1.0);
+        for _ in 0..12 {
+            bar.step(dt, true, false);
+            assert!((previous - bar.offset()).abs() < 9.0);
+            previous = bar.offset();
+        }
+        assert!(bar.offset() < 1.0, "back up within 0.4 s");
+        assert!(bar.pulse(1) < 0.2, "the flash is fading");
+        for _ in 0..3 {
+            bar.step(dt, true, false);
+        }
+        assert_eq!(bar.pulse(1), 0.0, "and gone after 0.45 s");
+        assert_eq!(bar.pulse(0), 0.0);
+        // a held key or an open panel keeps it up
+        for _ in 0..30 * 6 {
+            bar.step(dt, true, true);
+        }
+        assert_eq!(bar.offset(), 0.0);
+        for _ in 0..30 * 6 {
+            bar.step(dt, false, false);
+        }
+        assert_eq!(bar.offset(), 0.0);
+    }
     #[test]
     fn loadout_cycles_slots_and_overflows_into_the_locker() {
         let mut l = Loadout::default();
